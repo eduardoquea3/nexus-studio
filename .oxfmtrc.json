@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": [".atl/**", "dist/**", "dist-ssr/**", "src-tauri/target/**"]
+}
