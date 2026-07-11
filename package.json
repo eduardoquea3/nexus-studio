@@ -13,6 +13,8 @@
     "@base-ui/react": "^1.6.0",
     "@codemirror/lang-sql": "^6.10.0",
     "@fontsource-variable/figtree": "^5.2.10",
+    "@fontsource-variable/public-sans": "^5.2.7",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
     "@hookform/resolvers": "^5.4.0",
     "@remixicon/react": "^4.9.0",
     "@tailwindcss/vite": "^4.3.2",
