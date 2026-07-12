@@ -11,6 +11,8 @@ import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/comp
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/ConnectionCard";
+import { NewConnectionModal } from "@/app/home/components/NewConnectionModal";
+import { useModalStore } from "@/shared/store/modalStore";
 
 const CONNECTIONS: ConnectionItem[] = [
   {
@@ -71,6 +73,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [query, setQuery] = useState("");
+  const openModal = useModalStore((state) => state.openModal);
 
   const filteredConnections = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -102,7 +105,7 @@ function Index() {
             </div>
 
             <CardAction className="flex flex-wrap items-center gap-2 self-auto">
-              <Button className="h-9 rounded-xl px-3.5 text-xs">
+              <Button className="h-9 rounded-xl px-3.5 text-xs" onClick={() => openModal("new-connection", { source: "dashboard" })}>
                 <RiAddLine size={16} />
                 New Connection
               </Button>
@@ -140,6 +143,8 @@ function Index() {
           </div>
         ) : null}
       </div>
+
+      <NewConnectionModal panelId="new-connection" />
     </div>
   );
 }
