@@ -1,7 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RiCloseLine, RiMoonLine, RiSubtractLine, RiSunLine } from "@remixicon/react";
 import { useState } from "react";
-import { useThemeStore } from "../store/themeStore";
+import { useThemeStore } from "../store/theme-store";
 
 export function TitleBar() {
   const { theme, toggle } = useThemeStore();
@@ -32,7 +32,9 @@ export function TitleBar() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={toggle}
+          onClick={() => {
+            void toggle();
+          }}
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label="Toggle theme"
         >

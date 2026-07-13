@@ -1,5 +1,5 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
-import { TitleBar } from "../shared/components/TitleBar";
+import { TitleBar } from "../shared/components/title-bar";
 
 export const Route = createRootRoute({
   component: RootLayout,
