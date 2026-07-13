@@ -57,6 +57,9 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  onFocusOutside,
+  onInteractOutside,
+  onPointerDownOutside,
   ...props
 }: SheetContentProps) {
   return (
@@ -72,6 +75,24 @@ function SheetContent({
           className,
         )}
         side={side}
+        onFocusOutside={(event) => {
+          if (isSelectPopupEvent(event)) {
+            event.preventDefault();
+          }
+          onFocusOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          if (isSelectPopupEvent(event)) {
+            event.preventDefault();
+          }
+          onInteractOutside?.(event);
+        }}
+        onPointerDownOutside={(event) => {
+          if (isSelectPopupEvent(event)) {
+            event.preventDefault();
+          }
+          onPointerDownOutside?.(event);
+        }}
         {...props}
       >
         {children}
@@ -83,6 +104,12 @@ function SheetContent({
         )}
       </SheetContentPrimitive>
     </SheetPortalPrimitive>
+  );
+}
+
+function isSelectPopupEvent(event: { target: EventTarget | null }) {
+  return (
+    event.target instanceof Element && Boolean(event.target.closest('[data-slot="select-content"]'))
   );
 }
 
