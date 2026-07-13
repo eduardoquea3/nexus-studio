@@ -1,0 +1,21 @@
+- MySQL - PostgreSQL
+  - Host *
+  - Port *
+  - SSL ?
+    - CA Cert ? (file)
+    - Certificate ? (file)
+    - Key File ? (file)
+  - User *
+  - Password *
+  - Database *
+  - SSH ?
+    - Host *
+    - Port *
+    - SSH Authentication Type (key file, user and password)
+    - add fields for SSH Key File or SSH User and SSH Password
+
+  - Connection name *
+
+- SQLite
+  - File path * (file,create)
+  - Connection name *
