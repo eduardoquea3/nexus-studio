@@ -93,14 +93,10 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
           <MetaCell
             label={connection.endpointLabel}
             value={connection.endpoint}
-            valueClassName="font-mono text-xs"
+            valueClassName="text-xs"
           />
-          <MetaCell
-            label="DATABASE"
-            value={connection.database}
-            valueClassName="font-mono text-xs"
-          />
-          <MetaCell label="USER" value={connection.user} valueClassName="font-mono text-xs" />
+          <MetaCell label="DATABASE" value={connection.database} valueClassName="text-xs" />
+          <MetaCell label="USER" value={connection.user} valueClassName="text-xs" />
         </dl>
       </CardContent>
     </Card>
