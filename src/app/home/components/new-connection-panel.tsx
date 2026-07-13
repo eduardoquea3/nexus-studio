@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { RiDatabase2Fill, RiFolderOpenLine } from "@remixicon/react";
+import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import {
   Accordion,
   AccordionContent,
@@ -19,6 +20,18 @@ import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
 import { HomePanels } from "../lib/home-panels";
 import { newConnectionSchema } from "../schemas/connectionSchema";
+
+const connectionTypes = [
+  { value: "mysql", label: "MySQL" },
+  { value: "postgresql", label: "PostgreSQL" },
+  { value: "sqlite", label: "SQLite" },
+] as const;
+
+const connectionTypeIcons = {
+  mysql: MySQLDark,
+  postgresql: PostgreSQL,
+  sqlite: SQLite,
+};
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
@@ -42,12 +55,22 @@ export function NewConnectionPanel() {
             onValueChange={(value) => value && setConnectionType(value)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select type" />
+              <SelectValue placeholder="Select type">
+                {(value) =>
+                  value ? (
+                    <ConnectionTypeOption type={value} />
+                  ) : (
+                    <span className="text-muted-foreground">Select type</span>
+                  )
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="mysql">MySQL</SelectItem>
-              <SelectItem value="postgresql">PostgreSQL</SelectItem>
-              <SelectItem value="sqlite">SQLite</SelectItem>
+              {connectionTypes.map((type) => (
+                <SelectItem key={type.value} value={type.value}>
+                  <ConnectionTypeOption type={type.value} />
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>
@@ -76,6 +99,22 @@ export function NewConnectionPanel() {
         </div>
       </div>
     </Panel>
+  );
+}
+
+function ConnectionTypeOption({ type }: { type: string }) {
+  const option = connectionTypes.find((item) => item.value === type);
+  const Icon = connectionTypeIcons[type as keyof typeof connectionTypeIcons];
+
+  if (!option || !Icon) {
+    return null;
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span>{option.label}</span>
+    </span>
   );
 }
 
