@@ -1,19 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  RiAddLine,
-  RiDatabaseLine,
-  RiRefreshLine,
-  RiSearchLine,
-} from "@remixicon/react";
+import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
-import { NewConnectionModal } from "@/app/home/components/new-connection-modal";
+import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
 import { useModalStore } from "@/shared/store/modalStore";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/animate-ui/components/radix/sheet";
 
 const CONNECTIONS: ConnectionItem[] = [
   {
@@ -46,26 +40,6 @@ const CONNECTIONS: ConnectionItem[] = [
     database: "staging_snapshot",
     user: "deploy",
   },
-  {
-    id: "dev-sandbox",
-    name: "dev-sandbox",
-    status: "connected",
-    engine: "sqlite",
-    endpointLabel: "FILE",
-    endpoint: "/data/dev.db",
-    database: "dev",
-    user: "—",
-  },
-  {
-    id: "legacy-app",
-    name: "legacy-app",
-    status: "disconnected",
-    engine: "mysql",
-    endpointLabel: "HOST",
-    endpoint: "10.0.1.50:3307",
-    database: "legacy_ecommerce",
-    user: "legacy_app",
-  },
 ];
 
 export const Route = createFileRoute("/")({
@@ -84,9 +58,13 @@ function Index() {
     }
 
     return CONNECTIONS.filter((connection) => {
-      return [connection.name, connection.engine, connection.endpoint, connection.database, connection.user].some(
-        (value) => value.toLowerCase().includes(normalized),
-      );
+      return [
+        connection.name,
+        connection.engine,
+        connection.endpoint,
+        connection.database,
+        connection.user,
+      ].some((value) => value.toLowerCase().includes(normalized));
     });
   }, [query]);
 
@@ -101,18 +79,26 @@ function Index() {
               </div>
               <div>
                 <CardTitle className="text-sm tracking-[-0.02em]">DB Manager</CardTitle>
-                <CardDescription className="text-xs">Manage database connections from one place</CardDescription>
+                <CardDescription className="text-xs">
+                  Manage database connections from one place
+                </CardDescription>
               </div>
             </div>
 
             <CardAction className="flex flex-wrap items-center gap-2 self-auto">
-              <Button className="h-9 rounded-xl px-3.5 text-xs" onClick={() => openModal("new-connection", { source: "dashboard" })}>
+              <Button
+                className="h-9 rounded-xl px-3.5 text-xs"
+                onClick={() => openModal("new-connection", { source: "dashboard" })}
+              >
                 <RiAddLine size={16} />
                 New Connection
               </Button>
 
               <div className="relative min-w-60 flex-1 sm:flex-none">
-                <RiSearchLine size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <RiSearchLine
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -132,9 +118,7 @@ function Index() {
 
         <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredConnections.map((connection) => {
-            return (
-              <ConnectionCard key={connection.id} connection={connection} />
-            );
+            return <ConnectionCard key={connection.id} connection={connection} />;
           })}
         </section>
 
@@ -145,36 +129,7 @@ function Index() {
         ) : null}
       </div>
 
-      <NewConnectionModal panelId="new-connection" />
-  <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="outline">Open</Button>
-      </SheetTrigger>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Edit profile</SheetTitle>
-          <SheetDescription>
-            Make changes to your profile here. Click save when you&apos;re done.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="grid flex-1 auto-rows-min gap-6 px-4">
-          <div className="grid gap-3">
-            <label htmlFor="sheet-demo-name">Name</label>
-            <Input id="sheet-demo-name" defaultValue="Pedro Duarte" />
-          </div>
-          <div className="grid gap-3">
-            <label htmlFor="sheet-demo-username">Username</label>
-            <Input id="sheet-demo-username" defaultValue="@peduarte" />
-          </div>
-        </div>
-        <SheetFooter>
-          <Button type="submit">Save changes</Button>
-          <SheetClose asChild>
-            <Button variant="outline">Close</Button>
-          </SheetClose>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+      <NewConnectionPanel />
     </div>
   );
 }

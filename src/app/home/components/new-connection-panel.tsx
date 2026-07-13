@@ -1,17 +1,25 @@
 import { Button } from "@/components/ui/button";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/animate-ui/components/radix/accordion";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/animate-ui/components/radix/accordion";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useState } from "react";
+import { HomePanels } from "../lib/home-panels";
 import { newConnectionSchema } from "../schemas/connectionSchema";
 
-type NewConnectionModalProps = {
-  panelId: string;
-};
-
-export function NewConnectionModal({ panelId }: NewConnectionModalProps) {
+export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
   const [sslEnabled, setSslEnabled] = useState(false);
   const [sshEnabled, setSshEnabled] = useState(false);
@@ -19,10 +27,20 @@ export function NewConnectionModal({ panelId }: NewConnectionModalProps) {
   void newConnectionSchema;
 
   return (
-    <Panel panelId={panelId} title="New Connection" description="Create a reusable connection from the dashboard.">
-      <NewConnectionPanelBody sslEnabled={sslEnabled} sshEnabled={sshEnabled} onSslChange={setSslEnabled} onSshChange={setSshEnabled} />
+    <Panel
+      panelId={HomePanels.NewConnection}
+      title="New Connection"
+      description="Create a reusable connection from the dashboard."
+      className="w-140"
+    >
+      <NewConnectionPanelBody
+        sslEnabled={sslEnabled}
+        sshEnabled={sshEnabled}
+        onSslChange={setSslEnabled}
+        onSshChange={setSshEnabled}
+      />
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
-        <Button variant="outline" onClick={() => closeModal(panelId)}>
+        <Button variant="outline" onClick={() => closeModal(HomePanels.NewConnection)}>
           Cancel
         </Button>
         <div className="flex items-center gap-2">
@@ -141,7 +159,11 @@ function NewConnectionPanelBody({
         <div className="mb-3 text-sm font-medium text-foreground">Save Connection</div>
         <Input placeholder="Connection Name" />
         <div className="mt-3 flex items-center gap-3">
-          <input type="checkbox" defaultChecked className="size-4 rounded border-border text-primary focus:ring-primary" />
+          <input
+            type="checkbox"
+            defaultChecked
+            className="size-4 rounded border-border text-primary focus:ring-primary"
+          />
           <span className="text-sm text-muted-foreground">Save Passwords</span>
         </div>
       </div>
