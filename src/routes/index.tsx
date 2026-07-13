@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
 import { NewConnectionModal } from "@/app/home/components/new-connection-modal";
 import { useModalStore } from "@/shared/store/modalStore";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/animate-ui/components/radix/sheet";
 
 const CONNECTIONS: ConnectionItem[] = [
   {
@@ -145,6 +146,35 @@ function Index() {
       </div>
 
       <NewConnectionModal panelId="new-connection" />
+  <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline">Open</Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit profile</SheetTitle>
+          <SheetDescription>
+            Make changes to your profile here. Click save when you&apos;re done.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="grid flex-1 auto-rows-min gap-6 px-4">
+          <div className="grid gap-3">
+            <label htmlFor="sheet-demo-name">Name</label>
+            <Input id="sheet-demo-name" defaultValue="Pedro Duarte" />
+          </div>
+          <div className="grid gap-3">
+            <label htmlFor="sheet-demo-username">Username</label>
+            <Input id="sheet-demo-username" defaultValue="@peduarte" />
+          </div>
+        </div>
+        <SheetFooter>
+          <Button type="submit">Save changes</Button>
+          <SheetClose asChild>
+            <Button variant="outline">Close</Button>
+          </SheetClose>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/animate-ui/components/radix/sheet";
 import { useModalStore } from "../store/modalStore";
 
 type PanelProps = {
