@@ -60,7 +60,7 @@ type AccordionContentProps = AccordionContentPrimitiveProps;
 function AccordionContent({ className, children, ...props }: AccordionContentProps) {
   return (
     <AccordionContentPrimitive {...props}>
-      <div className={cn("text-sm pt-0 pb-4", className)}>{children}</div>
+      <div className={cn("text-sm pt-0", className)}>{children}</div>
     </AccordionContentPrimitive>
   );
 }

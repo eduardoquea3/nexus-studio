@@ -1,10 +1,13 @@
-import { Button } from "@/components/ui/button";
+import { useRef, useState, type ReactNode } from "react";
+import { RiDatabase2Fill, RiFolderOpenLine } from "@remixicon/react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/animate-ui/components/radix/accordion";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -12,17 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
-import { useState } from "react";
 import { HomePanels } from "../lib/home-panels";
 import { newConnectionSchema } from "../schemas/connectionSchema";
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
-  const [sslEnabled, setSslEnabled] = useState(false);
-  const [sshEnabled, setSshEnabled] = useState(false);
+  const [connectionType, setConnectionType] = useState("postgresql");
+  const [sshAuthType, setSshAuthType] = useState("key-file");
 
   void newConnectionSchema;
 
@@ -31,14 +32,40 @@ export function NewConnectionPanel() {
       panelId={HomePanels.NewConnection}
       title="New Connection"
       description="Create a reusable connection from the dashboard."
+      icon={<RiDatabase2Fill size={19} />}
       className="w-140"
     >
-      <NewConnectionPanelBody
-        sslEnabled={sslEnabled}
-        sshEnabled={sshEnabled}
-        onSslChange={setSslEnabled}
-        onSshChange={setSshEnabled}
-      />
+      <div className="flex flex-col gap-4 text-sm">
+        <Field label="Connection Type">
+          <Select
+            value={connectionType}
+            onValueChange={(value) => value && setConnectionType(value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mysql">MySQL</SelectItem>
+              <SelectItem value="postgresql">PostgreSQL</SelectItem>
+              <SelectItem value="sqlite">SQLite</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+
+        {connectionType === "sqlite" ? (
+          <FileField label="File path" placeholder="Select a SQLite database" />
+        ) : (
+          <DatabaseConnectionFields
+            sshAuthType={sshAuthType}
+            onSshAuthTypeChange={(value) => value && setSshAuthType(value)}
+          />
+        )}
+
+        <Field label="Connection name">
+          <Input placeholder="Production database" />
+        </Field>
+      </div>
+
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
         <Button variant="outline" onClick={() => closeModal(HomePanels.NewConnection)}>
           Cancel
@@ -52,130 +79,134 @@ export function NewConnectionPanel() {
   );
 }
 
-function NewConnectionPanelBody({
-  sslEnabled,
-  sshEnabled,
-  onSslChange,
-  onSshChange,
+function DatabaseConnectionFields({
+  sshAuthType,
+  onSshAuthTypeChange,
 }: {
-  sslEnabled: boolean;
-  sshEnabled: boolean;
-  onSslChange: (value: boolean) => void;
-  onSshChange: (value: boolean) => void;
+  sshAuthType: string;
+  onSshAuthTypeChange: (value: string | null) => void;
 }) {
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      <div className="grid gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-muted-foreground">Connection Type</span>
-          <Select>
-            <SelectTrigger>
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mysql">MySQL</SelectItem>
-              <SelectItem value="postgresql">PostgreSQL</SelectItem>
-              <SelectItem value="sqlite">SQLite</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
-        <Field label="Authentication Method" value="Username / Password" />
-        <Field label="Connection Mode" value="Host and Port" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2">
+    <>
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+        <Field label="Host">
           <Input placeholder="localhost" />
-        </div>
-        <Input placeholder="5432" />
+        </Field>
+        <Field label="Port">
+          <Input placeholder="5432" inputMode="numeric" />
+        </Field>
       </div>
 
-      <Accordion>
-        <AccordionItem value="ssl">
-          <AccordionTrigger className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-            <span className="flex w-full items-center justify-between text-left">
-              <span className="font-medium text-foreground">Enable SSL</span>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onSslChange(!sslEnabled);
-                }}
-                className={`size-4 rounded-full border ${sslEnabled ? "border-primary bg-primary" : "border-border bg-background"}`}
-                aria-label="Enable SSL"
-              />
-            </span>
+      <Accordion type="single" collapsible>
+        <AccordionItem value="ssl" className="border-0">
+          <AccordionTrigger className="h-10 rounded-md border border-border bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+            SSL
           </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-3 pt-1">
-              <Input placeholder="SSL mode" />
-              <Input placeholder="Certificate path" />
+          <AccordionContent className="pt-3">
+            <div className="grid gap-3">
+              <FileField label="CA certificate" placeholder="Select CA certificate" />
+              <FileField label="Certificate" placeholder="Select certificate" />
+              <FileField label="Key file" placeholder="Select private key" />
             </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>
 
       <div className="grid grid-cols-2 gap-3">
-        <Input placeholder="User" />
-        <Input placeholder="Password" />
+        <Field label="User">
+          <Input placeholder="Username" />
+        </Field>
+        <Field label="Password">
+          <Input type="password" placeholder="Password" />
+        </Field>
       </div>
 
-      <Input placeholder="Default Database" />
+      <Field label="Database">
+        <Input placeholder="Database name" />
+      </Field>
 
-      <Accordion>
-        <AccordionItem value="ssh">
-          <AccordionTrigger className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-            <span className="flex w-full items-center justify-between text-left">
-              <span className="font-medium text-foreground">SSH Tunnel</span>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onSshChange(!sshEnabled);
-                }}
-                className={`size-4 rounded-full border ${sshEnabled ? "border-primary bg-primary" : "border-border bg-background"}`}
-                aria-label="SSH Tunnel"
-              />
-            </span>
+      <Accordion type="single" collapsible>
+        <AccordionItem value="ssh" className="border-0">
+          <AccordionTrigger className="h-10 rounded-md border border-border bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+            SSH tunnel
           </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-3 pt-1">
-              <Input placeholder="SSH host" />
-              <div className="grid grid-cols-2 gap-3">
-                <Input placeholder="SSH port" />
-                <Input placeholder="SSH user" />
+          <AccordionContent className="pt-3">
+            <div className="grid gap-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+                <Field label="Host">
+                  <Input placeholder="ssh.example.com" />
+                </Field>
+                <Field label="Port">
+                  <Input placeholder="22" inputMode="numeric" />
+                </Field>
               </div>
+
+              <Field label="Authentication">
+                <Select value={sshAuthType} onValueChange={onSshAuthTypeChange}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue className="h-10" placeholder="Select authentication" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="key-file">Key file</SelectItem>
+                    <SelectItem value="password">User and password</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {sshAuthType === "key-file" ? (
+                <FileField label="SSH key file" placeholder="Select SSH key" />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="SSH user">
+                    <Input placeholder="SSH username" />
+                  </Field>
+                  <Field label="SSH password">
+                    <Input type="password" placeholder="SSH password" />
+                  </Field>
+                </div>
+              )}
             </div>
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+    </>
+  );
+}
 
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
-        <input type="checkbox" className="size-4 rounded border-border" />
-        Read Only Mode
-      </label>
-
-      <div className="border-t border-border pt-4">
-        <div className="mb-3 text-sm font-medium text-foreground">Save Connection</div>
-        <Input placeholder="Connection Name" />
-        <div className="mt-3 flex items-center gap-3">
-          <input
-            type="checkbox"
-            defaultChecked
-            className="size-4 rounded border-border text-primary focus:ring-primary"
-          />
-          <span className="text-sm text-muted-foreground">Save Passwords</span>
-        </div>
-      </div>
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function FileField({ label, placeholder }: { label: string; placeholder: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
+
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <Input value={value} readOnly />
-    </label>
+    <Field label={label}>
+      <div className="flex gap-2">
+        <Input value={fileName} placeholder={placeholder} readOnly aria-label={`${label} path`} />
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0 size-10"
+          onClick={() => inputRef.current?.click()}
+          aria-label={`Browse for ${label}`}
+        >
+          <RiFolderOpenLine size={20} />
+          <span className="sr-only">Browse</span>
+        </Button>
+        <input
+          ref={inputRef}
+          type="file"
+          className="sr-only"
+          onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
+        />
+      </div>
+    </Field>
   );
 }

@@ -13,11 +13,12 @@ type PanelProps = {
   panelId: string;
   title: string;
   description?: string;
+  icon?: ReactNode;
   className?: string;
   children: ReactNode | ((payload: Record<string, unknown> | undefined) => ReactNode);
 };
 
-export function Panel({ panelId, title, description, className, children }: PanelProps) {
+export function Panel({ panelId, title, description, icon, className, children }: PanelProps) {
   const isOpen = useModalStore((state) => state.modals.includes(panelId));
   const closePanel = useModalStore((state) => state.closeModal);
   const payload = useModalStore(
@@ -27,9 +28,16 @@ export function Panel({ panelId, title, description, className, children }: Pane
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closePanel(panelId)}>
       <SheetContent side="right" className={cn(className)}>
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          {description ? <SheetDescription>{description}</SheetDescription> : null}
+        <SheetHeader className={icon ? "flex-row items-start gap-3" : undefined}>
+          {icon ? (
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
+              {icon}
+            </div>
+          ) : null}
+          <div className={icon ? "min-w-0" : undefined}>
+            <SheetTitle>{title}</SheetTitle>
+            {description ? <SheetDescription>{description}</SheetDescription> : null}
+          </div>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
