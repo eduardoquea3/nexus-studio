@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionProfile, ConnectResult, DataPage, ObjectMeta, QueryResult, TableRules, TableSchema } from "../types/models";
+import type {
+  ConnectionProfile,
+  ConnectResult,
+  DataPage,
+  ObjectMeta,
+  QueryResult,
+  TableRules,
+  TableSchema,
+} from "../types/models";
 
 export async function listConnections(): Promise<ConnectionProfile[]> {
   return invoke("list_connections");

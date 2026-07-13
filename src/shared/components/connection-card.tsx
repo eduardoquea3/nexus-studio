@@ -1,7 +1,14 @@
 import { RiCloseLine, RiPencilLine, RiPlayLine, RiSubtractLine } from "@remixicon/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export type ConnectionStatus = "connected" | "disconnected";
 
@@ -49,13 +56,12 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${statusTone.bar}`} />
-              <CardTitle className="truncate text-sm tracking-[-0.02em]">{connection.name}</CardTitle>
+              <CardTitle className="truncate text-sm tracking-[-0.02em]">
+                {connection.name}
+              </CardTitle>
             </div>
             <CardDescription className="mt-1 flex items-center gap-2 text-xs">
-              <Badge
-                variant="outline"
-                className={statusTone.badge}
-              >
+              <Badge variant="outline" className={statusTone.badge}>
                 {connection.status}
               </Badge>
             </CardDescription>
@@ -76,13 +82,24 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
       </CardHeader>
 
       <CardContent className="px-3 pb-3">
-        <Badge variant="secondary" className={`mb-3 rounded-md text-xs uppercase tracking-[0.08em] ${statusTone.engine}`}>
+        <Badge
+          variant="secondary"
+          className={`mb-3 rounded-md text-xs uppercase tracking-[0.08em] ${statusTone.engine}`}
+        >
           {connection.engine}
         </Badge>
 
         <dl className="grid grid-cols-3 gap-2 text-xs">
-          <MetaCell label={connection.endpointLabel} value={connection.endpoint} valueClassName="font-mono text-xs" />
-          <MetaCell label="DATABASE" value={connection.database} valueClassName="font-mono text-xs" />
+          <MetaCell
+            label={connection.endpointLabel}
+            value={connection.endpoint}
+            valueClassName="font-mono text-xs"
+          />
+          <MetaCell
+            label="DATABASE"
+            value={connection.database}
+            valueClassName="font-mono text-xs"
+          />
           <MetaCell label="USER" value={connection.user} valueClassName="font-mono text-xs" />
         </dl>
       </CardContent>
@@ -90,10 +107,20 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
   );
 }
 
-function MetaCell({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function MetaCell({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="min-w-0">
-      <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
       <dd className={`truncate text-foreground ${valueClassName ?? ""}`}>{value}</dd>
     </div>
   );

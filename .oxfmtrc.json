@@ -1,3 +1,11 @@
 {
-  "ignorePatterns": [".atl/**", "dist/**", "dist-ssr/**", "src-tauri/target/**"]
+  "ignorePatterns": [
+    ".*/**",
+    "node_modules/**",
+    ".atl/**",
+    "dist/**",
+    "dist-ssr/**",
+    "src/routeTree.gen.ts",
+    "src-tauri/target/**"
+  ]
 }

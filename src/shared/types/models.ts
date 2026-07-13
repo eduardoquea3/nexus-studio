@@ -10,7 +10,14 @@ export interface ConnectionProfile {
 
 export type ConnectMode =
   | { type: "connection_string"; value: string }
-  | { type: "fields"; host: string; port: number; database: string; username: string; password_ref: string | null };
+  | {
+      type: "fields";
+      host: string;
+      port: number;
+      database: string;
+      username: string;
+      password_ref: string | null;
+    };
 
 export interface SshTunnelConfig {
   source: SshSource;

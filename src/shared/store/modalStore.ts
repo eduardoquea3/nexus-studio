@@ -20,6 +20,8 @@ export const useModalStore = create<ModalState>((set) => ({
   closeModal: (modalId) =>
     set((state) => ({
       modals: state.modals.filter((id) => id !== modalId),
-      modalProps: Object.fromEntries(Object.entries(state.modalProps).filter(([id]) => id !== modalId)),
+      modalProps: Object.fromEntries(
+        Object.entries(state.modalProps).filter(([id]) => id !== modalId),
+      ),
     })),
 }));

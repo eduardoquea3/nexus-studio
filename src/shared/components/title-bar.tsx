@@ -60,7 +60,9 @@ export function TitleBar() {
             className="relative flex h-3 w-3 items-center justify-center rounded-full bg-yellow-500"
             aria-label="Minimize"
           >
-            {hoveredButton === "minimize" && <RiSubtractLine size={10} className="text-yellow-900" />}
+            {hoveredButton === "minimize" && (
+              <RiSubtractLine size={10} className="text-yellow-900" />
+            )}
           </button>
           <button
             type="button"
@@ -70,7 +72,9 @@ export function TitleBar() {
             className="relative flex h-3 w-3 items-center justify-center rounded-full bg-green-500"
             aria-label="Maximize"
           >
-            {hoveredButton === "maximize" && <RiCloseLine size={10} className="rotate-45 text-green-900" />}
+            {hoveredButton === "maximize" && (
+              <RiCloseLine size={10} className="rotate-45 text-green-900" />
+            )}
           </button>
         </div>
       </div>
