@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { ConnectionCard, type ConnectionItem } from "@/shared/components/ConnectionCard";
-import { NewConnectionModal } from "@/app/home/components/NewConnectionModal";
+import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
+import { NewConnectionModal } from "@/app/home/components/new-connection-modal";
 import { useModalStore } from "@/shared/store/modalStore";
 
 const CONNECTIONS: ConnectionItem[] = [
