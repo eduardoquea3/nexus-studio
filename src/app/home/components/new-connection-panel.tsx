@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { SVGProps, useRef, useState, type ReactNode } from "react";
 import { RiDatabase2Fill, RiFolderOpenLine } from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import {
@@ -21,17 +21,17 @@ import { useModalStore } from "@/shared/store/modalStore";
 import { HomePanels } from "../lib/home-panels";
 import { newConnectionSchema } from "../schemas/connectionSchema";
 
-const connectionTypes = [
-  { value: "mysql", label: "MySQL" },
-  { value: "postgresql", label: "PostgreSQL" },
-  { value: "sqlite", label: "SQLite" },
-] as const;
-
-const connectionTypeIcons = {
-  mysql: MySQLDark,
-  postgresql: PostgreSQL,
-  sqlite: SQLite,
+type ConnectionType = {
+  value: string;
+  label: string;
+  icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
 };
+
+const connectionTypes = [
+  { value: "mysql", label: "MySQL", icon: MySQLDark },
+  { value: "postgresql", label: "PostgreSQL", icon: PostgreSQL },
+  { value: "sqlite", label: "SQLite", icon: SQLite },
+] satisfies readonly ConnectionType[];
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
@@ -58,7 +58,9 @@ export function NewConnectionPanel() {
               <SelectValue placeholder="Select type">
                 {(value) =>
                   value ? (
-                    <ConnectionTypeOption type={value} />
+                    <ConnectionTypeOption
+                      type={connectionTypes.find((item) => item.value === value)}
+                    />
                   ) : (
                     <span className="text-muted-foreground">Select type</span>
                   )
@@ -68,7 +70,7 @@ export function NewConnectionPanel() {
             <SelectContent>
               {connectionTypes.map((type) => (
                 <SelectItem key={type.value} value={type.value}>
-                  <ConnectionTypeOption type={type.value} />
+                  <ConnectionTypeOption type={type} />
                 </SelectItem>
               ))}
             </SelectContent>
@@ -102,18 +104,16 @@ export function NewConnectionPanel() {
   );
 }
 
-function ConnectionTypeOption({ type }: { type: string }) {
-  const option = connectionTypes.find((item) => item.value === type);
-  const Icon = connectionTypeIcons[type as keyof typeof connectionTypeIcons];
-
-  if (!option || !Icon) {
+function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
+  if (!type) {
     return null;
   }
 
+  const { icon: Icon, label } = type;
   return (
     <span className="flex items-center gap-2">
       <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <span>{option.label}</span>
+      <span>{label}</span>
     </span>
   );
 }
@@ -138,7 +138,7 @@ function DatabaseConnectionFields({
 
       <Accordion type="single" collapsible>
         <AccordionItem value="ssl" className="border-0">
-          <AccordionTrigger className="h-10 rounded-md border border-border bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+          <AccordionTrigger className="h-10 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
             SSL
           </AccordionTrigger>
           <AccordionContent className="pt-3">
@@ -166,7 +166,7 @@ function DatabaseConnectionFields({
 
       <Accordion type="single" collapsible>
         <AccordionItem value="ssh" className="border-0">
-          <AccordionTrigger className="h-10 rounded-md border border-border bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+          <AccordionTrigger className="h-10 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
             SSH tunnel
           </AccordionTrigger>
           <AccordionContent className="pt-3">
