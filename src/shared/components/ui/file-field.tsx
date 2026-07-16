@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { RiFolderOpenLine } from "@remixicon/react";
 
 import { Field } from "@/shared/components/ui/field";
@@ -7,11 +8,21 @@ import { Input } from "@/shared/components/ui/input";
 interface FileFieldProps {
   label: string;
   placeholder: string;
+  onPathChange?: (path: string) => void;
 }
 
-function FileField({ label, placeholder }: FileFieldProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+function FileField({ label, placeholder, onPathChange }: FileFieldProps) {
   const [fileName, setFileName] = useState("");
+
+  const handlePickFile = async () => {
+    const path = await open({ multiple: false, directory: false });
+    if (typeof path !== "string") {
+      return;
+    }
+
+    setFileName(path.split(/[\\/]/).pop() ?? path);
+    onPathChange?.(path);
+  };
 
   return (
     <Field label={label}>
@@ -21,13 +32,7 @@ function FileField({ label, placeholder }: FileFieldProps) {
         readOnly
         aria-label={`${label} path`}
         iconRight={RiFolderOpenLine}
-        iconRightClick={() => inputRef.current?.click()}
-      />
-      <input
-        ref={inputRef}
-        type="file"
-        className="sr-only"
-        onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
+        iconRightClick={() => void handlePickFile()}
       />
     </Field>
   );

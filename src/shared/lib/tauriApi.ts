@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { load } from "@tauri-apps/plugin-store";
 import type {
   ConnectionProfile,
   ConnectResult,
@@ -9,20 +10,37 @@ import type {
   TableSchema,
 } from "../types/models";
 
-export async function listConnections(): Promise<ConnectionProfile[]> {
-  return invoke("list_connections");
+export interface ConnectionTestRequest {
+  dbType: "postgres" | "mysql" | "sqlite";
+  host?: string;
+  port?: number;
+  database?: string;
+  username?: string;
+  password?: string;
+  sqlitePath?: string;
 }
 
-export async function saveConnection(profile: ConnectionProfile): Promise<void> {
-  return invoke("save_connection", { profile });
+export async function listConnections(): Promise<ConnectionProfile[]> {
+  return invoke("list_connections");
 }
 
 export async function deleteConnection(id: string): Promise<void> {
   return invoke("delete_connection", { id });
 }
 
-export async function testConnection(profile: ConnectionProfile): Promise<string> {
-  return invoke("test_connection", { profile });
+export async function testConnectionFields(request: ConnectionTestRequest): Promise<string> {
+  return invoke("test_connection", { request });
+}
+
+export async function saveConnection(profile: ConnectionProfile): Promise<void> {
+  const store = await load("connections.json");
+  const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+  const nextProfiles = profiles.some((item) => item.id === profile.id)
+    ? profiles.map((item) => (item.id === profile.id ? profile : item))
+    : [...profiles, profile];
+
+  await store.set("profiles", nextProfiles);
+  await store.save();
 }
 
 export async function connect(id: string): Promise<ConnectResult> {

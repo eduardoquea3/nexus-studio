@@ -1,4 +1,5 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 import { TitleBar } from "../shared/components/title-bar";
 
 export const Route = createRootRoute({
@@ -12,6 +13,7 @@ function RootLayout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }
