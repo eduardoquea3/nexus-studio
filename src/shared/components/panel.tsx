@@ -6,6 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useModalStore } from "../store/modalStore";
 
@@ -41,9 +42,11 @@ export function Panel({ panelId, title, description, icon, className, children }
             </div>
           </SheetHeader>
 
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            {typeof children === "function" ? children(payload) : children}
-          </div>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="px-6 py-5">
+              {typeof children === "function" ? children(payload) : children}
+            </div>
+          </ScrollArea>
         </div>
       </SheetContent>
     </Sheet>
