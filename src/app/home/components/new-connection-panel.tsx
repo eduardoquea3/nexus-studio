@@ -1,5 +1,15 @@
-import { SVGProps, useRef, useState, type ReactNode } from "react";
-import { RiDatabase2Fill, RiFolderOpenLine } from "@remixicon/react";
+import { SVGProps, useRef, useState } from "react";
+import {
+  RiDatabase2Fill,
+  RiDatabase2Line,
+  RiFolderOpenLine,
+  RiGlobalLine,
+  RiLockPasswordLine,
+  RiServerLine,
+  RiShieldKeyholeLine,
+  RiTerminalBoxLine,
+  RiUserLine,
+} from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import {
   Accordion,
@@ -8,7 +18,8 @@ import {
   AccordionTrigger,
 } from "@/components/animate-ui/components/radix/accordion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/shared/components/ui/input";
+import { Field } from "@/shared/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -87,7 +98,7 @@ export function NewConnectionPanel() {
         )}
 
         <Field label="Connection name">
-          <Input placeholder="Production database" />
+          <Input iconLeft={RiDatabase2Line} placeholder="Production database" />
         </Field>
       </div>
 
@@ -129,16 +140,17 @@ function DatabaseConnectionFields({
     <>
       <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
         <Field label="Host">
-          <Input placeholder="localhost" />
+          <Input iconLeft={RiServerLine} placeholder="localhost" />
         </Field>
         <Field label="Port">
-          <Input placeholder="5432" inputMode="numeric" />
+          <Input iconLeft={RiGlobalLine} placeholder="5432" inputMode="numeric" />
         </Field>
       </div>
 
       <Accordion type="single" collapsible>
         <AccordionItem value="ssl" className="border-0">
-          <AccordionTrigger className="h-10 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+          <AccordionTrigger className="flex h-10 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline">
+            <RiShieldKeyholeLine className="size-4 text-muted-foreground" aria-hidden="true" />
             SSL
           </AccordionTrigger>
           <AccordionContent className="pt-3">
@@ -153,30 +165,31 @@ function DatabaseConnectionFields({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="User">
-          <Input placeholder="Username" />
+          <Input iconLeft={RiUserLine} placeholder="Username" />
         </Field>
         <Field label="Password">
-          <Input type="password" placeholder="Password" />
+          <Input iconLeft={RiLockPasswordLine} type="password" placeholder="Password" />
         </Field>
       </div>
 
       <Field label="Database">
-        <Input placeholder="Database name" />
+        <Input iconLeft={RiDatabase2Line} placeholder="Database name" />
       </Field>
 
       <Accordion type="single" collapsible>
         <AccordionItem value="ssh" className="border-0">
-          <AccordionTrigger className="h-10 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline flex items-center">
+          <AccordionTrigger className="flex h-10 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline">
+            <RiTerminalBoxLine className="size-4 text-muted-foreground" aria-hidden="true" />
             SSH tunnel
           </AccordionTrigger>
           <AccordionContent className="pt-3">
             <div className="grid gap-3">
               <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
                 <Field label="Host">
-                  <Input placeholder="ssh.example.com" />
+                  <Input iconLeft={RiServerLine} placeholder="ssh.example.com" />
                 </Field>
                 <Field label="Port">
-                  <Input placeholder="22" inputMode="numeric" />
+                  <Input iconLeft={RiGlobalLine} placeholder="22" inputMode="numeric" />
                 </Field>
               </div>
 
@@ -197,10 +210,10 @@ function DatabaseConnectionFields({
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="SSH user">
-                    <Input placeholder="SSH username" />
+                    <Input iconLeft={RiUserLine} placeholder="SSH username" />
                   </Field>
                   <Field label="SSH password">
-                    <Input type="password" placeholder="SSH password" />
+                    <Input iconLeft={RiLockPasswordLine} type="password" placeholder="SSH password" />
                   </Field>
                 </div>
               )}
@@ -212,40 +225,26 @@ function DatabaseConnectionFields({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </div>
-  );
-}
-
 function FileField({ label, placeholder }: { label: string; placeholder: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
 
   return (
     <Field label={label}>
-      <div className="flex gap-2">
-        <Input value={fileName} placeholder={placeholder} readOnly aria-label={`${label} path`} />
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0 size-10"
-          onClick={() => inputRef.current?.click()}
-          aria-label={`Browse for ${label}`}
-        >
-          <RiFolderOpenLine size={20} />
-          <span className="sr-only">Browse</span>
-        </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          className="sr-only"
-          onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
-        />
-      </div>
+      <Input
+        value={fileName}
+        placeholder={placeholder}
+        readOnly
+        aria-label={`${label} path`}
+        iconRight={RiFolderOpenLine}
+        iconRightClick={() => inputRef.current?.click()}
+      />
+      <input
+        ref={inputRef}
+        type="file"
+        className="sr-only"
+        onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
+      />
     </Field>
   );
 }
