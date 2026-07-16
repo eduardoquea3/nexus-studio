@@ -26,6 +26,7 @@ import { FileField } from "@/shared/components/ui/file-field";
 import { Select } from "@/shared/components/ui/select";
 import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
+import { useConnectionStore } from "@/shared/store/connectionStore";
 import { HomePanels } from "../lib/home-panels";
 import {
   saveConnection,
@@ -75,6 +76,7 @@ const initialFormValues: ConnectionFormValues = {
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
+  const addProfile = useConnectionStore((state) => state.addProfile);
   const [form, setForm] = useState(initialFormValues);
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [isTesting, setIsTesting] = useState(false);
@@ -117,6 +119,7 @@ export function NewConnectionPanel() {
       await testConnectionFields(getTestRequest());
       const profile = createConnectionProfile(form);
       await saveConnection(profile);
+      addProfile(profile);
       toast.success("Connection saved", {
         description: "The connection profile was saved without its password.",
       });

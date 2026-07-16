@@ -1,26 +1,16 @@
-import { RiCloseLine, RiPencilLine, RiPlayLine, RiSubtractLine } from "@remixicon/react";
+import { RiDeleteBinLine, RiLockLine, RiPencilLine, RiShieldLine } from "@remixicon/react";
+import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
+import { useNavigate } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-export type ConnectionStatus = "connected" | "disconnected";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export type ConnectionItem = {
   id: string;
   name: string;
-  status: ConnectionStatus;
   engine: "postgresql" | "mysql" | "sqlite";
-  endpointLabel: "HOST" | "FILE";
-  endpoint: string;
-  database: string;
-  user: string;
+  sshEnabled: boolean;
+  sslEnabled: boolean;
 };
 
 type ConnectionCardProps = {
@@ -28,96 +18,87 @@ type ConnectionCardProps = {
 };
 
 export function ConnectionCard({ connection }: ConnectionCardProps) {
-  const isConnected = connection.status === "connected";
-  const statusTone = isConnected
-    ? {
-        shell: "border-primary/25 ring-1 ring-primary/10",
-        bar: "bg-primary",
-        badge: "border-primary/20 bg-primary/10 text-primary",
-        engine: "bg-secondary text-secondary-foreground",
-        primaryAction: "border-primary text-primary hover:bg-accent/10",
-      }
-    : {
-        shell: "border-border",
-        bar: "bg-border",
-        badge: "border-border bg-background text-muted-foreground",
-        engine: "bg-muted text-muted-foreground",
-        primaryAction: "border-primary text-primary hover:bg-accent/10",
-      };
+  const navigate = useNavigate();
+  const EngineIcon = connectionTypeIcons[connection.engine];
 
   return (
     <Card
-      className={`overflow-hidden rounded-xl border bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-shadow hover:shadow-[0_8px_24px_rgba(15,23,42,0.05)] ${statusTone.shell}`}
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
+      onDoubleClick={() =>
+        navigate({ to: "/connections/$connectionId", params: { connectionId: connection.id } })
+      }
     >
-      <div className={`h-1 w-full ${statusTone.bar}`} />
+      <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary via-primary/70 to-primary/20" />
 
-      <CardHeader className="gap-2 px-3 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${statusTone.bar}`} />
-              <CardTitle className="truncate text-sm tracking-[-0.02em]">
+      <CardHeader className="gap-4 px-4 py-4 pl-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+              <EngineIcon className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Connection
+              </p>
+              <CardTitle className="truncate text-[15px] tracking-[-0.02em]">
                 {connection.name}
               </CardTitle>
             </div>
-            <CardDescription className="mt-1 flex items-center gap-2 text-xs">
-              <Badge variant="outline" className={statusTone.badge}>
-                {connection.status}
-              </Badge>
-            </CardDescription>
           </div>
 
-          <CardAction className="flex items-center gap-1.5 self-start">
-            <Button variant="outline" size="icon-sm" className={statusTone.primaryAction}>
-              {isConnected ? <RiSubtractLine size={16} /> : <RiPlayLine size={16} />}
+          <CardAction className="flex items-center gap-1 self-start">
+            <Button
+              variant="ghost"
+              size="icon-lg"
+              className="text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              aria-label={`Edit ${connection.name}`}
+            >
+              <RiPencilLine size={18} />
             </Button>
-            <Button variant="outline" size="icon-sm">
-              <RiPencilLine size={16} />
-            </Button>
-            <Button variant="outline" size="icon-sm">
-              <RiCloseLine size={16} />
+            <Button
+              variant="ghost"
+              size="icon-lg"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              aria-label={`Delete ${connection.name}`}
+            >
+              <RiDeleteBinLine size={18} />
             </Button>
           </CardAction>
         </div>
       </CardHeader>
 
-      <CardContent className="px-3 pb-3">
+      <CardContent className="flex flex-wrap items-center gap-2 px-4 pb-4 pl-5">
         <Badge
           variant="secondary"
-          className={`mb-3 rounded-md text-xs uppercase tracking-[0.08em] ${statusTone.engine}`}
+          className="gap-1.5 rounded-lg border border-primary/15 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary"
         >
           {connection.engine}
         </Badge>
-
-        <dl className="grid grid-cols-3 gap-2 text-xs">
-          <MetaCell
-            label={connection.endpointLabel}
-            value={connection.endpoint}
-            valueClassName="text-xs"
-          />
-          <MetaCell label="DATABASE" value={connection.database} valueClassName="text-xs" />
-          <MetaCell label="USER" value={connection.user} valueClassName="text-xs" />
-        </dl>
+        {connection.sshEnabled ? (
+          <Badge
+            variant="outline"
+            className="gap-1.5 rounded-lg px-2.5 py-1 text-[10px] uppercase tracking-[0.1em]"
+          >
+            <RiShieldLine size={13} aria-hidden="true" />
+            SSH
+          </Badge>
+        ) : null}
+        {connection.sslEnabled ? (
+          <Badge
+            variant="outline"
+            className="gap-1.5 rounded-lg px-2.5 py-1 text-[10px] uppercase tracking-[0.1em]"
+          >
+            <RiLockLine size={13} aria-hidden="true" />
+            SSL
+          </Badge>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function MetaCell({
-  label,
-  value,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className={`truncate text-foreground ${valueClassName ?? ""}`}>{value}</dd>
-    </div>
-  );
-}
+const connectionTypeIcons = {
+  mysql: MySQLDark,
+  postgresql: PostgreSQL,
+  sqlite: SQLite,
+} satisfies Record<ConnectionItem["engine"], typeof PostgreSQL>;

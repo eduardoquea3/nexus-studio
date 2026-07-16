@@ -10,33 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConnectionsConnectionIdRouteImport } from './routes/connections/$connectionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectionsConnectionIdRoute = ConnectionsConnectionIdRouteImport.update({
+  id: '/connections/$connectionId',
+  path: '/connections/$connectionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/connections/$connectionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/connections/$connectionId'
+  id: '__root__' | '/' | '/connections/$connectionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnectionsConnectionIdRoute: typeof ConnectionsConnectionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connections/$connectionId': {
+      id: '/connections/$connectionId'
+      path: '/connections/$connectionId'
+      fullPath: '/connections/$connectionId'
+      preLoaderRoute: typeof ConnectionsConnectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnectionsConnectionIdRoute: ConnectionsConnectionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

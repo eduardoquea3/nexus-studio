@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,39 +8,9 @@ import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
 import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
 import { useModalStore } from "@/shared/store/modalStore";
-
-const CONNECTIONS: ConnectionItem[] = [
-  {
-    id: "prod-db",
-    name: "prod-db",
-    status: "connected",
-    engine: "postgresql",
-    endpointLabel: "HOST",
-    endpoint: "pg-primary.internal:5432",
-    database: "acme_prod",
-    user: "app_admin",
-  },
-  {
-    id: "analytics",
-    name: "analytics",
-    status: "connected",
-    engine: "mysql",
-    endpointLabel: "HOST",
-    endpoint: "db.analytics.io:3306",
-    database: "analytics_v2",
-    user: "analyst",
-  },
-  {
-    id: "staging-replica",
-    name: "staging-replica",
-    status: "disconnected",
-    engine: "postgresql",
-    endpointLabel: "HOST",
-    endpoint: "staging.internal:5433",
-    database: "staging_snapshot",
-    user: "deploy",
-  },
-];
+import { listConnections } from "@/shared/lib/tauriApi";
+import { useConnectionStore } from "@/shared/store/connectionStore";
+import type { ConnectionProfile } from "@/shared/types/models";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -49,24 +19,36 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [query, setQuery] = useState("");
   const openModal = useModalStore((state) => state.openModal);
+  const profiles = useConnectionStore((state) => state.profiles);
+  const setProfiles = useConnectionStore((state) => state.setProfiles);
+
+  const refreshConnections = useCallback(async () => {
+    const storedProfiles = await listConnections();
+    setProfiles(storedProfiles);
+  }, [setProfiles]);
+
+  useEffect(() => {
+    void refreshConnections();
+  }, [refreshConnections]);
+
+  const connections = useMemo(() => profiles.map(toConnectionItem), [profiles]);
 
   const filteredConnections = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
     if (!normalized) {
-      return CONNECTIONS;
+      return connections;
     }
 
-    return CONNECTIONS.filter((connection) => {
+    return connections.filter((connection) => {
       return [
         connection.name,
         connection.engine,
-        connection.endpoint,
-        connection.database,
-        connection.user,
+        connection.sshEnabled ? "ssh" : "",
+        connection.sslEnabled ? "ssl" : "",
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [query]);
+  }, [connections, query]);
 
   return (
     <div className="min-h-full bg-background px-3 py-3 text-foreground sm:px-4 lg:px-4 lg:py-4">
@@ -107,7 +89,11 @@ function Index() {
                 />
               </div>
 
-              <Button variant="outline" className="h-9 rounded-xl px-3.5 text-xs">
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl px-3.5 text-xs"
+                onClick={() => void refreshConnections()}
+              >
                 <RiRefreshLine size={16} />
                 Refresh
               </Button>
@@ -132,4 +118,24 @@ function Index() {
       <NewConnectionPanel />
     </div>
   );
+}
+
+function toConnectionItem(profile: ConnectionProfile): ConnectionItem {
+  if (profile.connect_mode.type === "connection_string") {
+    return {
+      id: profile.id,
+      name: profile.name,
+      engine: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
+      sshEnabled: profile.ssh_tunnel !== null,
+      sslEnabled: false,
+    };
+  }
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    engine: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
+    sshEnabled: profile.ssh_tunnel !== null,
+    sslEnabled: false,
+  };
 }

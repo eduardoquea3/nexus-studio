@@ -21,7 +21,8 @@ export interface ConnectionTestRequest {
 }
 
 export async function listConnections(): Promise<ConnectionProfile[]> {
-  return invoke("list_connections");
+  const store = await load("connections.json");
+  return (await store.get<ConnectionProfile[]>("profiles")) ?? [];
 }
 
 export async function deleteConnection(id: string): Promise<void> {
