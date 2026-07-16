@@ -1,11 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RiCloseLine, RiMoonLine, RiSubtractLine, RiSunLine } from "@remixicon/react";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useThemeStore } from "../store/theme-store";
 
 export function TitleBar() {
   const { theme, toggle } = useThemeStore();
-  const [hoveredButton, setHoveredButton] = useState<string | null>(null);
 
   async function handleMinimize() {
     const win = getCurrentWindow();
@@ -42,40 +41,36 @@ export function TitleBar() {
         </button>
 
         <div className="flex items-center gap-1.5">
-          <button
+          <Button
             type="button"
+            size="icon-sm"
+            variant="ghost"
             onClick={handleClose}
-            onMouseEnter={() => setHoveredButton("close")}
-            onMouseLeave={() => setHoveredButton(null)}
-            className="relative flex h-3 w-3 items-center justify-center rounded-full bg-red-500"
+            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
             aria-label="Close"
           >
-            {hoveredButton === "close" && <RiCloseLine size={10} className="text-red-900" />}
-          </button>
-          <button
+            <RiCloseLine size={11} />
+          </Button>
+          <Button
             type="button"
+            size="icon-sm"
+            variant="ghost"
             onClick={handleMinimize}
-            onMouseEnter={() => setHoveredButton("minimize")}
-            onMouseLeave={() => setHoveredButton(null)}
-            className="relative flex h-3 w-3 items-center justify-center rounded-full bg-yellow-500"
+            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Minimize"
           >
-            {hoveredButton === "minimize" && (
-              <RiSubtractLine size={10} className="text-yellow-900" />
-            )}
-          </button>
-          <button
+            <RiSubtractLine size={11} />
+          </Button>
+          <Button
             type="button"
+            size="icon-sm"
+            variant="ghost"
             onClick={handleMaximize}
-            onMouseEnter={() => setHoveredButton("maximize")}
-            onMouseLeave={() => setHoveredButton(null)}
-            className="relative flex h-3 w-3 items-center justify-center rounded-full bg-green-500"
+            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Maximize"
           >
-            {hoveredButton === "maximize" && (
-              <RiCloseLine size={10} className="rotate-45 text-green-900" />
-            )}
-          </button>
+            <RiCloseLine size={11} className="rotate-45" />
+          </Button>
         </div>
       </div>
     </header>

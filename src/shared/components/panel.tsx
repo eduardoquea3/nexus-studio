@@ -5,7 +5,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/animate-ui/components/radix/sheet";
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useModalStore } from "../store/modalStore";
 
@@ -27,21 +27,23 @@ export function Panel({ panelId, title, description, icon, className, children }
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closePanel(panelId)}>
-      <SheetContent side="right" className={cn(className)}>
-        <SheetHeader className={icon ? "flex-row items-start gap-3" : undefined}>
-          {icon ? (
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
-              {icon}
+      <SheetContent side="right" showCloseButton={false}>
+        <div className={cn("flex h-full flex-col", className)}>
+          <SheetHeader className={icon ? "flex-row items-start gap-3" : undefined}>
+            {icon ? (
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
+                {icon}
+              </div>
+            ) : null}
+            <div className={icon ? "min-w-0" : undefined}>
+              <SheetTitle>{title}</SheetTitle>
+              {description ? <SheetDescription>{description}</SheetDescription> : null}
             </div>
-          ) : null}
-          <div className={icon ? "min-w-0" : undefined}>
-            <SheetTitle>{title}</SheetTitle>
-            {description ? <SheetDescription>{description}</SheetDescription> : null}
-          </div>
-        </SheetHeader>
+          </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {typeof children === "function" ? children(payload) : children}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {typeof children === "function" ? children(payload) : children}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
