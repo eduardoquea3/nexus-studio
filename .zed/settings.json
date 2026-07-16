@@ -45,7 +45,8 @@
         "!vtsls",
         "!typescript-language-server",
         "!biome",
-        "!eslint"
+        "!eslint",
+        "..."
       ],
       "formatter": [
         {
@@ -69,7 +70,8 @@
         "!vtsls",
         "!typescript-language-server",
         "!biome",
-        "!eslint"
+        "!eslint",
+        "..."
       ],
       "formatter": [
         {
