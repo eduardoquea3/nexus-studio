@@ -1,8 +1,7 @@
-import { SVGProps, useRef, useState } from "react";
+import { SVGProps, useState } from "react";
 import {
   RiDatabase2Fill,
   RiDatabase2Line,
-  RiFolderOpenLine,
   RiGlobalLine,
   RiLockPasswordLine,
   RiServerLine,
@@ -20,13 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Field } from "@/shared/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FileField } from "@/shared/components/ui/file-field";
+import { Select } from "@/shared/components/ui/select";
 import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
 import { HomePanels } from "../lib/home-panels";
@@ -43,6 +37,11 @@ const connectionTypes = [
   { value: "postgresql", label: "PostgreSQL", icon: PostgreSQL },
   { value: "sqlite", label: "SQLite", icon: SQLite },
 ] satisfies readonly ConnectionType[];
+
+const sshAuthTypes = [
+  { value: "key-file", label: "Key file" },
+  { value: "password", label: "User and password" },
+] as const;
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
@@ -62,30 +61,13 @@ export function NewConnectionPanel() {
       <div className="flex flex-col gap-4 text-sm">
         <Field label="Connection Type">
           <Select
-            value={connectionType}
-            onValueChange={(value) => value && setConnectionType(value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select type">
-                {(value) =>
-                  value ? (
-                    <ConnectionTypeOption
-                      type={connectionTypes.find((item) => item.value === value)}
-                    />
-                  ) : (
-                    <span className="text-muted-foreground">Select type</span>
-                  )
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {connectionTypes.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  <ConnectionTypeOption type={type} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={connectionTypes}
+            valueKey="value"
+            value={connectionTypes.find((item) => item.value === connectionType)}
+            onValueChange={(value) => value && setConnectionType(value.value)}
+            render={(option) => <ConnectionTypeOption type={option} />}
+            placeholder="Select type"
+          />
         </Field>
 
         {connectionType === "sqlite" ? (
@@ -194,15 +176,14 @@ function DatabaseConnectionFields({
               </div>
 
               <Field label="Authentication">
-                <Select value={sshAuthType} onValueChange={onSshAuthTypeChange}>
-                  <SelectTrigger className="h-10">
-                    <SelectValue className="h-10" placeholder="Select authentication" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="key-file">Key file</SelectItem>
-                    <SelectItem value="password">User and password</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Select
+                  options={sshAuthTypes}
+                  valueKey="value"
+                  value={sshAuthTypes.find((option) => option.value === sshAuthType)}
+                  onValueChange={(option) => onSshAuthTypeChange(option?.value ?? null)}
+                  placeholder="Select authentication"
+                  className="h-10"
+                />
               </Field>
 
               {sshAuthType === "key-file" ? (
@@ -225,26 +206,3 @@ function DatabaseConnectionFields({
   );
 }
 
-function FileField({ label, placeholder }: { label: string; placeholder: string }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState("");
-
-  return (
-    <Field label={label}>
-      <Input
-        value={fileName}
-        placeholder={placeholder}
-        readOnly
-        aria-label={`${label} path`}
-        iconRight={RiFolderOpenLine}
-        iconRightClick={() => inputRef.current?.click()}
-      />
-      <input
-        ref={inputRef}
-        type="file"
-        className="sr-only"
-        onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
-      />
-    </Field>
-  );
-}
