@@ -3,7 +3,7 @@ use sqlx::{
     mysql::{MySqlConnectOptions, MySqlConnection},
     postgres::{PgConnectOptions, PgConnection},
     sqlite::{SqliteConnectOptions, SqliteConnection},
-    Connection,
+    Connection, Row,
 };
 use tauri_plugin_store::Builder as StoreBuilder;
 
@@ -72,13 +72,59 @@ async fn test_connection(request: ConnectionTestRequest) -> Result<String, Strin
     }
 }
 
+#[tauri::command]
+async fn list_databases(request: ConnectionTestRequest) -> Result<Vec<String>, String> {
+    match request.db_type.as_str() {
+        "postgres" => {
+            let options = PgConnectOptions::new()
+                .host(request.host.as_deref().ok_or("Host is required")?)
+                .port(request.port.unwrap_or(5432))
+                .database(request.database.as_deref().ok_or("Database is required")?)
+                .username(request.username.as_deref().unwrap_or("postgres"))
+                .password(request.password.as_deref().unwrap_or(""));
+            let mut connection = PgConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
+            let rows = sqlx::query(
+                "SELECT datname FROM pg_database WHERE datallowconn = true AND datistemplate = false ORDER BY datname",
+            )
+            .fetch_all(&mut connection)
+            .await
+            .map_err(|error| format!("Could not list PostgreSQL databases: {error}"))?;
+            Ok(rows.into_iter().map(|row| row.get("datname")).collect())
+        }
+        "mysql" => {
+            let options = MySqlConnectOptions::new()
+                .host(request.host.as_deref().ok_or("Host is required")?)
+                .port(request.port.unwrap_or(3306))
+                .database(request.database.as_deref().unwrap_or("mysql"))
+                .username(request.username.as_deref().unwrap_or("root"))
+                .password(request.password.as_deref().unwrap_or(""));
+            let mut connection = MySqlConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("MySQL connection failed: {error}"))?;
+            let rows = sqlx::query("SHOW DATABASES")
+                .fetch_all(&mut connection)
+                .await
+                .map_err(|error| format!("Could not list MySQL databases: {error}"))?;
+            Ok(rows.into_iter().map(|row| row.get(0)).collect())
+        }
+        "sqlite" => Ok(request.sqlite_path.into_iter().collect()),
+        database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(StoreBuilder::default().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, test_connection])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            test_connection,
+            list_databases
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

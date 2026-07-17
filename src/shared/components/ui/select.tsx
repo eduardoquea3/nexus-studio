@@ -78,7 +78,7 @@ function Select<T extends Record<string, unknown>>({
             const option = selectedValue
               ? getOptionByValue(String(selectedValue))
               : undefined;
-            return option && render ? render(option) : option ? getOptionLabel(option) : null;
+            return option && render ? render(option) : option ? getOptionLabel(option) : placeholder;
           }}
         </SelectValue>
       </SelectTrigger>
