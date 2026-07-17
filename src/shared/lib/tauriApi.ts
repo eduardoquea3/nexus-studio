@@ -22,6 +22,11 @@ export interface ConnectionTestRequest {
 
 export interface ListDatabasesRequest extends ConnectionTestRequest {}
 
+export async function listConnections(): Promise<ConnectionProfile[]> {
+  const store = await load("connections.json");
+  return (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+}
+
 export async function testConnectionFields(request: ConnectionTestRequest): Promise<string> {
   return invoke("test_connection", { request });
 }
