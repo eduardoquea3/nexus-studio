@@ -15,6 +15,7 @@
         "title": "nexus-studio",
         "width": 1000,
         "height": 700,
+        "maximized": true,
         "decorations": false,
         "transparent": true
       }
