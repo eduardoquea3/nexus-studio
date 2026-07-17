@@ -20,17 +20,14 @@ export interface ConnectionTestRequest {
   sqlitePath?: string;
 }
 
-export async function listConnections(): Promise<ConnectionProfile[]> {
-  const store = await load("connections.json");
-  return (await store.get<ConnectionProfile[]>("profiles")) ?? [];
-}
-
-export async function deleteConnection(id: string): Promise<void> {
-  return invoke("delete_connection", { id });
-}
+export interface ListDatabasesRequest extends ConnectionTestRequest {}
 
 export async function testConnectionFields(request: ConnectionTestRequest): Promise<string> {
   return invoke("test_connection", { request });
+}
+
+export async function listDatabases(request: ListDatabasesRequest): Promise<string[]> {
+  return invoke("list_databases", { request });
 }
 
 export async function saveConnection(profile: ConnectionProfile): Promise<void> {
@@ -50,10 +47,6 @@ export async function connect(id: string): Promise<ConnectResult> {
 
 export async function disconnect(id: string): Promise<void> {
   return invoke("disconnect", { id });
-}
-
-export async function listDatabases(id: string): Promise<string[]> {
-  return invoke("list_databases", { id });
 }
 
 export async function listTables(id: string): Promise<ObjectMeta[]> {

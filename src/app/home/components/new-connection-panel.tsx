@@ -1,4 +1,4 @@
-import { SVGProps, useState } from "react";
+import { SVGProps, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   RiDatabase2Fill,
@@ -27,6 +27,9 @@ import { Select } from "@/shared/components/ui/select";
 import { Panel } from "@/shared/components/panel";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useConnectionStore } from "@/shared/store/connectionStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { connectionsQueryKey } from "@/app/home/hooks/use-connections";
+import { getConnection } from "@/app/home/services/connection-service";
 import { HomePanels } from "../lib/home-panels";
 import {
   saveConnection,
@@ -76,10 +79,44 @@ const initialFormValues: ConnectionFormValues = {
 
 export function NewConnectionPanel() {
   const closeModal = useModalStore((state) => state.closeModal);
+  const modalPayload = useModalStore(
+    (state) => state.modalProps[HomePanels.NewConnection] as { connectionId?: string } | undefined,
+  );
   const addProfile = useConnectionStore((state) => state.addProfile);
+  const updateProfile = useConnectionStore((state) => state.updateProfile);
+  const queryClient = useQueryClient();
+  const editingId = modalPayload?.connectionId;
   const [form, setForm] = useState(initialFormValues);
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [isTesting, setIsTesting] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!editingId) {
+      setIsLoadingProfile(false);
+      setForm(initialFormValues);
+      return;
+    }
+
+    setIsLoadingProfile(true);
+    void getConnection(editingId)
+      .then((profile) => {
+        if (!cancelled && profile) {
+          setForm(profileToFormValues(profile));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingProfile(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId]);
 
   const updateField = <K extends keyof ConnectionFormValues>(
     field: K,
@@ -117,11 +154,16 @@ export function NewConnectionPanel() {
     setIsTesting(true);
     try {
       await testConnectionFields(getTestRequest());
-      const profile = createConnectionProfile(form);
+      const profile = createConnectionProfile(form, editingId);
       await saveConnection(profile);
-      addProfile(profile);
-      toast.success("Connection saved", {
-        description: "The connection profile was saved without its password.",
+      if (editingId) {
+        updateProfile(profile);
+      } else {
+        addProfile(profile);
+      }
+      await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
+      toast.success(editingId ? "Connection updated" : "Connection saved", {
+        description: "The connection profile and its credentials were saved locally.",
       });
       closeModal(HomePanels.NewConnection);
     } catch (error) {
@@ -134,8 +176,12 @@ export function NewConnectionPanel() {
   return (
     <Panel
       panelId={HomePanels.NewConnection}
-      title="New Connection"
-      description="Create a reusable connection from the dashboard."
+      title={editingId ? "Edit Connection" : "New Connection"}
+      description={
+        editingId
+          ? "Update the saved connection profile."
+          : "Create a reusable connection from the dashboard."
+      }
       icon={<RiDatabase2Fill size={19} />}
       className="w-140"
     >
@@ -183,11 +229,15 @@ export function NewConnectionPanel() {
           Cancel
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => void handleTest()} disabled={isTesting}>
+          <Button
+            variant="outline"
+            onClick={() => void handleTest()}
+            disabled={isTesting || isLoadingProfile}
+          >
             Test
           </Button>
-          <Button onClick={() => void handleConnect()} disabled={isTesting}>
-            Connect
+          <Button onClick={() => void handleConnect()} disabled={isTesting || isLoadingProfile}>
+            {editingId ? "Save changes" : "Connect"}
           </Button>
         </div>
       </div>
@@ -209,13 +259,14 @@ function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
   );
 }
 
-function createConnectionProfile(values: ConnectionFormValues): ConnectionProfile {
+function createConnectionProfile(values: ConnectionFormValues, id?: string): ConnectionProfile {
   const dbType: DbType = values.dbType === "postgresql" ? "postgres" : values.dbType;
 
   return {
-    id: crypto.randomUUID(),
+    id: id ?? crypto.randomUUID(),
     name: values.name.trim() || `${dbType} connection`,
     db_type: dbType,
+    password: values.password,
     connect_mode:
       dbType === "sqlite"
         ? { type: "connection_string", value: values.sqlitePath }
@@ -228,6 +279,32 @@ function createConnectionProfile(values: ConnectionFormValues): ConnectionProfil
             password_ref: null,
           },
     ssh_tunnel: null,
+  };
+}
+
+function profileToFormValues(profile: ConnectionProfile): ConnectionFormValues {
+  if (profile.connect_mode.type === "connection_string") {
+    return {
+      dbType: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
+      name: profile.name,
+      host: "localhost",
+      port: "5432",
+      database: "",
+      username: "",
+      password: profile.password ?? "",
+      sqlitePath: profile.connect_mode.value,
+    };
+  }
+
+  return {
+    dbType: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
+    name: profile.name,
+    host: profile.connect_mode.host,
+    port: String(profile.connect_mode.port),
+    database: profile.connect_mode.database,
+    username: profile.connect_mode.username,
+    password: profile.password ?? "",
+    sqlitePath: "",
   };
 }
 

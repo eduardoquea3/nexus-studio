@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
 import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
+import { useConnections } from "@/app/home/hooks/use-connections";
+import { deleteConnection } from "@/app/home/services/connection-service";
 import { useModalStore } from "@/shared/store/modalStore";
-import { listConnections } from "@/shared/lib/tauriApi";
-import { useConnectionStore } from "@/shared/store/connectionStore";
 import type { ConnectionProfile } from "@/shared/types/models";
 
 export const Route = createFileRoute("/")({
@@ -19,17 +20,21 @@ export const Route = createFileRoute("/")({
 function Index() {
   const [query, setQuery] = useState("");
   const openModal = useModalStore((state) => state.openModal);
-  const profiles = useConnectionStore((state) => state.profiles);
-  const setProfiles = useConnectionStore((state) => state.setProfiles);
+  const { data: profiles = [], isFetching, refetch } = useConnections();
 
-  const refreshConnections = useCallback(async () => {
-    const storedProfiles = await listConnections();
-    setProfiles(storedProfiles);
-  }, [setProfiles]);
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Delete connection "${name}"?`)) {
+      return;
+    }
 
-  useEffect(() => {
-    void refreshConnections();
-  }, [refreshConnections]);
+    try {
+      await deleteConnection(id);
+      await refetch();
+      toast.success("Connection deleted");
+    } catch (error) {
+      toast.error("Could not delete connection", { description: String(error) });
+    }
+  };
 
   const connections = useMemo(() => profiles.map(toConnectionItem), [profiles]);
 
@@ -92,7 +97,8 @@ function Index() {
               <Button
                 variant="outline"
                 className="h-9 rounded-xl px-3.5 text-xs"
-                onClick={() => void refreshConnections()}
+                onClick={() => void refetch()}
+                disabled={isFetching}
               >
                 <RiRefreshLine size={16} />
                 Refresh
@@ -104,7 +110,14 @@ function Index() {
 
         <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
           {filteredConnections.map((connection) => {
-            return <ConnectionCard key={connection.id} connection={connection} />;
+            return (
+              <ConnectionCard
+                key={connection.id}
+                connection={connection}
+                onEdit={() => openModal("new-connection", { connectionId: connection.id })}
+                onDelete={() => void handleDelete(connection.id, connection.name)}
+              />
+            );
           })}
         </section>
 

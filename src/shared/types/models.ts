@@ -4,6 +4,7 @@ export interface ConnectionProfile {
   id: string;
   name: string;
   db_type: DbType;
+  password?: string;
   connect_mode: ConnectMode;
   ssh_tunnel: SshTunnelConfig | null;
 }

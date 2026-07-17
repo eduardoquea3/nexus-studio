@@ -15,9 +15,11 @@ export type ConnectionItem = {
 
 type ConnectionCardProps = {
   connection: ConnectionItem;
+  onEdit?: () => void;
+  onDelete?: () => void;
 };
 
-export function ConnectionCard({ connection }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete }: ConnectionCardProps) {
   const navigate = useNavigate();
   const EngineIcon = connectionTypeIcons[connection.engine];
 
@@ -52,6 +54,10 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
               size="icon-lg"
               className="text-muted-foreground hover:bg-primary/10 hover:text-primary"
               aria-label={`Edit ${connection.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit?.();
+              }}
             >
               <RiPencilLine size={18} />
             </Button>
@@ -60,6 +66,10 @@ export function ConnectionCard({ connection }: ConnectionCardProps) {
               size="icon-lg"
               className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               aria-label={`Delete ${connection.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete?.();
+              }}
             >
               <RiDeleteBinLine size={18} />
             </Button>
