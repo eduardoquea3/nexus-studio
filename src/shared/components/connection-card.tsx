@@ -1,6 +1,7 @@
 import { RiDeleteBinLine, RiLockLine, RiPencilLine, RiShieldLine } from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,18 +18,39 @@ type ConnectionCardProps = {
   connection: ConnectionItem;
   onEdit?: () => void;
   onDelete?: () => void;
+  onOpen?: () => Promise<boolean>;
 };
 
-export function ConnectionCard({ connection, onEdit, onDelete }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: ConnectionCardProps) {
   const navigate = useNavigate();
+  const [isOpening, setIsOpening] = useState(false);
   const EngineIcon = connectionTypeIcons[connection.engine];
+
+  const handleOpen = async () => {
+    if (isOpening) {
+      return;
+    }
+
+    setIsOpening(true);
+    try {
+      const canOpen = await onOpen?.();
+      if (canOpen === false) {
+        return;
+      }
+
+      await navigate({
+        to: "/connections/$connectionId",
+        params: { connectionId: connection.id },
+      });
+    } finally {
+      setIsOpening(false);
+    }
+  };
 
   return (
     <Card
       className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
-      onDoubleClick={() =>
-        navigate({ to: "/connections/$connectionId", params: { connectionId: connection.id } })
-      }
+      onDoubleClick={() => void handleOpen()}
     >
       <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary via-primary/70 to-primary/20" />
 

@@ -31,6 +31,29 @@ export async function testConnectionFields(request: ConnectionTestRequest): Prom
   return invoke("test_connection", { request });
 }
 
+export async function testSavedConnection(profile: ConnectionProfile): Promise<string> {
+  if (profile.connect_mode.type === "connection_string") {
+    if (profile.db_type !== "sqlite") {
+      throw new Error("Connection strings are only supported for SQLite connections.");
+    }
+
+    return testConnectionFields({
+      dbType: profile.db_type,
+      password: profile.password,
+      sqlitePath: profile.connect_mode.value,
+    });
+  }
+
+  return testConnectionFields({
+    dbType: profile.db_type,
+    host: profile.connect_mode.host,
+    port: profile.connect_mode.port,
+    database: profile.connect_mode.database,
+    username: profile.connect_mode.username,
+    password: profile.password,
+  });
+}
+
 export async function listDatabases(request: ListDatabasesRequest): Promise<string[]> {
   return invoke("list_databases", { request });
 }

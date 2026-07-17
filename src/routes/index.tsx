@@ -10,6 +10,7 @@ import { ConnectionCard, type ConnectionItem } from "@/shared/components/connect
 import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
 import { useConnections } from "@/app/home/hooks/use-connections";
 import { deleteConnection } from "@/app/home/services/connection-service";
+import { testSavedConnection } from "@/shared/lib/tauriApi";
 import { useModalStore } from "@/shared/store/modalStore";
 import type { ConnectionProfile } from "@/shared/types/models";
 
@@ -33,6 +34,21 @@ function Index() {
       toast.success("Connection deleted");
     } catch (error) {
       toast.error("Could not delete connection", { description: String(error) });
+    }
+  };
+
+  const handleOpen = async (profile: ConnectionProfile) => {
+    const toastId = toast.loading("Checking connection...", {
+      description: `Testing ${profile.name}`,
+    });
+
+    try {
+      const message = await testSavedConnection(profile);
+      toast.success("Connection successful", { id: toastId, description: message });
+      return true;
+    } catch (error) {
+      toast.error("Connection failed", { id: toastId, description: String(error) });
+      return false;
     }
   };
 
@@ -114,6 +130,10 @@ function Index() {
               <ConnectionCard
                 key={connection.id}
                 connection={connection}
+                onOpen={() => {
+                  const profile = profiles.find((item) => item.id === connection.id);
+                  return profile ? handleOpen(profile) : Promise.resolve(false);
+                }}
                 onEdit={() => openModal("new-connection", { connectionId: connection.id })}
                 onDelete={() => void handleDelete(connection.id, connection.name)}
               />
