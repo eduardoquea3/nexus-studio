@@ -35,8 +35,9 @@ export const sqlEditorTheme = [
       color: "var(--foreground)",
       backgroundColor: "color-mix(in srgb, var(--primary) 10%, transparent)",
     },
-    ".cm-selectionBackground, ::selection": {
-      backgroundColor: "color-mix(in srgb, var(--primary) 24%, transparent)",
+    ".cm-selectionBackground, .cm-content::selection, .cm-content ::selection": {
+      backgroundColor: "var(--editor-selection)",
+      color: "var(--editor-selection-foreground)",
     },
     ".cm-cursor": {
       borderLeftColor: "var(--ring)",
@@ -69,8 +70,15 @@ export const sqlEditorTheme = [
       color: "var(--muted-foreground)",
     },
     ".cm-tooltip-autocomplete ul li[aria-selected]": {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
+      backgroundColor: "var(--editor-picker-selected)",
+      color: "var(--editor-picker-selected-foreground)",
+    },
+    ".cm-tooltip-autocomplete ul li[aria-selected] .cm-completionMatchedText": {
+      color: "var(--editor-picker-selected-foreground)",
+    },
+    ".cm-tooltip-autocomplete ul li[aria-selected] .cm-completionIcon": {
+      color: "var(--editor-picker-selected-foreground)",
+      opacity: "0.8",
     },
     ".cm-completionMatchedText": {
       color: "var(--primary)",

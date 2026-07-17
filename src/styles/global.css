@@ -82,6 +82,10 @@
   --sidebar-accent-foreground: #22262d;
   --sidebar-border: #d8d9d8;
   --sidebar-ring: #4d699b;
+  --editor-selection: #dce5ef;
+  --editor-selection-foreground: #22262d;
+  --editor-picker-selected: #e0e5ef;
+  --editor-picker-selected-foreground: #22262d;
 }
 
 .dark {
@@ -116,6 +120,10 @@
   --sidebar-accent-foreground: #c5c9c7;
   --sidebar-border: #1c1e25;
   --sidebar-ring: #8ba4b0;
+  --editor-selection: #33434d;
+  --editor-selection-foreground: #edf2ef;
+  --editor-picker-selected: #2d3b44;
+  --editor-picker-selected-foreground: #edf2ef;
 }
 
 @layer base {
