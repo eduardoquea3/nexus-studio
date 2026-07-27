@@ -165,8 +165,24 @@ export async function getTableData(
   });
 }
 
-export async function runQuery(id: string, sql: string): Promise<QueryResult> {
-  return invoke("run_query", { id, sql });
+export async function runQuery(profile: ConnectionProfile, sql: string): Promise<QueryResult> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("run_query", { request: { request, sql } });
 }
 
 export async function listSshConfigAliases(): Promise<string[]> {

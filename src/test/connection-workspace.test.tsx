@@ -29,7 +29,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: () => <aside data-testid="connection-sidebar" />,
 }));
 
-const { ConnectionWorkspace } = await import("../app/connection/components/connection-workspace");
+const { ConnectionWorkspace, getQuerySegment } = await import("../app/connection/components/connection-workspace");
 const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
 
 const profile = {
@@ -91,6 +91,20 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.input(editor, { target: { textContent: "select 1;" } });
 
     expect(editor.textContent).toBe("select 1;");
+  });
+
+  test("selects the statement at the cursor", () => {
+    const query = "select * from tenant;\n\nselect * from company;";
+
+    expect(getQuerySegment(query, 8)).toBe("select * from tenant;");
+    expect(getQuerySegment(query, query.indexOf("company"))).toBe("select * from company;");
+  });
+
+  test("does not split semicolons inside SQL strings or comments", () => {
+    const query = "select 'tenant;company' as name; -- next;\nselect 2;";
+
+    expect(getQuerySegment(query, 10)).toBe("select 'tenant;company' as name;");
+    expect(getQuerySegment(query, query.lastIndexOf("select 2"))).toBe("-- next;\nselect 2;");
   });
 
   test("creates and closes editors with Ctrl+T and Ctrl+W", () => {

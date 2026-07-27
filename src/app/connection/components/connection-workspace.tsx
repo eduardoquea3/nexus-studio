@@ -1,21 +1,24 @@
-import CodeMirror from "@uiw/react-codemirror";
-import { sql } from "@codemirror/lang-sql";
 import type { EditorView } from "@codemirror/view";
+
+import { sql } from "@codemirror/lang-sql";
 import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiPlayLine, RiTableLine } from "@remixicon/react";
+import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
+
+import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
+import { TableDataTab } from "@/app/connection/components/table-data-tab";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/animate-ui/components/radix/tabs";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ConnectionProfile } from "@/shared/types/models";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
-import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
-import { TableDataTab } from "@/app/connection/components/table-data-tab";
+import { runQuery } from "@/shared/lib/tauriApi";
 
 type ConnectionWorkspaceProps = {
   profile: ConnectionProfile;
@@ -26,6 +29,9 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const [activeTabId, setActiveTabId] = useState("sql-1");
+  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
   const editorSectionRef = useRef<HTMLElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const initializedEditorIdsRef = useRef(new Set<string>());
@@ -74,10 +80,10 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     const nextTabs = sqlTabs.filter((tab) => tab.id !== tabId);
     setSqlTabs(nextTabs);
 
-      if (activeSqlTabId === tabId) {
-        const nextActiveTab = nextTabs[Math.max(0, tabIndex - 1)];
-        setActiveSqlTabId(nextActiveTab?.id ?? "");
-        setActiveTabId(nextActiveTab?.id ?? "");
+    if (activeSqlTabId === tabId) {
+      const nextActiveTab = nextTabs[Math.max(0, tabIndex - 1)];
+      setActiveSqlTabId(nextActiveTab?.id ?? "");
+      setActiveTabId(nextActiveTab?.id ?? "");
 
       if (!nextActiveTab) {
         editorSectionRef.current?.focus();
@@ -107,6 +113,31 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     setSqlTabs((tabs) => tabs.map((tab) => (tab.id === activeSqlTab.id ? { ...tab, query } : tab)));
   };
 
+  const executeActiveQuery = async () => {
+    if (!activeSqlTab || !editorViewRef.current || isRunning) {
+      return;
+    }
+
+    const cursor = editorViewRef.current.state.selection.main.head;
+    const query = getQuerySegment(activeSqlTab.query, cursor);
+    if (!query) {
+      setQueryError("Place the cursor inside a SQL statement before running it.");
+      setQueryResult(null);
+      return;
+    }
+
+    setIsRunning(true);
+    setQueryError(null);
+    try {
+      setQueryResult(await runQuery(profile, query));
+    } catch (error) {
+      setQueryResult(null);
+      setQueryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if ((!event.ctrlKey && !event.metaKey) || event.altKey) {
       return;
@@ -129,6 +160,12 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     }
 
     if (event.shiftKey) {
+      return;
+    }
+
+    if (event.key === "Enter" && activeSqlTab) {
+      event.preventDefault();
+      void executeActiveQuery();
       return;
     }
 
@@ -188,19 +225,27 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                             }
                           }}
                         >
-                          {tab.type === "sql" ? <RiCodeBoxLine
-                            className={cn(
-                              "size-3.5",
-                              tab.id === activeSqlTabId ? "text-primary" : "text-muted-foreground",
-                            )}
-                          /> : <RiTableLine className="size-3.5 text-primary" />}
+                          {tab.type === "sql" ? (
+                            <RiCodeBoxLine
+                              className={cn(
+                                "size-3.5",
+                                tab.id === activeSqlTabId
+                                  ? "text-primary"
+                                  : "text-muted-foreground",
+                              )}
+                            />
+                          ) : (
+                            <RiTableLine className="size-3.5 text-primary" />
+                          )}
                           {tab.type === "sql" ? tab.title : tab.table}
                         </TabsTrigger>
                         {tab.type === "sql" && sqlTabs.length <= 1 ? null : (
                           <button
                             type="button"
                             className="mr-1 rounded-sm p-1 text-muted-foreground opacity-60 outline-none hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
-                            onClick={() => tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id)}
+                            onClick={() =>
+                              tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id)
+                            }
                             aria-label={`Close ${tab.type === "sql" ? tab.title : tab.table}`}
                           >
                             <RiCloseLine className="size-3" />
@@ -219,14 +264,21 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     <RiAddLine />
                   </Button>
                   <div className="ml-auto flex items-center gap-2 px-2 pb-1">
-                    <Button size="sm" disabled={!activeSqlTab}>
+                    <Button
+                      size="sm"
+                      disabled={!activeSqlTab || isRunning}
+                      onClick={() => void executeActiveQuery()}
+                    >
                       <RiPlayLine data-icon="inline-start" />
-                      Run query
+                      {isRunning ? "Running..." : "Run query"}
                     </Button>
                   </div>
                 </div>
                 {activeTableTab ? (
-                  <TabsContent value={activeTabId} className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs">
+                  <TabsContent
+                    value={activeTabId}
+                    className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
+                  >
                     <TableDataTab profile={profile} table={activeTableTab.table} />
                   </TabsContent>
                 ) : activeSqlTab ? (
@@ -250,12 +302,18 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     />
                   </TabsContent>
                 ) : (
-                    <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/10 px-4 text-xs text-muted-foreground">
+                  <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/10 px-4 text-xs text-muted-foreground">
                     Press Ctrl+T to open a SQL editor.
                   </div>
                 )}
-                <div className="border-t border-border/70 bg-muted/10 px-4 py-3 text-xs text-muted-foreground">
-                  Results will appear here after the query runner is connected.
+                <div className="min-h-20 max-h-64 overflow-auto border-t border-border/70 bg-muted/10 px-4 py-3 text-xs text-muted-foreground">
+                  {queryError ? (
+                    <p className="text-destructive">{queryError}</p>
+                  ) : queryResult ? (
+                    <QueryResultView result={queryResult} />
+                  ) : (
+                    "Place the cursor in a statement and press Ctrl+Enter to run it."
+                  )}
                 </div>
               </Tabs>
             </section>
@@ -264,6 +322,122 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       </div>
     </div>
   );
+}
+
+export function getQuerySegment(query: string, position: number): string {
+  const separators = findStatementSeparators(query);
+  const previousSeparators = separators.filter((separator) => separator < position);
+  const previousSeparator = previousSeparators[previousSeparators.length - 1] ?? -1;
+  const nextSeparator = separators.find((separator) => separator >= position) ?? query.length;
+  const end = nextSeparator < query.length ? nextSeparator + 1 : query.length;
+  return query.slice(previousSeparator + 1, end).trim();
+}
+
+function findStatementSeparators(query: string): number[] {
+  const separators: number[] = [];
+  let quote: "'" | '"' | "`" | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < query.length; index += 1) {
+    const character = query[index];
+    const nextCharacter = query[index + 1];
+
+    if (lineComment) {
+      if (character === "\n") {
+        lineComment = false;
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && nextCharacter === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === quote) {
+        if (nextCharacter === quote) {
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if ((character === "-" && nextCharacter === "-") || character === "#") {
+      lineComment = true;
+      if (character === "-") {
+        index += 1;
+      }
+      continue;
+    }
+    if (character === "/" && nextCharacter === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === ";") {
+      separators.push(index);
+    }
+  }
+
+  return separators;
+}
+
+function QueryResultView({ result }: { result: QueryResult }) {
+  if (result.columns.length === 0) {
+    return (
+      <span>
+        {result.affected} row(s) affected in {result.duration_ms} ms.
+      </span>
+    );
+  }
+
+  return (
+    <div className="min-w-max">
+      <div className="mb-2">
+        {result.rows.length} row(s) in {result.duration_ms} ms.
+      </div>
+      <table className="border-collapse text-left">
+        <thead>
+          <tr>
+            {result.columns.map((column) => (
+              <th
+                className="border border-border px-2 py-1 font-medium text-foreground"
+                key={column}
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {result.rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {result.columns.map((column) => (
+                <td className="border border-border px-2 py-1" key={column}>
+                  {formatCell(row[column])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
 type SqlEditorTab = {

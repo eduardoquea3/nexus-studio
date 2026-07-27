@@ -57,6 +57,21 @@ struct TableSchemaRequest {
     table: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueryRequest {
+    request: ConnectionTestRequest,
+    sql: String,
+}
+
+#[derive(Debug, Serialize)]
+struct QueryResult {
+    columns: Vec<String>,
+    rows: Vec<HashMap<String, serde_json::Value>>,
+    affected: u64,
+    duration_ms: u128,
+}
+
 #[derive(Debug, Serialize)]
 struct ColumnInfo {
     name: String,
@@ -367,6 +382,125 @@ fn sqlite_value(row: &sqlx::sqlite::SqliteRow, index: usize) -> serde_json::Valu
     serde_json::Value::Null
 }
 
+fn is_read_query(sql: &str) -> bool {
+    let keyword = sql
+        .trim_start()
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(keyword.as_str(), "select" | "show" | "describe" | "desc" | "explain" | "pragma" | "with")
+}
+
+#[tauri::command]
+async fn run_query(request: QueryRequest) -> Result<QueryResult, String> {
+    let sql = request.sql.trim();
+    if sql.is_empty() {
+        return Err("The query is empty".to_string());
+    }
+
+    let started = std::time::Instant::now();
+    let read_query = is_read_query(sql);
+
+    match request.request.db_type.as_str() {
+        "postgres" => {
+            let connection_request = request.request;
+            let options = PgConnectOptions::new()
+                .host(connection_request.host.as_deref().ok_or("Host is required")?)
+                .port(connection_request.port.unwrap_or(5432))
+                .database(connection_request.database.as_deref().ok_or("Database is required")?)
+                .username(connection_request.username.as_deref().unwrap_or("postgres"))
+                .password(connection_request.password.as_deref().unwrap_or(""));
+            let mut connection = PgConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
+            if read_query {
+                let rows = sqlx::query(sql)
+                    .fetch_all(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                let columns: Vec<String> = rows
+                    .first()
+                    .map(|row| row.columns().iter().map(|column| column.name().to_string()).collect())
+                    .unwrap_or_default();
+                let data_rows = rows
+                    .iter()
+                    .map(|row| columns.iter().enumerate().map(|(index, column)| (column.clone(), postgres_value(row, index))).collect())
+                    .collect();
+                Ok(QueryResult { columns, rows: data_rows, affected: 0, duration_ms: started.elapsed().as_millis() })
+            } else {
+                let result = sqlx::query(sql)
+                    .execute(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), affected: result.rows_affected(), duration_ms: started.elapsed().as_millis() })
+            }
+        }
+        "mysql" => {
+            let connection_request = request.request;
+            let options = MySqlConnectOptions::new()
+                .host(connection_request.host.as_deref().ok_or("Host is required")?)
+                .port(connection_request.port.unwrap_or(3306))
+                .database(connection_request.database.as_deref().unwrap_or("mysql"))
+                .username(connection_request.username.as_deref().unwrap_or("root"))
+                .password(connection_request.password.as_deref().unwrap_or(""));
+            let mut connection = MySqlConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("MySQL connection failed: {error}"))?;
+            if read_query {
+                let rows = sqlx::query(sql)
+                    .fetch_all(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                let columns: Vec<String> = rows
+                    .first()
+                    .map(|row| row.columns().iter().map(|column| column.name().to_string()).collect())
+                    .unwrap_or_default();
+                let data_rows = rows
+                    .iter()
+                    .map(|row| columns.iter().enumerate().map(|(index, column)| (column.clone(), mysql_value(row, index))).collect())
+                    .collect();
+                Ok(QueryResult { columns, rows: data_rows, affected: 0, duration_ms: started.elapsed().as_millis() })
+            } else {
+                let result = sqlx::query(sql)
+                    .execute(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), affected: result.rows_affected(), duration_ms: started.elapsed().as_millis() })
+            }
+        }
+        "sqlite" => {
+            let path = request.request.sqlite_path.as_deref().ok_or("SQLite database path is required")?;
+            let options = SqliteConnectOptions::new().filename(path).create_if_missing(false);
+            let mut connection = SqliteConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("SQLite connection failed: {error}"))?;
+            if read_query {
+                let rows = sqlx::query(sql)
+                    .fetch_all(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                let columns: Vec<String> = rows
+                    .first()
+                    .map(|row| row.columns().iter().map(|column| column.name().to_string()).collect())
+                    .unwrap_or_default();
+                let data_rows = rows
+                    .iter()
+                    .map(|row| columns.iter().enumerate().map(|(index, column)| (column.clone(), sqlite_value(row, index))).collect())
+                    .collect();
+                Ok(QueryResult { columns, rows: data_rows, affected: 0, duration_ms: started.elapsed().as_millis() })
+            } else {
+                let result = sqlx::query(sql)
+                    .execute(&mut connection)
+                    .await
+                    .map_err(|error| format!("Query failed: {error}"))?;
+                Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), affected: result.rows_affected(), duration_ms: started.elapsed().as_millis() })
+            }
+        }
+        database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
 #[tauri::command]
 async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, String> {
     validate_table_name(&request.table)?;
@@ -606,7 +740,8 @@ pub fn run() {
             list_databases,
             list_schema_objects,
             get_table_data,
-            get_table_schema
+            get_table_schema,
+            run_query
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
