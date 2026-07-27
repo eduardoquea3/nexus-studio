@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { RiLoader4Line } from "@remixicon/react";
 
 import {
   Select as BaseSelect,
@@ -15,6 +16,7 @@ interface SelectProps<T extends Record<string, unknown>>
   labelKey?: keyof T;
   placeholder?: string;
   className?: string;
+  isLoading?: boolean;
   render?: (option: T) => ReactNode;
   value?: T | null;
   defaultValue?: T;
@@ -27,6 +29,7 @@ function Select<T extends Record<string, unknown>>({
   labelKey,
   placeholder = "Select an option",
   className,
+  isLoading = false,
   render,
   value,
   defaultValue,
@@ -66,6 +69,7 @@ function Select<T extends Record<string, unknown>>({
   return (
     <BaseSelect
       {...props}
+      disabled={isLoading || props.disabled}
       value={selectedValue}
       defaultValue={initialValue}
       onValueChange={(selectedValue) => {
@@ -75,6 +79,15 @@ function Select<T extends Record<string, unknown>>({
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>
           {(selectedValue) => {
+            if (isLoading) {
+              return (
+                <span className="flex items-center gap-2">
+                  <RiLoader4Line className="size-3.5 animate-spin" aria-hidden="true" />
+                  <span>{placeholder}</span>
+                </span>
+              );
+            }
+
             const option = selectedValue
               ? getOptionByValue(String(selectedValue))
               : undefined;

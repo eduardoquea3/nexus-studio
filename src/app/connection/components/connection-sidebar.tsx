@@ -1,11 +1,25 @@
-import { RiDatabase2Line, RiTableLine } from "@remixicon/react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  RiArrowLeftRightLine,
+  RiDatabase2Line,
+  RiEditLine,
+  RiLogoutBoxLine,
+  RiTableLine,
+} from "@remixicon/react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/animate-ui/components/radix/dropdown-menu";
 import { useDatabases } from "@/app/connection/hooks/use-databases";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { Select } from "@/shared/components/ui/select";
+import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
 import type { ConnectionProfile } from "@/shared/types/models";
 import { cn } from "@/lib/utils";
@@ -20,6 +34,8 @@ type DatabaseOption = {
 };
 
 export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
+  const navigate = useNavigate();
+  const openModal = useModalStore((state) => state.openModal);
   const initialDatabase = getInitialDatabase(profile);
   const [selectedDatabase, setSelectedDatabase] = useState(initialDatabase);
   const {
@@ -27,7 +43,9 @@ export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
     error: databaseError,
     isLoading: isLoadingDatabases,
   } = useDatabases(profile);
-  const databases = databaseValues.map((value) => ({ value, label: value }));
+  const databases = Array.from(
+    new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
+  ).map((value) => ({ value, label: value }));
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
   const engine = profile.db_type === "postgres" ? "postgresql" : profile.db_type;
   const endpoint =
@@ -78,6 +96,7 @@ export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
                 ? "Database unavailable"
                 : "Select database"
           }
+          isLoading={isLoadingDatabases}
           className="mt-1 h-8 w-full text-xs"
           disabled={databases.length === 0 || isLoadingDatabases}
         />
@@ -103,6 +122,45 @@ export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
           </p>
         </div>
       </ScrollArea>
+      <div className="border-t border-border/70 p-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md border border-border/70 bg-card px-3 py-2 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <RiDatabase2Line className="size-4 shrink-0 text-primary" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+              <RiArrowLeftRightLine
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-56">
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => void navigate({ to: "/" })}
+            >
+              <RiLogoutBoxLine />
+              Disconnect
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                openModal("new-connection", { connectionId: profile.id });
+                void navigate({ to: "/" });
+              }}
+            >
+              <RiEditLine />
+              Edit Connection
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void navigate({ to: "/" })}>
+              <RiArrowLeftRightLine />
+              Switch Connection
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </aside>
   );
 }
