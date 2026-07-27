@@ -37,7 +37,7 @@ export type SshAuth =
 
 export interface ObjectMeta {
   name: string;
-  object_type: "table" | "view" | "function" | "other";
+  object_type: "table" | "view" | "function" | "procedure" | "other";
 }
 
 export interface ColumnInfo {

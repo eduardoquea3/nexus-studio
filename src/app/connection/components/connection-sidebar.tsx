@@ -3,6 +3,9 @@ import {
   RiArrowLeftRightLine,
   RiDatabase2Line,
   RiEditLine,
+  RiEyeLine,
+  RiFunctionLine,
+  RiGitBranchLine,
   RiLogoutBoxLine,
   RiTableLine,
 } from "@remixicon/react";
@@ -16,7 +19,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/animate-ui/components/radix/dropdown-menu";
+import {
+  FileItem,
+  Files,
+  FolderContent,
+  FolderItem,
+  FolderTrigger,
+} from "@/components/animate-ui/components/radix/files";
 import { useDatabases } from "@/app/connection/hooks/use-databases";
+import { useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { Select } from "@/shared/components/ui/select";
 import { useModalStore } from "@/shared/store/modalStore";
@@ -26,6 +37,7 @@ import { cn } from "@/lib/utils";
 
 type ConnectionSidebarProps = {
   profile: ConnectionProfile;
+  onTableSelect: (table: string) => void;
 };
 
 type DatabaseOption = {
@@ -33,7 +45,38 @@ type DatabaseOption = {
   label: string;
 };
 
-export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
+const explorerGroups = [
+  {
+    id: "tables",
+    label: "Tables",
+    objectType: "table",
+    emptyLabel: "No tables found",
+    icon: RiTableLine,
+  },
+  {
+    id: "views",
+    label: "Views",
+    objectType: "view",
+    emptyLabel: "No views found",
+    icon: RiEyeLine,
+  },
+  {
+    id: "functions",
+    label: "Functions",
+    objectType: "function",
+    emptyLabel: "No functions found",
+    icon: RiFunctionLine,
+  },
+  {
+    id: "procedures",
+    label: "Procedures",
+    objectType: "procedure",
+    emptyLabel: "No procedures found",
+    icon: RiGitBranchLine,
+  },
+] as const;
+
+export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarProps) {
   const navigate = useNavigate();
   const openModal = useModalStore((state) => state.openModal);
   const initialDatabase = getInitialDatabase(profile);
@@ -43,6 +86,11 @@ export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
     error: databaseError,
     isLoading: isLoadingDatabases,
   } = useDatabases(profile);
+  const {
+    data: schemaObjects = [],
+    error: schemaError,
+    isLoading: isLoadingSchema,
+  } = useSchemaObjects(profile);
   const databases = Array.from(
     new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
   ).map((value) => ({ value, label: value }));
@@ -109,17 +157,57 @@ export function ConnectionSidebar({ profile }: ConnectionSidebarProps) {
           <p className="px-2 py-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Explorer
           </p>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          <Files
+            defaultOpen={explorerGroups.map((group) => group.id)}
+            className="p-0"
           >
-            <RiTableLine className="size-4" />
-            Tables
-            <span className="ml-auto text-[0.65rem]">0</span>
-          </button>
-          <p className="mt-6 px-2 text-xs leading-5 text-muted-foreground">
-            Load the schema to browse tables and columns for this connection.
-          </p>
+            {explorerGroups.map((group) => {
+              const objects = schemaObjects.filter(
+                (object) => object.object_type === group.objectType,
+              );
+
+              return (
+                <FolderItem key={group.id} value={group.id}>
+                  <FolderTrigger className="text-xs">
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <group.icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span>{group.label}</span>
+                      </span>
+                      <span className="text-[0.65rem] text-muted-foreground">{objects.length}</span>
+                    </span>
+                  </FolderTrigger>
+                  <FolderContent>
+                    {isLoadingSchema ? (
+                      <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">Loading...</p>
+                    ) : schemaError ? (
+                      <p className="px-2 py-1 text-[0.65rem] text-destructive">Unable to load objects</p>
+                    ) : objects.length === 0 ? (
+                      <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">{group.emptyLabel}</p>
+                    ) : (
+                      objects.map((object) => (
+                        <FileItem
+                          key={object.name}
+                          icon={group.icon}
+                          className={cn(
+                            "text-xs",
+                            group.objectType === "table" && "cursor-pointer hover:text-foreground",
+                          )}
+                          onClick={
+                            group.objectType === "table"
+                              ? () => onTableSelect(object.name)
+                              : undefined
+                          }
+                        >
+                          {object.name}
+                        </FileItem>
+                      ))
+                    )}
+                  </FolderContent>
+                </FolderItem>
+              );
+            })}
+          </Files>
         </div>
       </ScrollArea>
       <div className="border-t border-border/70 p-3">

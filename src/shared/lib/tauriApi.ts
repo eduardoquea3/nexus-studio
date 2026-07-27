@@ -93,8 +93,43 @@ export async function listOtherObjects(id: string): Promise<ObjectMeta[]> {
   return invoke("list_other_objects", { id });
 }
 
-export async function getTableSchema(id: string, table: string): Promise<TableSchema> {
-  return invoke("get_table_schema", { id, table });
+export async function listSchemaObjects(profile: ConnectionProfile): Promise<ObjectMeta[]> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("list_schema_objects", { request });
+}
+
+export async function getTableSchema(
+  profile: ConnectionProfile,
+  table: string,
+): Promise<TableSchema> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? { dbType: profile.db_type, password: profile.password, sqlitePath: profile.connect_mode.value }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_table_schema", { request: { request, table } });
 }
 
 export async function getTableRules(id: string, table: string): Promise<TableRules> {
@@ -102,14 +137,32 @@ export async function getTableRules(id: string, table: string): Promise<TableRul
 }
 
 export async function getTableData(
-  id: string,
+  profile: ConnectionProfile,
   table: string,
   page: number,
   pageSize: number,
   sort?: string,
   filter?: string,
 ): Promise<DataPage> {
-  return invoke("get_table_data", { id, table, page, pageSize, sort, filter });
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_table_data", {
+    request: { request, table, page, pageSize, sort, filter },
+  });
 }
 
 export async function runQuery(id: string, sql: string): Promise<QueryResult> {
