@@ -3,7 +3,8 @@ import type { EditorView } from "@codemirror/view";
 import { sql } from "@codemirror/lang-sql";
 import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiPlayLine, RiTableLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
@@ -16,7 +17,9 @@ import {
   TabsTrigger,
 } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/shared/components/data-table";
 import { cn } from "@/lib/utils";
+import { useDataTable } from "@/shared/hooks/use-data-table";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 import { runQuery } from "@/shared/lib/tauriApi";
 
@@ -211,53 +214,77 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                 }}
                 className="flex min-h-0 flex-1 flex-col gap-0"
               >
-                <div className="flex min-w-0 shrink-0 items-center border-b border-border/70 bg-muted/10 px-2 pt-2">
-                  <TabsList className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden rounded-b-none bg-transparent p-0">
+                <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-2">
+                  <TabsList className="min-w-0 flex-1 overflow-hidden rounded-b-none bg-transparent p-0">
                     {workspaceTabs.map((tab) => (
-                      <div key={tab.id} className="group flex h-9 items-center">
-                        <TabsTrigger
-                          value={tab.id}
-                          className="h-9 rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
-                          onClick={() => {
-                            setActiveTabId(tab.id);
-                            if (tab.type === "sql") {
-                              setActiveSqlTabId(tab.id);
-                            }
-                          }}
-                        >
-                          {tab.type === "sql" ? (
-                            <RiCodeBoxLine
-                              className={cn(
-                                "size-3.5",
-                                tab.id === activeSqlTabId
-                                  ? "text-primary"
-                                  : "text-muted-foreground",
-                              )}
-                            />
-                          ) : (
-                            <RiTableLine className="size-3.5 text-primary" />
-                          )}
-                          {tab.type === "sql" ? tab.title : tab.table}
-                        </TabsTrigger>
-                        {tab.type === "sql" && sqlTabs.length <= 1 ? null : (
-                          <button
-                            type="button"
-                            className="mr-1 rounded-sm p-1 text-muted-foreground opacity-60 outline-none hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
-                            onClick={() =>
-                              tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id)
-                            }
-                            aria-label={`Close ${tab.type === "sql" ? tab.title : tab.table}`}
+                        <div key={tab.id} className="group flex h-9 items-center">
+                          <TabsTrigger
+                            value={tab.id}
+                            className="group/tab flex h-9 min-w-24 max-w-40 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
+                            onClick={() => {
+                              setActiveTabId(tab.id);
+                              if (tab.type === "sql") {
+                                setActiveSqlTabId(tab.id);
+                              }
+                            }}
                           >
-                            <RiCloseLine className="size-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                            {tab.type === "sql" ? (
+                              <RiCodeBoxLine
+                                className={cn(
+                                  "size-3.5",
+                                  tab.id === activeSqlTabId
+                                    ? "text-primary"
+                                    : "text-muted-foreground",
+                                )}
+                              />
+                            ) : (
+                              <RiTableLine className="size-3.5 text-primary" />
+                            )}
+                            <span className="truncate">{tab.type === "sql" ? tab.title : tab.table}</span>
+                            {tab.type === "sql" && sqlTabs.length <= 1 ? null : (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                }}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  if (tab.type === "sql") {
+                                    closeEditorTab(tab.id);
+                                  } else {
+                                    closeTableTab(tab.id);
+                                  }
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key !== "Enter" && event.key !== " ") {
+                                    return;
+                                  }
+
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  if (tab.type === "sql") {
+                                    closeEditorTab(tab.id);
+                                  } else {
+                                    closeTableTab(tab.id);
+                                  }
+                                }}
+                                aria-label={`Close ${tab.type === "sql" ? tab.title : tab.table}`}
+                              >
+                                <RiCloseLine className="size-3" />
+                              </span>
+                            )}
+                          </TabsTrigger>
+                        </div>
+                      ))}
                   </TabsList>
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="mb-0.5"
+                    className="mb-0.5 shrink-0"
                     onClick={createEditorTab}
                     aria-label="Create SQL editor tab"
                   >
@@ -286,35 +313,42 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     value={activeTabId}
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
-                    <CodeMirror
-                      value={activeSqlTab.query}
-                      onChange={updateActiveQuery}
-                      extensions={[sql(), sqlEditorTheme]}
-                      basicSetup
-                      theme="none"
-                      height="100%"
-                      className="h-full"
-                      onCreateEditor={(view) => {
-                        editorViewRef.current = view;
-                        focusEditor(view, activeSqlTabId);
-                      }}
-                      aria-label={`${activeSqlTab.title} SQL query editor`}
-                    />
+                    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
+                      <div className="flex min-h-0 flex-[1_1_0%] overflow-hidden border-b border-border/70 bg-card/60">
+                        <CodeMirror
+                          value={activeSqlTab.query}
+                          onChange={updateActiveQuery}
+                          extensions={[sql(), sqlEditorTheme]}
+                          basicSetup
+                          theme="none"
+                          height="100%"
+                          className="h-full"
+                          onCreateEditor={(view) => {
+                            editorViewRef.current = view;
+                            focusEditor(view, activeSqlTabId);
+                          }}
+                          aria-label={`${activeSqlTab.title} SQL query editor`}
+                        />
+                      </div>
+                      <section
+                        aria-label="SQL query results"
+                        className="flex min-h-0 flex-[1_1_0%] overflow-auto border-t border-border/70 bg-background/80 px-4 py-3 text-xs text-muted-foreground"
+                      >
+                        {queryError ? (
+                          <p className="text-destructive">{queryError}</p>
+                        ) : queryResult ? (
+                          <QueryResultView result={queryResult} />
+                        ) : (
+                          "Place the cursor in a statement and press Ctrl+Enter to run it."
+                        )}
+                      </section>
+                    </div>
                   </TabsContent>
                 ) : (
                   <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/10 px-4 text-xs text-muted-foreground">
                     Press Ctrl+T to open a SQL editor.
                   </div>
                 )}
-                <div className="min-h-20 max-h-64 overflow-auto border-t border-border/70 bg-muted/10 px-4 py-3 text-xs text-muted-foreground">
-                  {queryError ? (
-                    <p className="text-destructive">{queryError}</p>
-                  ) : queryResult ? (
-                    <QueryResultView result={queryResult} />
-                  ) : (
-                    "Place the cursor in a statement and press Ctrl+Enter to run it."
-                  )}
-                </div>
               </Tabs>
             </section>
           </div>
@@ -326,6 +360,16 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
 
 export function getQuerySegment(query: string, position: number): string {
   const separators = findStatementSeparators(query);
+  const lastSeparator = separators[separators.length - 1];
+
+  if (lastSeparator !== undefined && position > lastSeparator) {
+    const trailingText = query.slice(lastSeparator + 1);
+    if (trailingText.trim().length === 0) {
+      const previousSeparator = separators[separators.length - 2] ?? -1;
+      return query.slice(previousSeparator + 1, query.length).trim();
+    }
+  }
+
   const previousSeparators = separators.filter((separator) => separator < position);
   const previousSeparator = previousSeparators[previousSeparators.length - 1] ?? -1;
   const nextSeparator = separators.find((separator) => separator >= position) ?? query.length;
@@ -391,6 +435,17 @@ function findStatementSeparators(query: string): number[] {
 }
 
 function QueryResultView({ result }: { result: QueryResult }) {
+  const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
+    () =>
+      result.columns.map((column) => ({
+        accessorKey: column,
+        header: column,
+        cell: (context) => formatCell(context.getValue()),
+      })),
+    [result.columns],
+  );
+  const table = useDataTable({ columns, data: result.rows });
+
   if (result.columns.length === 0) {
     return (
       <span>
@@ -404,31 +459,7 @@ function QueryResultView({ result }: { result: QueryResult }) {
       <div className="mb-2">
         {result.rows.length} row(s) in {result.duration_ms} ms.
       </div>
-      <table className="border-collapse text-left">
-        <thead>
-          <tr>
-            {result.columns.map((column) => (
-              <th
-                className="border border-border px-2 py-1 font-medium text-foreground"
-                key={column}
-              >
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {result.rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {result.columns.map((column) => (
-                <td className="border border-border px-2 py-1" key={column}>
-                  {formatCell(row[column])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable table={table} className="h-auto" />
     </div>
   );
 }

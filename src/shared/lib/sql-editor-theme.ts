@@ -92,7 +92,7 @@ export const sqlEditorTheme = [
   syntaxHighlighting(
     HighlightStyle.define([
       { tag: tags.keyword, color: "var(--primary)", fontWeight: "600" },
-      { tag: tags.operator, color: "var(--accent-foreground)" },
+      { tag: tags.operator, color: "var(--primary)" },
       { tag: tags.string, color: "var(--chart-2)" },
       { tag: tags.number, color: "var(--chart-3)" },
       { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },

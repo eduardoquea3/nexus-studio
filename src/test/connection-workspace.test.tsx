@@ -30,7 +30,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 }));
 
 const { ConnectionWorkspace, getQuerySegment } = await import("../app/connection/components/connection-workspace");
-const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 
 const profile = {
   id: "connection-1",
@@ -63,6 +63,14 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
 
+  test("keeps the SQL results pane visible even before running a query", () => {
+    render(<ConnectionWorkspace profile={profile} />);
+
+    const resultsPane = screen.getByRole("region", { name: "SQL query results" });
+
+    expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+  });
+
   test("switches the single editor to the selected tab", () => {
     render(<ConnectionWorkspace profile={profile} />);
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
@@ -80,7 +88,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Close Query 2" })).toBeNull();
-    expect(screen.getByRole("tablist").className).toContain("overflow-y-hidden");
+    expect(screen.getByRole("tablist").className).not.toContain("overflow-x-auto");
+    expect(screen.getByRole("tablist").className).toContain("overflow-hidden");
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
   });
 
@@ -105,6 +114,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     expect(getQuerySegment(query, 10)).toBe("select 'tenant;company' as name;");
     expect(getQuerySegment(query, query.lastIndexOf("select 2"))).toBe("-- next;\nselect 2;");
+  });
+
+  test("executes the last statement when the cursor is after the final semicolon", () => {
+    const query = "select * from auth;";
+
+    expect(getQuerySegment(query, query.length)).toBe("select * from auth;");
   });
 
   test("creates and closes editors with Ctrl+T and Ctrl+W", () => {
