@@ -152,15 +152,12 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
           <p className="mt-2 text-[0.65rem] text-destructive">Database unavailable</p>
         ) : null}
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="p-3">
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-scrollbar]]:hidden">
+        <div className="min-w-0 p-3">
           <p className="px-2 py-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Explorer
           </p>
-          <Files
-            defaultOpen={explorerGroups.map((group) => group.id)}
-            className="p-0"
-          >
+          <Files defaultOpen={["tables"]} className="min-w-0 p-0">
             {explorerGroups.map((group) => {
               const objects = schemaObjects.filter(
                 (object) => object.object_type === group.objectType,
@@ -168,10 +165,9 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
 
               return (
                 <FolderItem key={group.id} value={group.id}>
-                  <FolderTrigger className="text-xs">
+                  <FolderTrigger icon={group.icon} className="text-xs">
                     <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2">
-                        <group.icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span>{group.label}</span>
                       </span>
                       <span className="text-[0.65rem] text-muted-foreground">{objects.length}</span>

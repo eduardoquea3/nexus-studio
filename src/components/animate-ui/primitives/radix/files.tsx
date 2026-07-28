@@ -81,7 +81,7 @@ function Files({
         onValueChange={setOpenValue}
         style={{
           position: 'relative',
-          overflow: 'auto',
+          overflow: 'hidden',
           ...style,
         }}
         {...props}

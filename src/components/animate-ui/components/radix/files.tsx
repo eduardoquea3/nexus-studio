@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { RiFileLine, RiFolder3Line, RiFolderOpenLine } from '@remixicon/react';
+import { RiFileLine, RiFolder3Line } from '@remixicon/react';
 
 import {
   Files as FilesPrimitive,
@@ -30,7 +30,7 @@ type FilesProps = FilesPrimitiveProps;
 function Files({ className, children, ...props }: FilesProps) {
   return (
     <FilesPrimitive className={cn('p-2 w-full', className)} {...props}>
-      <FilesHighlightPrimitive className="bg-accent rounded-lg pointer-events-none">
+      <FilesHighlightPrimitive className="bg-background/70 rounded-lg border border-border/70 pointer-events-none shadow-sm backdrop-blur-sm">
         {children}
       </FilesHighlightPrimitive>
     </FilesPrimitive>
@@ -50,20 +50,22 @@ function FolderItem(props: FolderItemProps) {
 }
 
 type FolderTriggerProps = FileLabelPrimitiveProps & {
+  icon?: React.ElementType;
   gitStatus?: GitStatus;
 };
 
 function FolderTrigger({
   children,
   className,
+  icon: Icon = RiFolder3Line,
   gitStatus,
   ...props
 }: FolderTriggerProps) {
   return (
     <FolderHeaderPrimitive>
-      <FolderTriggerPrimitive className="w-full text-start">
+      <FolderTriggerPrimitive className="w-full rounded-md text-start transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:bg-muted/60 focus-visible:text-foreground focus-visible:outline-none">
         <FolderHighlightPrimitive>
-          <FolderPrimitive className="flex items-center justify-between gap-2 p-2 pointer-events-none">
+          <FolderPrimitive className="flex items-center justify-between gap-2 rounded-md p-2 pointer-events-none transition-colors">
             <div
               className={cn(
                 'flex items-center gap-2',
@@ -73,8 +75,8 @@ function FolderTrigger({
               )}
             >
               <FolderIconPrimitive
-                closeIcon={<RiFolder3Line className="size-4.5" />}
-                openIcon={<RiFolderOpenLine className="size-4.5" />}
+                closeIcon={<Icon className="size-4.5" />}
+                openIcon={<Icon className="size-4.5" />}
               />
               <FileLabelPrimitive
                 className={cn('text-sm', className)}
@@ -126,9 +128,9 @@ function FileItem({
 }: FileItemProps) {
   return (
     <FileHighlightPrimitive>
-      <FilePrimitive
+        <FilePrimitive
         className={cn(
-          'flex items-center justify-between gap-2 p-2',
+          'flex items-center justify-between gap-2 rounded-md p-2 transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:bg-muted/60 focus-visible:text-foreground focus-visible:outline-none',
           gitStatus === 'untracked' && 'text-green-400',
           gitStatus === 'modified' && 'text-amber-400',
           gitStatus === 'deleted' && 'text-red-400',
