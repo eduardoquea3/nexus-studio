@@ -49,7 +49,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
 
   return (
     <Card
-      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
+      className="group relative cursor-pointer select-none overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
       onDoubleClick={() => void handleOpen()}
     >
       <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary via-primary/70 to-primary/20" />

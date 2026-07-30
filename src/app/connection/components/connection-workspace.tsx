@@ -5,6 +5,7 @@ import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiPlayLine, RiTableLine } from "
 import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
@@ -22,12 +23,17 @@ import { cn } from "@/lib/utils";
 import { useDataTable } from "@/shared/hooks/use-data-table";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 import { runQuery } from "@/shared/lib/tauriApi";
+import { databasesQueryKey } from "@/app/connection/hooks/use-databases";
+import { schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
+import { getInitialDatabase } from "@/app/connection/services/database-service";
 
 type ConnectionWorkspaceProps = {
   profile: ConnectionProfile;
 };
 
 export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
+  const queryClient = useQueryClient();
+  const [selectedDatabase, setSelectedDatabase] = useState(() => getInitialDatabase(profile));
   const [sqlTabs, setSqlTabs] = useState<SqlEditorTab[]>([createSqlTab(1)]);
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
@@ -61,6 +67,10 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       focusEditor(editorViewRef.current, activeSqlTabId);
     }
   }, [activeSqlTabId]);
+
+  useEffect(() => {
+    setSelectedDatabase(getInitialDatabase(profile));
+  }, [profile]);
 
   const createEditorTab = () => {
     const nextNumber =
@@ -103,8 +113,12 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   };
 
   const openTableTab = (table: string) => {
-    const id = `table-${table}`;
-    setTableTabs((tabs) => (tabs.some((tab) => tab.id === id) ? tabs : [...tabs, { id, table }]));
+    const id = `table-${encodeURIComponent(selectedDatabase)}-${encodeURIComponent(table)}`;
+    setTableTabs((tabs) =>
+      tabs.some((tab) => tab.id === id)
+        ? tabs
+        : [...tabs, { id, table, database: selectedDatabase }],
+    );
     setActiveTabId(id);
   };
 
@@ -132,7 +146,16 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     setIsRunning(true);
     setQueryError(null);
     try {
-      setQueryResult(await runQuery(profile, query));
+      const result = await runQuery(withDatabase(profile, selectedDatabase), query);
+      setQueryResult(result);
+
+      if (/^create\s+table\b/i.test(query)) {
+        await queryClient.invalidateQueries({ queryKey: schemaObjectsQueryKey(profile.id) });
+      }
+
+      if (/^create\s+database\b/i.test(query)) {
+        await queryClient.invalidateQueries({ queryKey: databasesQueryKey(profile.id) });
+      }
     } catch (error) {
       setQueryResult(null);
       setQueryError(error instanceof Error ? error.message : String(error));
@@ -193,7 +216,12 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <div className="flex min-h-0 flex-1">
-        <ConnectionSidebar profile={profile} onTableSelect={openTableTab} />
+        <ConnectionSidebar
+          profile={profile}
+          selectedDatabase={selectedDatabase}
+          onDatabaseChange={setSelectedDatabase}
+          onTableSelect={openTableTab}
+        />
 
         <main className="min-w-0 flex-1">
           <div className="flex h-full min-h-0 flex-col p-4">
@@ -306,7 +334,10 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     value={activeTabId}
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
-                    <TableDataTab profile={profile} table={activeTableTab.table} />
+                    <TableDataTab
+                      profile={withDatabase(profile, activeTableTab.database)}
+                      table={activeTableTab.table}
+                    />
                   </TabsContent>
                 ) : activeSqlTab ? (
                   <TabsContent
@@ -322,7 +353,8 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                           basicSetup
                           theme="none"
                           height="100%"
-                          className="h-full"
+                          width="100%"
+                          className="h-full w-full"
                           onCreateEditor={(view) => {
                             editorViewRef.current = view;
                             focusEditor(view, activeSqlTabId);
@@ -479,8 +511,20 @@ type SqlEditorTab = {
 
 type TableTab = {
   id: string;
+  database: string;
   table: string;
 };
+
+function withDatabase(profile: ConnectionProfile, database: string): ConnectionProfile {
+  if (profile.connect_mode.type !== "fields") {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    connect_mode: { ...profile.connect_mode, database },
+  };
+}
 
 function createSqlTab(number: number): SqlEditorTab {
   return {

@@ -93,7 +93,10 @@ export async function listOtherObjects(id: string): Promise<ObjectMeta[]> {
   return invoke("list_other_objects", { id });
 }
 
-export async function listSchemaObjects(profile: ConnectionProfile): Promise<ObjectMeta[]> {
+export async function listSchemaObjects(
+  profile: ConnectionProfile,
+  database?: string,
+): Promise<ObjectMeta[]> {
   const request: ConnectionTestRequest =
     profile.connect_mode.type === "connection_string"
       ? {
@@ -105,7 +108,7 @@ export async function listSchemaObjects(profile: ConnectionProfile): Promise<Obj
           dbType: profile.db_type,
           host: profile.connect_mode.host,
           port: profile.connect_mode.port,
-          database: profile.connect_mode.database,
+          database: database ?? profile.connect_mode.database,
           username: profile.connect_mode.username,
           password: profile.password,
         };

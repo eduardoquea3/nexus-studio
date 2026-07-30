@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { ConnectionCard, type ConnectionItem } from "@/shared/components/connection-card";
 import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
 import { useConnections } from "@/app/home/hooks/use-connections";
-import { deleteConnection } from "@/app/home/services/connection-service";
+import { deleteConnection, markConnectionOpened } from "@/app/home/services/connection-service";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
 import { useModalStore } from "@/shared/store/modalStore";
 import type { ConnectionProfile } from "@/shared/types/models";
@@ -45,6 +45,7 @@ function Index() {
     try {
       const message = await testSavedConnection(profile);
       toast.success("Connection successful", { id: toastId, description: message });
+      await markConnectionOpened(profile.id);
       return true;
     } catch (error) {
       toast.error("Connection failed", { id: toastId, description: String(error) });

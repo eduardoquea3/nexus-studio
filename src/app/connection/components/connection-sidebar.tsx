@@ -9,7 +9,6 @@ import {
   RiLogoutBoxLine,
   RiTableLine,
 } from "@remixicon/react";
-import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +16,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/animate-ui/components/radix/dropdown-menu";
 import {
@@ -28,7 +32,9 @@ import {
 } from "@/components/animate-ui/components/radix/files";
 import { useDatabases } from "@/app/connection/hooks/use-databases";
 import { useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
+import { useConnections } from "@/app/home/hooks/use-connections";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
+import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { Select } from "@/shared/components/ui/select";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
@@ -37,6 +43,8 @@ import { cn } from "@/lib/utils";
 
 type ConnectionSidebarProps = {
   profile: ConnectionProfile;
+  selectedDatabase: string;
+  onDatabaseChange: (database: string) => void;
   onTableSelect: (table: string) => void;
 };
 
@@ -76,11 +84,15 @@ const explorerGroups = [
   },
 ] as const;
 
-export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarProps) {
+export function ConnectionSidebar({
+  profile,
+  selectedDatabase,
+  onDatabaseChange,
+  onTableSelect,
+}: ConnectionSidebarProps) {
   const navigate = useNavigate();
   const openModal = useModalStore((state) => state.openModal);
   const initialDatabase = getInitialDatabase(profile);
-  const [selectedDatabase, setSelectedDatabase] = useState(initialDatabase);
   const {
     data: databaseValues = [],
     error: databaseError,
@@ -90,7 +102,8 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
     data: schemaObjects = [],
     error: schemaError,
     isLoading: isLoadingSchema,
-  } = useSchemaObjects(profile);
+  } = useSchemaObjects(profile, selectedDatabase);
+  const { data: connections = [] } = useConnections();
   const databases = Array.from(
     new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
   ).map((value) => ({ value, label: value }));
@@ -100,10 +113,16 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
     profile.connect_mode.type === "fields"
       ? `${profile.connect_mode.host}:${profile.connect_mode.port}`
       : profile.connect_mode.value;
+  const sortedConnections = connections
+    .filter((connection) => connection.id !== profile.id)
+    .sort((left, right) => (right.last_opened_at ?? 0) - (left.last_opened_at ?? 0));
+  const recentConnections = sortedConnections.slice(0, 4);
+  const otherConnections = sortedConnections.slice(4);
 
-  useEffect(() => {
-    setSelectedDatabase(initialDatabase);
-  }, [initialDatabase, profile.id]);
+  const switchConnection = async (connectionId: string) => {
+    await markConnectionOpened(connectionId);
+    await navigate({ to: "/connections/$connectionId", params: { connectionId } });
+  };
 
   return (
     <aside
@@ -131,7 +150,7 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
           value={databases.find((option) => option.value === selectedDatabase) ?? null}
           onValueChange={(option) => {
             if (option) {
-              setSelectedDatabase(option.value);
+              onDatabaseChange(option.value);
             }
           }}
           valueKey="value"
@@ -221,7 +240,11 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
               />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-56">
+          <DropdownMenuContent
+            side="top"
+            align="start"
+            className="max-h-none w-56 overflow-y-hidden"
+          >
             <DropdownMenuItem
               variant="destructive"
               onSelect={() => void navigate({ to: "/" })}
@@ -238,10 +261,45 @@ export function ConnectionSidebar({ profile, onTableSelect }: ConnectionSidebarP
               <RiEditLine />
               Edit Connection
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void navigate({ to: "/" })}>
-              <RiArrowLeftRightLine />
-              Switch Connection
-            </DropdownMenuItem>
+            {sortedConnections.length > 0 ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <RiArrowLeftRightLine />
+                  Switch Connection
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuLabel>Recent Connections</DropdownMenuLabel>
+                  {recentConnections.map((connection) => (
+                    <DropdownMenuItem
+                      key={connection.id}
+                      onSelect={() => void switchConnection(connection.id)}
+                    >
+                      <RiDatabase2Line />
+                      <span className="truncate">{connection.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                  {otherConnections.length > 0 ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>More Connections</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-56">
+                          {otherConnections.map((connection) => (
+                            <DropdownMenuItem
+                              key={connection.id}
+                              onSelect={() => void switchConnection(connection.id)}
+                            >
+                              <RiDatabase2Line />
+                              <span className="truncate">{connection.name}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </>
+                  ) : null}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

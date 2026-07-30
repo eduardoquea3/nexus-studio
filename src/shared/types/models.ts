@@ -7,6 +7,7 @@ export interface ConnectionProfile {
   password?: string;
   connect_mode: ConnectMode;
   ssh_tunnel: SshTunnelConfig | null;
+  last_opened_at?: number;
 }
 
 export type ConnectMode =

@@ -21,3 +21,15 @@ export async function deleteConnection(id: string): Promise<void> {
   );
   await store.save();
 }
+
+export async function markConnectionOpened(id: string): Promise<void> {
+  const store = await load("connections.json");
+  const profiles = await getConnections();
+  await store.set(
+    "profiles",
+    profiles.map((profile) =>
+      profile.id === id ? { ...profile, last_opened_at: Date.now() } : profile,
+    ),
+  );
+  await store.save();
+}
