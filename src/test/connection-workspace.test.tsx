@@ -24,6 +24,7 @@ const getTableSchema = mock(async () => ({
   columns: [],
   indexes: [],
 }));
+const toast = mock();
 
 mock.module("@uiw/react-codemirror", () => ({
   default: ({
@@ -98,6 +99,8 @@ mock.module("@/shared/lib/tauriApi", () => ({
   testSavedConnection: mock(async () => "ok"),
 }));
 
+mock.module("sonner", () => ({ toast }));
+
 const { ConnectionWorkspace, getQuerySegment } = await import("../app/connection/components/connection-workspace");
 const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 
@@ -140,6 +143,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockClear();
+    toast.mockClear();
   });
 
   afterEach(() => {
@@ -150,6 +154,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     renderWorkspace();
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }).textContent).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
 
@@ -167,6 +172,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
   test("does not carry the previous query result into a newly created editor", async () => {
     renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+    fireEvent.input(editor, { target: { textContent: "select 1;" } });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
@@ -201,6 +208,57 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("tablist").className).not.toContain("overflow-x-auto");
     expect(screen.getByRole("tablist").className).toContain("overflow-hidden");
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
+  });
+
+  test("keeps the tab controls left aligned and exposes a close control for a single tab", () => {
+    renderWorkspace();
+
+    const tabList = screen.getByRole("tablist");
+    const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
+
+    expect(tabList.className).not.toContain("flex-1");
+    expect(createTab.previousElementSibling).toBe(tabList);
+    expect(screen.getByRole("button", { name: "Close Query 1" })).not.toBeNull();
+  });
+
+  test("marks edited SQL tabs as having unsaved changes", () => {
+    renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+    const indicatorSlot = screen.getByTestId("unsaved-change-slot-sql-1");
+
+    expect(indicatorSlot.className).toContain("size-1.5");
+    expect(within(indicatorSlot).queryByLabelText("Unsaved changes in Query 1")).toBeNull();
+
+    fireEvent.input(editor, { target: { textContent: "select 1;" } });
+
+    expect(within(indicatorSlot).getByLabelText("Unsaved changes in Query 1")).not.toBeNull();
+  });
+
+  test("asks via toast before Ctrl+W closes an edited SQL tab", () => {
+    renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+
+    fireEvent.input(editor, { target: { textContent: "select 1;" } });
+    fireEvent.keyDown(editor, { key: "w", code: "KeyW", ctrlKey: true });
+
+    expect(toast).toHaveBeenCalledWith(
+      "Discard changes in Query 1?",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Discard" }),
+        cancel: expect.objectContaining({ label: "Cancel" }),
+        duration: Infinity,
+      }),
+    );
+    expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
+
+    const options = toast.mock.calls[0][1] as {
+      action: { onClick: () => void };
+    };
+    act(() => {
+      options.action.onClick();
+    });
+
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   test("updates the query in the active tab", () => {
@@ -244,6 +302,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
   test("executes SQL against the database selected in the sidebar", async () => {
     renderWorkspace(fieldsProfile);
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+    fireEvent.input(editor, { target: { textContent: "select 1;" } });
     fireEvent.click(screen.getByRole("button", { name: "Select development" }));
 
     await act(async () => {
@@ -255,7 +315,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
       expect.objectContaining({
         connect_mode: expect.objectContaining({ database: "development" }),
       }),
-      "select * from users limit 100;",
+      "select 1;",
     );
   });
 

@@ -6,6 +6,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
@@ -42,6 +43,8 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   const editorSectionRef = useRef<HTMLElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const initializedEditorIdsRef = useRef(new Set<string>());
+  const sqlTabsRef = useRef(sqlTabs);
+  const activeSqlTabIdRef = useRef(activeSqlTabId);
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) ?? sqlTabs[0];
   const activeTableTab = tableTabs.find((tab) => tab.id === activeTabId);
   const workspaceTabs = [
@@ -70,14 +73,25 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     setSelectedDatabase(getInitialDatabase(profile));
   }, [profile]);
 
+  useEffect(() => {
+    sqlTabsRef.current = sqlTabs;
+  }, [sqlTabs]);
+
+  useEffect(() => {
+    activeSqlTabIdRef.current = activeSqlTabId;
+  }, [activeSqlTabId]);
+
   const createEditorTab = () => {
     const nextNumber =
-      sqlTabs.reduce((highest, tab) => {
+      sqlTabsRef.current.reduce((highest, tab) => {
         const number = Number(tab.id.replace("sql-", ""));
         return Number.isNaN(number) ? highest : Math.max(highest, number);
       }, 0) + 1;
     const nextTab = createSqlTab(nextNumber);
-    setSqlTabs((tabs) => [...tabs, nextTab]);
+    const nextTabs = [...sqlTabsRef.current, nextTab];
+    sqlTabsRef.current = nextTabs;
+    setSqlTabs(nextTabs);
+    activeSqlTabIdRef.current = nextTab.id;
     setActiveSqlTabId(nextTab.id);
     setActiveTabId(nextTab.id);
   };
@@ -88,11 +102,40 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       return;
     }
 
-    const nextTabs = sqlTabs.filter((tab) => tab.id !== tabId);
+    const tab = sqlTabs[tabIndex];
+    if (tab.isDirty) {
+      toast(`Discard changes in ${tab.title}?`, {
+        description: "Your SQL edits will be permanently lost.",
+        action: {
+          label: "Discard",
+          onClick: () => removeEditorTab(tabId),
+        },
+        cancel: {
+          label: "Cancel",
+          onClick: () => undefined,
+        },
+        duration: Infinity,
+      });
+      return;
+    }
+
+    removeEditorTab(tabId);
+  };
+
+  const removeEditorTab = (tabId: string) => {
+    const currentTabs = sqlTabsRef.current;
+    const tabIndex = currentTabs.findIndex((tab) => tab.id === tabId);
+    if (tabIndex === -1) {
+      return;
+    }
+
+    const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
+    sqlTabsRef.current = nextTabs;
     setSqlTabs(nextTabs);
 
-    if (activeSqlTabId === tabId) {
+    if (activeSqlTabIdRef.current === tabId) {
       const nextActiveTab = nextTabs[Math.max(0, tabIndex - 1)];
+      activeSqlTabIdRef.current = nextActiveTab?.id ?? "";
       setActiveSqlTabId(nextActiveTab?.id ?? "");
       setActiveTabId(nextActiveTab?.id ?? "");
 
@@ -125,7 +168,11 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       return;
     }
 
-    setSqlTabs((tabs) => tabs.map((tab) => (tab.id === activeSqlTab.id ? { ...tab, query } : tab)));
+    const nextTabs = sqlTabsRef.current.map((tab) =>
+      tab.id === activeSqlTab.id ? { ...tab, query, isDirty: query.length > 0 } : tab,
+    );
+    sqlTabsRef.current = nextTabs;
+    setSqlTabs(nextTabs);
   };
 
   const executeActiveQuery = async () => {
@@ -134,17 +181,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     }
 
     const cursor = editorViewRef.current.state.selection.main.head;
-    const query = getQuerySegment(activeSqlTab.query, cursor);
-    if (!query) {
-      setSqlTabs((tabs) =>
-        tabs.map((tab) =>
-          tab.id === activeSqlTab.id
-            ? { ...tab, queryResult: null, queryError: "Place the cursor inside a SQL statement before running it." }
-            : tab,
-        ),
-      );
-      return;
-    }
+    const query = getQuerySegment(activeSqlTab.query, cursor) || DEFAULT_QUERY;
 
     setIsRunning(true);
     setSqlTabs((tabs) =>
@@ -255,7 +292,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                 className="flex min-h-0 flex-1 flex-col gap-0"
               >
                 <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-2">
-                  <TabsList className="min-w-0 flex-1 overflow-hidden rounded-b-none bg-transparent p-0">
+                  <TabsList className="min-w-0 overflow-hidden rounded-b-none bg-transparent p-0">
                     {workspaceTabs.map((tab) => (
                         <div key={tab.id} className="group flex h-9 items-center">
                           <TabsTrigger
@@ -281,11 +318,23 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                               <RiTableLine className="size-3.5 text-primary" />
                             )}
                             <span className="truncate">{tab.type === "sql" ? tab.title : tab.table}</span>
-                            {tab.type === "sql" && sqlTabs.length <= 1 ? null : (
+                            {tab.type === "sql" ? (
                               <span
+                                className="inline-flex size-1.5 shrink-0 items-center justify-center"
+                                data-testid={`unsaved-change-slot-${tab.id}`}
+                              >
+                                {tab.isDirty ? (
+                                  <span
+                                    aria-label={`Unsaved changes in ${tab.title}`}
+                                    className="size-1.5 rounded-full bg-primary"
+                                  />
+                                ) : null}
+                              </span>
+                            ) : null}
+                            <span
                                 role="button"
                                 tabIndex={0}
-                                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
+                                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
@@ -315,8 +364,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                                 aria-label={`Close ${tab.type === "sql" ? tab.title : tab.table}`}
                               >
                                 <RiCloseLine className="size-3" />
-                              </span>
-                            )}
+                            </span>
                           </TabsTrigger>
                         </div>
                       ))}
@@ -519,6 +567,7 @@ type SqlEditorTab = {
   id: string;
   title: string;
   query: string;
+  isDirty: boolean;
   queryResult: QueryResult | null;
   queryError: string | null;
 };
@@ -544,8 +593,11 @@ function createSqlTab(number: number): SqlEditorTab {
   return {
     id: `sql-${number}`,
     title: `Query ${number}`,
-    query: "select * from users limit 100;",
+    query: "",
+    isDirty: false,
     queryResult: null,
     queryError: null,
   };
 }
+
+const DEFAULT_QUERY = "select * from users limit 100;";
