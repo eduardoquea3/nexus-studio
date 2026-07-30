@@ -4,10 +4,11 @@ import { EditorView } from "@codemirror/view";
 
 export const sqlEditorTheme = [
   EditorView.theme({
-    "&": {
-      color: "var(--foreground)",
-      backgroundColor: "var(--card)",
-      height: "100%",
+      "&": {
+        color: "var(--foreground)",
+        backgroundColor: "var(--card)",
+        height: "100%",
+        width: "100%",
     },
     ".cm-content": {
       caretColor: "var(--ring)",
@@ -45,6 +46,21 @@ export const sqlEditorTheme = [
     ".cm-scroller": {
       fontFamily: "var(--font-sans)",
       lineHeight: "1.7",
+      scrollbarColor: "var(--border) transparent",
+      scrollbarWidth: "thin",
+    },
+    ".cm-scroller::-webkit-scrollbar": {
+      width: "0.625rem",
+      height: "0.625rem",
+    },
+    ".cm-scroller::-webkit-scrollbar-track": {
+      backgroundColor: "transparent",
+    },
+    ".cm-scroller::-webkit-scrollbar-thumb": {
+      backgroundColor: "var(--border)",
+      border: "1px solid transparent",
+      borderRadius: "9999px",
+      backgroundClip: "content-box",
     },
     ".cm-tooltip": {
       backgroundColor: "var(--popover)",
@@ -91,14 +107,14 @@ export const sqlEditorTheme = [
   }),
   syntaxHighlighting(
     HighlightStyle.define([
-      { tag: tags.keyword, color: "var(--primary)", fontWeight: "600" },
-      { tag: tags.operator, color: "var(--primary)" },
-      { tag: tags.string, color: "var(--chart-2)" },
-      { tag: tags.number, color: "var(--chart-3)" },
-      { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
-      { tag: tags.variableName, color: "var(--foreground)" },
-      { tag: tags.function(tags.variableName), color: "var(--chart-5)" },
-      { tag: tags.typeName, color: "var(--chart-4)" },
+      { tag: tags.keyword, color: "var(--editor-keyword)", fontWeight: "600" },
+      { tag: tags.operator, color: "var(--editor-operator)" },
+      { tag: tags.string, color: "var(--editor-string)" },
+      { tag: tags.number, color: "var(--editor-number)" },
+      { tag: tags.comment, color: "var(--editor-comment)", fontStyle: "italic" },
+      { tag: tags.variableName, color: "var(--editor-variable)" },
+      { tag: tags.function(tags.variableName), color: "var(--editor-function)" },
+      { tag: tags.typeName, color: "var(--editor-type)" },
     ]),
   ),
 ];
