@@ -165,6 +165,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
   });
 
+  test("does not carry the previous query result into a newly created editor", async () => {
+    renderWorkspace();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/0 row\(s\) affected in 1 ms/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+
+    const resultsPane = screen.getByRole("region", { name: "SQL query results" });
+    expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+  });
+
   test("switches the single editor to the selected tab", () => {
     renderWorkspace();
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));

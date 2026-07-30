@@ -38,8 +38,6 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const [activeTabId, setActiveTabId] = useState("sql-1");
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [queryError, setQueryError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const editorSectionRef = useRef<HTMLElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -138,16 +136,25 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     const cursor = editorViewRef.current.state.selection.main.head;
     const query = getQuerySegment(activeSqlTab.query, cursor);
     if (!query) {
-      setQueryError("Place the cursor inside a SQL statement before running it.");
-      setQueryResult(null);
+      setSqlTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.id === activeSqlTab.id
+            ? { ...tab, queryResult: null, queryError: "Place the cursor inside a SQL statement before running it." }
+            : tab,
+        ),
+      );
       return;
     }
 
     setIsRunning(true);
-    setQueryError(null);
+    setSqlTabs((tabs) =>
+      tabs.map((tab) => (tab.id === activeSqlTab.id ? { ...tab, queryError: null } : tab)),
+    );
     try {
       const result = await runQuery(withDatabase(profile, selectedDatabase), query);
-      setQueryResult(result);
+      setSqlTabs((tabs) =>
+        tabs.map((tab) => (tab.id === activeSqlTab.id ? { ...tab, queryResult: result } : tab)),
+      );
 
       if (/^create\s+table\b/i.test(query)) {
         await queryClient.invalidateQueries({ queryKey: schemaObjectsQueryKey(profile.id) });
@@ -157,8 +164,13 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
         await queryClient.invalidateQueries({ queryKey: databasesQueryKey(profile.id) });
       }
     } catch (error) {
-      setQueryResult(null);
-      setQueryError(error instanceof Error ? error.message : String(error));
+      setSqlTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.id === activeSqlTab.id
+            ? { ...tab, queryResult: null, queryError: error instanceof Error ? error.message : String(error) }
+            : tab,
+        ),
+      );
     } finally {
       setIsRunning(false);
     }
@@ -366,10 +378,10 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                         aria-label="SQL query results"
                         className="flex min-h-0 flex-[1_1_0%] overflow-auto border-t border-border/70 bg-background/80 px-4 py-3 text-xs text-muted-foreground"
                       >
-                        {queryError ? (
-                          <p className="text-destructive">{queryError}</p>
-                        ) : queryResult ? (
-                          <QueryResultView result={queryResult} />
+                        {activeSqlTab.queryError ? (
+                          <p className="text-destructive">{activeSqlTab.queryError}</p>
+                        ) : activeSqlTab.queryResult ? (
+                          <QueryResultView result={activeSqlTab.queryResult} />
                         ) : (
                           "Place the cursor in a statement and press Ctrl+Enter to run it."
                         )}
@@ -507,6 +519,8 @@ type SqlEditorTab = {
   id: string;
   title: string;
   query: string;
+  queryResult: QueryResult | null;
+  queryError: string | null;
 };
 
 type TableTab = {
@@ -531,5 +545,7 @@ function createSqlTab(number: number): SqlEditorTab {
     id: `sql-${number}`,
     title: `Query ${number}`,
     query: "select * from users limit 100;",
+    queryResult: null,
+    queryError: null,
   };
 }
