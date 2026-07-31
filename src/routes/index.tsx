@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,24 +31,37 @@ function Index() {
     try {
       await deleteConnection(id);
       await refetch();
-      toast.success("Connection deleted");
+      toast.add({ title: "Connection deleted", type: "success" });
     } catch (error) {
-      toast.error("Could not delete connection", { description: String(error) });
+      toast.add({ title: "Could not delete connection", type: "error", description: String(error) });
     }
   };
 
   const handleOpen = async (profile: ConnectionProfile) => {
-    const toastId = toast.loading("Checking connection...", {
+    const toastId = toast.add({
+      title: "Checking connection...",
+      type: "loading",
       description: `Testing ${profile.name}`,
+      timeout: 0,
     });
 
     try {
       const message = await testSavedConnection(profile);
-      toast.success("Connection successful", { id: toastId, description: message });
+      toast.update(toastId, {
+        title: "Connection successful",
+        type: "success",
+        description: message,
+        timeout: 5000,
+      });
       await markConnectionOpened(profile.id);
       return true;
     } catch (error) {
-      toast.error("Connection failed", { id: toastId, description: String(error) });
+      toast.update(toastId, {
+        title: "Connection failed",
+        type: "error",
+        description: String(error),
+        timeout: 5000,
+      });
       return false;
     }
   };

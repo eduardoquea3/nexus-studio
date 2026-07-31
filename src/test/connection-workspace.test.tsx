@@ -24,7 +24,7 @@ const getTableSchema = mock(async () => ({
   columns: [],
   indexes: [],
 }));
-const toast = mock();
+const addToast = mock((_options: unknown) => "toast-1");
 
 mock.module("@uiw/react-codemirror", () => ({
   default: ({
@@ -99,7 +99,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
   testSavedConnection: mock(async () => "ok"),
 }));
 
-mock.module("sonner", () => ({ toast }));
+mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
 const { ConnectionWorkspace, getQuerySegment } = await import("../app/connection/components/connection-workspace");
 const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
@@ -143,7 +143,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockClear();
-    toast.mockClear();
+    addToast.mockClear();
   });
 
   afterEach(() => {
@@ -241,21 +241,27 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.input(editor, { target: { textContent: "select 1;" } });
     fireEvent.keyDown(editor, { key: "w", code: "KeyW", ctrlKey: true });
 
-    expect(toast).toHaveBeenCalledWith(
-      "Discard changes in Query 1?",
+    expect(addToast).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: expect.objectContaining({ label: "Discard" }),
-        cancel: expect.objectContaining({ label: "Cancel" }),
-        duration: Infinity,
+        title: "Discard changes in Query 1?",
+        timeout: 0,
+      }),
+    );
+    expect(addToast.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        actionProps: expect.objectContaining({ children: "Discard" }),
+        data: expect.objectContaining({
+          cancel: expect.objectContaining({ children: "Cancel" }),
+        }),
       }),
     );
     expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
 
-    const options = toast.mock.calls[0][1] as {
-      action: { onClick: () => void };
+    const options = addToast.mock.calls[0][0] as {
+      actionProps: { onClick: () => void };
     };
     act(() => {
-      options.action.onClick();
+      options.actionProps.onClick();
     });
 
     expect(screen.queryByRole("textbox")).toBeNull();

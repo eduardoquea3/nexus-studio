@@ -6,7 +6,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
@@ -104,17 +104,21 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
 
     const tab = sqlTabs[tabIndex];
     if (tab.isDirty) {
-      toast(`Discard changes in ${tab.title}?`, {
+      toast.add({
+        title: `Discard changes in ${tab.title}?`,
+        timeout: 0,
         description: "Your SQL edits will be permanently lost.",
-        action: {
-          label: "Discard",
+        actionProps: {
+          children: "Discard",
+          className: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
           onClick: () => removeEditorTab(tabId),
         },
-        cancel: {
-          label: "Cancel",
-          onClick: () => undefined,
+        data: {
+          cancel: {
+            children: "Cancel",
+            onClick: () => undefined,
+          },
         },
-        duration: Infinity,
       });
       return;
     }

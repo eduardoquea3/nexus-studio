@@ -1,5 +1,5 @@
 import { SVGProps, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import {
   RiDatabase2Fill,
   RiDatabase2Line,
@@ -142,9 +142,9 @@ export function NewConnectionPanel() {
       const request = getTestRequest();
       console.info("[connection-test] target", formatConnectionTarget(request));
       const message = await testConnectionFields(request);
-      toast.success("Connection successful", { description: message });
+      toast.add({ title: "Connection successful", type: "success", description: message });
     } catch (error) {
-      toast.error("Connection failed", { description: String(error) });
+      toast.add({ title: "Connection failed", type: "error", description: String(error) });
     } finally {
       setIsTesting(false);
     }
@@ -162,12 +162,14 @@ export function NewConnectionPanel() {
         addProfile(profile);
       }
       await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-      toast.success(editingId ? "Connection updated" : "Connection saved", {
+      toast.add({
+        title: editingId ? "Connection updated" : "Connection saved",
+        type: "success",
         description: "The connection profile and its credentials were saved locally.",
       });
       closeModal(HomePanels.NewConnection);
     } catch (error) {
-      toast.error("Could not save connection", { description: String(error) });
+      toast.add({ title: "Could not save connection", type: "error", description: String(error) });
     } finally {
       setIsTesting(false);
     }
