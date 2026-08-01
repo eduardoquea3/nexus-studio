@@ -7,10 +7,12 @@ import {
   RiFunctionLine,
   RiGitBranchLine,
   RiLogoutBoxLine,
+  RiRefreshLine,
   RiTableLine,
 } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -102,6 +104,8 @@ export function ConnectionSidebar({
     data: schemaObjects = [],
     error: schemaError,
     isLoading: isLoadingSchema,
+    isFetching: isFetchingSchema,
+    refetch: refetchSchema,
   } = useSchemaObjects(profile, selectedDatabase);
   const { data: connections = [] } = useConnections();
   const databases = Array.from(
@@ -173,9 +177,23 @@ export function ConnectionSidebar({
       </div>
       <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-scrollbar]]:hidden">
         <div className="min-w-0 p-3">
-          <p className="px-2 py-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Explorer
-          </p>
+          <div className="flex items-center justify-between gap-2 px-2 py-2">
+            <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Explorer
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="rounded-sm"
+              aria-label="Refresh explorer"
+              title="Refresh explorer"
+              onClick={() => void refetchSchema()}
+              disabled={isFetchingSchema}
+            >
+              <RiRefreshLine className={cn(isFetchingSchema && "animate-spin")} aria-hidden="true" />
+            </Button>
+          </div>
           <Files defaultOpen={["tables"]} className="min-w-0 p-0">
             {explorerGroups.map((group) => {
               const objects = schemaObjects.filter(
