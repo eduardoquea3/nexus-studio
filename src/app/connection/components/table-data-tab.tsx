@@ -129,13 +129,13 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="structure" className="h-full min-h-0 overflow-auto p-4 m-0">
+        <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0">
           {schema.isLoading ? (
             <div className="text-xs text-muted-foreground">Loading structure...</div>
           ) : schema.error ? (
             <div className="text-xs text-destructive">Could not load table structure.</div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/40">
+            <div className="flex h-fit min-h-0 max-h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card/40">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
                 <div>
                   <div className="text-sm font-semibold text-foreground">Columns</div>
@@ -152,7 +152,7 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
                   </Button>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div className="min-h-0 max-h-full overflow-auto">
                 <table className="w-full border-collapse text-xs">
                   <thead className="sticky top-0 z-10 bg-muted/90 text-left backdrop-blur-sm">
                     <tr>
