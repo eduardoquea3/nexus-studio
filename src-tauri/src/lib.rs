@@ -76,6 +76,7 @@ struct QueryResult {
 struct ColumnInfo {
     name: String,
     data_type: String,
+    enum_values: Vec<String>,
     nullable: bool,
     default: Option<String>,
     is_pk: bool,
@@ -634,7 +635,7 @@ async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResu
                 .await
                 .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
             let rows = sqlx::query(
-                "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = $1 AND table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY ordinal_position",
+                "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(array_agg(e.enumlabel ORDER BY e.enumsortorder) FILTER (WHERE e.enumlabel IS NOT NULL), ARRAY[]::text[]) AS enum_values FROM information_schema.columns c LEFT JOIN pg_namespace n ON n.nspname = c.table_schema LEFT JOIN pg_type t ON t.typname = c.udt_name AND t.typnamespace = n.oid LEFT JOIN pg_enum e ON e.enumtypid = t.oid WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema') GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position",
             )
             .bind(&request.table)
             .fetch_all(&mut connection)
@@ -647,6 +648,7 @@ async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResu
                     .map(|row| ColumnInfo {
                         name: row.get("column_name"),
                         data_type: row.get("data_type"),
+                        enum_values: row.get("enum_values"),
                         nullable: row.get::<String, _>("is_nullable") == "YES",
                         default: row.get("column_default"),
                         is_pk: false,
@@ -682,6 +684,7 @@ async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResu
                     .map(|row| ColumnInfo {
                         name: row.get("column_name"),
                         data_type: row.get("data_type"),
+                        enum_values: Vec::new(),
                         nullable: row.get::<String, _>("is_nullable") == "YES",
                         default: row.get("column_default"),
                         is_pk: false,
@@ -714,6 +717,7 @@ async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResu
                     .map(|row| ColumnInfo {
                         name: row.get("name"),
                         data_type: row.get::<String, _>("type"),
+                        enum_values: Vec::new(),
                         nullable: row.get::<i64, _>("notnull") == 0,
                         default: row.get("dflt_value"),
                         is_pk: row.get::<i64, _>("pk") > 0,

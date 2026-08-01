@@ -44,6 +44,7 @@ export interface ObjectMeta {
 export interface ColumnInfo {
   name: string;
   data_type: string;
+  enum_values: string[];
   nullable: boolean;
   default: string | null;
   is_pk: boolean;

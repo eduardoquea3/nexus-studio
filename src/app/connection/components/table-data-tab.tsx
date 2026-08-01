@@ -1,4 +1,4 @@
-import { RiRefreshLine } from "@remixicon/react";
+import { RiAddLine, RiRefreshLine } from "@remixicon/react";
 import { useMemo } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -36,13 +36,14 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
   const { data, error, isLoading, refetch } = useTableData(profile, table);
   const schema = useTableSchema(profile, table, true);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
+  const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
   const schemaColumns = schema.data?.columns;
   const columnNames = data?.columns.length
     ? data.columns
     : (schemaColumns ?? []).map((column) => column.name);
   const structureSignature = schemaColumns
     ? schemaColumns
-        .map((column) => [column.name, column.data_type, column.nullable, column.default ?? "", column.is_pk].join("::"))
+        .map((column) => [column.name, column.data_type, column.enum_values.join(","), column.nullable, column.default ?? "", column.is_pk].join("::"))
         .join("|")
     : "";
   const lastStructureSignatureRef = useRef<string | null>(null);
@@ -118,6 +119,11 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
                 isLoading={isLoading || (columnNames.length === 0 && schema.isLoading)}
                 withShell={false}
                 className="h-full"
+                draftRow={draftRow}
+                draftColumns={schemaColumns}
+                onDraftChange={(column, value) => {
+                  setDraftRow((row) => (row ? { ...row, [column]: value } : row));
+                }}
               />
             </div>
           </div>
@@ -239,14 +245,30 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
         </TabsContent>
       </div>
       <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
-        <TabsList className="h-auto justify-start gap-1 rounded-none bg-transparent p-0">
-          <TabsTrigger value="data" className="h-7 px-2 text-xs">
-            Data
-          </TabsTrigger>
-          <TabsTrigger value="structure" className="h-7 px-2 text-xs">
-            Structure
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-2">
+          <TabsList className="h-auto justify-start gap-1 rounded-none bg-transparent p-0">
+            <TabsTrigger value="data" className="h-7 px-2 text-xs">
+              Data
+            </TabsTrigger>
+            <TabsTrigger value="structure" className="h-7 px-2 text-xs">
+              Structure
+            </TabsTrigger>
+          </TabsList>
+          <Button
+            type="button"
+            variant={draftRow ? "secondary" : "outline"}
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs"
+            disabled={columnNames.length === 0}
+            onClick={() => {
+              setDraftRow(Object.fromEntries(columnNames.map((column) => [column, ""])));
+            }}
+          >
+            <RiAddLine data-icon="inline-start" />
+            Add row
+          </Button>
+          {draftRow ? <span className="text-[0.625rem] text-primary/80">Draft row</span> : null}
+        </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="h-6 rounded-full px-2 text-[0.625rem]">
             {data?.total ?? 0} rows
