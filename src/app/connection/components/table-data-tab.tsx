@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
+import { Checkbox } from "@/components/animate-ui/components/radix/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -173,21 +174,22 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
                           {column.data_type}
                         </td>
                         <td className="border-b border-r border-border/50 px-3 py-2">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
+                          <div className="inline-flex items-center gap-2">
+                            <Checkbox
                               checked={column.nullable}
-                              onChange={(event) => {
+                              onCheckedChange={(value) => {
                                 setStructureDraft((rows) =>
                                   rows.map((row) =>
-                                    row.name === column.name ? { ...row, nullable: event.target.checked } : row,
+                                    row.name === column.name ? { ...row, nullable: value === true } : row,
                                   ),
                                 );
                               }}
-                              className="size-3.5 rounded border-border bg-background text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
+                              size="sm"
+                              type="button"
+                              aria-label={`Nullable ${column.name}`}
                             />
                             <span>{column.nullable ? "YES" : "NO"}</span>
-                          </label>
+                          </div>
                         </td>
                         <td className="border-b border-r border-border/50 px-3 py-2">
                           <Input
@@ -220,20 +222,21 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
                           />
                         </td>
                         <td className="border-b border-border/50 px-3 py-2">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
+                          <div className="inline-flex items-center gap-2">
+                            <Checkbox
                               checked={column.is_pk}
-                              onChange={(event) => {
+                              onCheckedChange={(value) => {
                                 setStructureDraft((rows) =>
                                   rows.map((row) =>
-                                    row.name === column.name ? { ...row, is_pk: event.target.checked } : row,
+                                    row.name === column.name ? { ...row, is_pk: value === true } : row,
                                   ),
                                 );
                               }}
-                              className="size-3.5 rounded border-border bg-background text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
+                              size="sm"
+                              type="button"
+                              aria-label={`Primary key ${column.name}`}
                             />
-                          </label>
+                          </div>
                         </td>
                       </tr>
                     ))}
