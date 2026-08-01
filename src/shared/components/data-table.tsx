@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { ColumnInfo } from "@/shared/types/models";
 
@@ -49,8 +50,9 @@ export function DataTable<TData>({
         className,
       )}
     >
-      <div className="h-full overflow-auto">
-        <Table className="text-xs">
+      <ScrollArea className="h-full [&_[data-orientation=vertical]]:hidden">
+        <div className="min-w-max pb-3">
+          <Table className="min-w-max text-xs">
           <TableHeader className="sticky top-0 bg-muted/90 text-left">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -59,7 +61,16 @@ export function DataTable<TData>({
                   <TableHead key={header.id} className="border-b border-r border-border/70 px-3 py-2 font-medium" colSpan={header.colSpan}>
                     {header.isPlaceholder
                       ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+                      : (
+                        <div className="flex min-w-28 items-baseline gap-2 whitespace-nowrap">
+                          <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                          {getColumnInfo(draftColumns, header.column.id) ? (
+                            <span className="text-[0.625rem] font-normal text-muted-foreground/75">
+                              {getDisplayType(getColumnInfo(draftColumns, header.column.id))}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -96,10 +107,24 @@ export function DataTable<TData>({
               </TableRow>
             ) : null}
           </TableBody>
-        </Table>
-      </div>
+          </Table>
+        </div>
+        <ScrollBar
+          orientation="horizontal"
+          className="absolute inset-x-0 bottom-0 z-20 border-t border-border/60 bg-background/95"
+        />
+      </ScrollArea>
     </div>
   );
+}
+
+function getColumnInfo(columns: ColumnInfo[], name: string) {
+  return columns.find((column) => column.name === name);
+}
+
+function getDisplayType(column?: ColumnInfo) {
+  if (!column) return "";
+  return column.enum_values.length > 0 ? "enum" : column.data_type;
 }
 
 function DraftEditor({

@@ -63,9 +63,14 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "Structure" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "#" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "name" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "active" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "status" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: /^name/ })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: /^active/ })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: /^status/ })).not.toBeNull();
+    expect(screen.getByText("varchar")).not.toBeNull();
+    expect(screen.getByText("boolean")).not.toBeNull();
+    expect(screen.getByText("enum")).not.toBeNull();
+    expect(screen.getByRole("table").className.includes("min-w-max")).toBe(true);
+    expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByText("0 rows")).not.toBeNull();
     expect(screen.getByText("Showing 0")).not.toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
