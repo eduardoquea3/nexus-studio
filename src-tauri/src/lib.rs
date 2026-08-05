@@ -30,6 +30,10 @@ struct ConnectionTestRequest {
 struct ObjectMeta {
     name: String,
     object_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    definition: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +43,15 @@ struct TableDataRequest {
     table: String,
     page: u32,
     page_size: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoutineDefinitionRequest {
+    request: ConnectionTestRequest,
+    routine_name: String,
+    routine_type: String,
+    signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,24 +224,30 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: row.get("table_name"),
                     object_type: object_type.to_string(),
+                    signature: None,
+                    definition: None,
                 });
             }
 
             let rows = sqlx::query(
-                "SELECT routine_name, routine_type FROM information_schema.routines WHERE routine_schema NOT IN ('pg_catalog', 'information_schema') AND routine_type IN ('FUNCTION', 'PROCEDURE') ORDER BY routine_type, routine_name",
+                "SELECT routine_schema, routine_name, routine_type, specific_name FROM information_schema.routines WHERE routine_schema NOT IN ('pg_catalog', 'information_schema') AND routine_type IN ('FUNCTION', 'PROCEDURE') ORDER BY routine_type, routine_schema, routine_name, specific_name",
             )
             .fetch_all(&mut connection)
             .await
             .map_err(|error| format!("Could not list PostgreSQL routines: {error}"))?;
 
             for row in rows {
+                let routine_schema: String = row.get("routine_schema");
+                let routine_name: String = row.get("routine_name");
                 let object_type = match row.get::<String, _>("routine_type").as_str() {
                     "PROCEDURE" => "procedure",
                     _ => "function",
                 };
                 objects.push(ObjectMeta {
-                    name: row.get("routine_name"),
+                    name: routine_name.clone(),
                     object_type: object_type.to_string(),
+                    signature: Some(format!("{routine_schema}.{}", row.get::<String, _>("specific_name"))),
+                    definition: None,
                 });
             }
 
@@ -261,11 +280,13 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: row.get("table_name"),
                     object_type: object_type.to_string(),
+                    signature: None,
+                    definition: None,
                 });
             }
 
             let rows = sqlx::query(
-                "SELECT routine_name, routine_type FROM information_schema.routines WHERE routine_schema = DATABASE() AND routine_type IN ('FUNCTION', 'PROCEDURE') ORDER BY routine_type, routine_name",
+                "SELECT routine_schema, routine_name, routine_type, specific_name FROM information_schema.routines WHERE routine_schema = DATABASE() AND routine_type IN ('FUNCTION', 'PROCEDURE') ORDER BY routine_type, routine_name, specific_name",
             )
             .fetch_all(&mut connection)
             .await
@@ -276,9 +297,16 @@ async fn list_schema_objects(
                     "PROCEDURE" => "procedure",
                     _ => "function",
                 };
+                let routine_name: String = row.get("routine_name");
                 objects.push(ObjectMeta {
-                    name: row.get("routine_name"),
+                    name: routine_name.clone(),
                     object_type: object_type.to_string(),
+                    signature: Some(format!(
+                        "{}.{}",
+                        row.get::<String, _>("routine_schema"),
+                        row.get::<String, _>("specific_name")
+                    )),
+                    definition: None,
                 });
             }
 
@@ -310,9 +338,83 @@ async fn list_schema_objects(
                         "view" => "view".to_string(),
                         _ => "table".to_string(),
                     },
+                    signature: None,
+                    definition: None,
                 })
                 .collect())
         }
+        database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
+#[tauri::command]
+async fn get_routine_definition(request: RoutineDefinitionRequest) -> Result<String, String> {
+    match request.request.db_type.as_str() {
+        "postgres" => {
+            let routine_type = match request.routine_type.as_str() {
+                "function" => "FUNCTION",
+                "procedure" => "PROCEDURE",
+                routine_type => return Err(format!("Unsupported PostgreSQL routine type: {routine_type}")),
+            };
+            let connection_request = request.request;
+            let options = PgConnectOptions::new()
+                .host(connection_request.host.as_deref().ok_or("Host is required")?)
+                .port(connection_request.port.unwrap_or(5432))
+                .database(connection_request.database.as_deref().ok_or("Database is required")?)
+                .username(connection_request.username.as_deref().unwrap_or("postgres"))
+                .password(connection_request.password.as_deref().unwrap_or(""));
+            let mut connection = PgConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
+            let routine_oid: String = sqlx::query(
+                "SELECT p.oid::text AS routine_oid FROM information_schema.routines r JOIN pg_namespace n ON n.nspname = r.routine_schema JOIN pg_proc p ON p.pronamespace = n.oid AND p.proname = r.routine_name AND r.specific_name = format('%s_%s', p.proname, p.oid) WHERE r.routine_name = $1 AND r.routine_type = $2 AND format('%s.%s', r.routine_schema, r.specific_name) = $3",
+            )
+            .bind(&request.routine_name)
+            .bind(routine_type)
+            .bind(&request.signature)
+            .fetch_optional(&mut connection)
+            .await
+            .map_err(|error| format!("Could not retrieve PostgreSQL routine definition: {error}"))?
+            .map(|row| row.get("routine_oid"))
+            .ok_or_else(|| "PostgreSQL routine not found".to_string())?;
+
+            let row = sqlx::query("SELECT pg_get_functiondef($1::oid) AS definition")
+                .bind(routine_oid)
+                .fetch_one(&mut connection)
+                .await
+                .map_err(|error| format!("Could not retrieve PostgreSQL routine definition: {error}"))?;
+
+            Ok(row.get("definition"))
+        }
+        "mysql" => {
+            let routine_keyword = match request.routine_type.as_str() {
+                "function" => "FUNCTION",
+                "procedure" => "PROCEDURE",
+                routine_type => return Err(format!("Unsupported MySQL routine type: {routine_type}")),
+            };
+            let connection_request = request.request;
+            let options = MySqlConnectOptions::new()
+                .host(connection_request.host.as_deref().ok_or("Host is required")?)
+                .port(connection_request.port.unwrap_or(3306))
+                .database(connection_request.database.as_deref().unwrap_or("mysql"))
+                .username(connection_request.username.as_deref().unwrap_or("root"))
+                .password(connection_request.password.as_deref().unwrap_or(""));
+            let mut connection = MySqlConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("MySQL connection failed: {error}"))?;
+            let escaped_name = request.routine_name.replace('`', "``");
+            let create_row = sqlx::query(&format!(
+                "SHOW CREATE {routine_keyword} `{escaped_name}`"
+            ))
+            .fetch_one(&mut connection)
+            .await
+            .map_err(|error| format!("Could not retrieve MySQL {} definition: {error}", request.routine_type))?;
+
+            create_row
+                .try_get(2)
+                .map_err(|error| format!("Could not read MySQL routine definition: {error}"))
+        }
+        "sqlite" => Err("SQLite does not support routines".to_string()),
         database => Err(format!("Unsupported database type: {database}")),
     }
 }
@@ -743,6 +845,7 @@ pub fn run() {
             test_connection,
             list_databases,
             list_schema_objects,
+            get_routine_definition,
             get_table_data,
             get_table_schema,
             run_query

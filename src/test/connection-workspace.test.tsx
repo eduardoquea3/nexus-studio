@@ -13,6 +13,7 @@ const runQuery = mock(async () => ({
   duration_ms: 1,
 }));
 const listSchemaObjects = mock(async () => []);
+const getRoutineDefinition = mock(async () => "CREATE FUNCTION refresh_company() RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;");
 const getTableData = mock(async () => ({
   columns: [],
   rows: [],
@@ -69,9 +70,15 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: ({
     onDatabaseChange,
     onTableSelect,
+    onRoutineSelect,
   }: {
     onDatabaseChange: (database: string) => void;
     onTableSelect: (table: string) => void;
+    onRoutineSelect: (routine: {
+      name: string;
+      object_type: "function";
+      signature: string;
+    }) => void;
   }) => (
     <aside data-testid="connection-sidebar">
       <button type="button" onClick={() => onDatabaseChange("development")}>
@@ -79,6 +86,30 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
       </button>
       <button type="button" onClick={() => onTableSelect("company")}>
         Open company
+      </button>
+      <button
+        type="button"
+        onDoubleClick={() =>
+          onRoutineSelect({
+            name: "refresh_company",
+            object_type: "function",
+            signature: "public.refresh_company()",
+          })
+        }
+      >
+        Open refresh_company
+      </button>
+      <button
+        type="button"
+        onDoubleClick={() =>
+          onRoutineSelect({
+            name: "refresh_company",
+            object_type: "function",
+            signature: "public.refresh_company(integer)",
+          })
+        }
+      >
+        Open refresh_company(integer)
       </button>
     </aside>
   ),
@@ -94,6 +125,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
     unique_constraints: [],
   })),
   getTableSchema,
+  getRoutineDefinition,
   listConnections: mock(async () => []),
   listDatabases: mock(async () => []),
   listFunctions: mock(async () => []),
@@ -152,6 +184,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockClear();
+    getRoutineDefinition.mockClear();
     addToast.mockClear();
   });
 
@@ -348,6 +381,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(getQuerySegment(query, query.lastIndexOf("select 2"))).toBe("-- next;\nselect 2;");
   });
 
+  test("does not split semicolons inside PostgreSQL dollar-quoted routine bodies", () => {
+    const query = "CREATE FUNCTION refresh() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;";
+
+    expect(getQuerySegment(query, 12)).toBe(query);
+  });
+
   test("executes the last statement when the cursor is after the final semicolon", () => {
     const query = "select * from auth;";
 
@@ -428,5 +467,50 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.keyDown(emptySection, { key: "t", code: "KeyT", ctrlKey: true });
 
     expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
+  });
+
+  test("opens and deduplicates a routine definition tab", async () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open refresh_company" }));
+    expect(getRoutineDefinition).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open refresh_company" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(getRoutineDefinition).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("textbox", { name: "refresh_company SQL query editor" }).textContent,
+    ).toContain("CREATE FUNCTION");
+    expect(
+        screen
+        .getByTestId("unsaved-change-slot-routine--function-public.refresh_company()")
+        .querySelector("[aria-label]"),
+    ).toBeNull();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open refresh_company" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+  });
+
+  test("keeps overloaded routines in separate tabs", async () => {
+    renderWorkspace();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open refresh_company" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open refresh_company(integer)" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company()"))
+      .toBeTruthy();
+    expect(screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company(integer)"))
+      .toBeTruthy();
   });
 });

@@ -40,7 +40,7 @@ import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { Select } from "@/shared/components/ui/select";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
-import type { ConnectionProfile } from "@/shared/types/models";
+import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 import { cn } from "@/lib/utils";
 
 type ConnectionSidebarProps = {
@@ -48,6 +48,7 @@ type ConnectionSidebarProps = {
   selectedDatabase: string;
   onDatabaseChange: (database: string) => void;
   onTableSelect: (table: string) => void;
+  onRoutineSelect: (routine: ObjectMeta) => void;
 };
 
 type DatabaseOption = {
@@ -91,6 +92,7 @@ export function ConnectionSidebar({
   selectedDatabase,
   onDatabaseChange,
   onTableSelect,
+  onRoutineSelect,
 }: ConnectionSidebarProps) {
   const navigate = useNavigate();
   const openModal = useModalStore((state) => state.openModal);
@@ -195,51 +197,66 @@ export function ConnectionSidebar({
             </Button>
           </div>
           <Files defaultOpen={["tables"]} className="min-w-0 p-0">
-            {explorerGroups.map((group) => {
-              const objects = schemaObjects.filter(
-                (object) => object.object_type === group.objectType,
-              );
+            {explorerGroups
+              .filter(
+                (group) =>
+                  profile.db_type !== "sqlite" ||
+                  group.objectType === "table" ||
+                  group.objectType === "view",
+              )
+              .map((group) => {
+                const objects = schemaObjects.filter(
+                  (object) => object.object_type === group.objectType,
+                );
 
-              return (
-                <FolderItem key={group.id} value={group.id}>
-                  <FolderTrigger icon={group.icon} className="text-xs">
-                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span>{group.label}</span>
+                return (
+                  <FolderItem key={group.id} value={group.id}>
+                    <FolderTrigger icon={group.icon} className="text-xs">
+                      <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span>{group.label}</span>
+                        </span>
+                        <span className="text-[0.65rem] text-muted-foreground">{objects.length}</span>
                       </span>
-                      <span className="text-[0.65rem] text-muted-foreground">{objects.length}</span>
-                    </span>
-                  </FolderTrigger>
-                  <FolderContent>
-                    {isLoadingSchema ? (
-                      <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">Loading...</p>
-                    ) : schemaError ? (
-                      <p className="px-2 py-1 text-[0.65rem] text-destructive">Unable to load objects</p>
-                    ) : objects.length === 0 ? (
-                      <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">{group.emptyLabel}</p>
-                    ) : (
-                      objects.map((object) => (
-                        <FileItem
-                          key={object.name}
-                          icon={group.icon}
-                          className={cn(
-                            "text-xs",
-                            group.objectType === "table" && "cursor-pointer hover:text-foreground",
-                          )}
-                          onClick={
-                            group.objectType === "table"
-                              ? () => onTableSelect(object.name)
-                              : undefined
-                          }
-                        >
-                          {object.name}
-                        </FileItem>
-                      ))
-                    )}
-                  </FolderContent>
-                </FolderItem>
-              );
-            })}
+                    </FolderTrigger>
+                    <FolderContent>
+                      {isLoadingSchema ? (
+                        <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">Loading...</p>
+                      ) : schemaError ? (
+                        <p className="px-2 py-1 text-[0.65rem] text-destructive">Unable to load objects</p>
+                      ) : objects.length === 0 ? (
+                        <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">{group.emptyLabel}</p>
+                      ) : (
+                        objects.map((object) => (
+                          <FileItem
+                            key={object.signature ?? object.name}
+                            icon={group.icon}
+                            className={cn(
+                              "text-xs",
+                              (group.objectType === "table" ||
+                                group.objectType === "function" ||
+                                group.objectType === "procedure") &&
+                                "cursor-pointer hover:text-foreground",
+                            )}
+                            onClick={
+                              group.objectType === "table"
+                                ? () => onTableSelect(object.name)
+                                : undefined
+                            }
+                            onDoubleClick={
+                              group.objectType === "function" || group.objectType === "procedure"
+                                ? () => onRoutineSelect(object)
+                                : undefined
+                            }
+                          >
+                            {object.name}
+                          </FileItem>
+                        ))
+                      )}
+                    </FolderContent>
+                  </FolderItem>
+                );
+              })}
           </Files>
         </div>
       </ScrollArea>

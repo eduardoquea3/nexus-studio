@@ -8,7 +8,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 
-import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
+import type { ConnectionProfile, ObjectMeta, QueryResult } from "@/shared/types/models";
 
 import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
 import { TableDataTab } from "@/app/connection/components/table-data-tab";
@@ -23,7 +23,7 @@ import { DataTable } from "@/shared/components/data-table";
 import { cn } from "@/lib/utils";
 import { useDataTable } from "@/shared/hooks/use-data-table";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
-import { runQuery } from "@/shared/lib/tauriApi";
+import { getRoutineDefinition, runQuery } from "@/shared/lib/tauriApi";
 import { databasesQueryKey } from "@/app/connection/hooks/use-databases";
 import { schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
@@ -43,6 +43,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   const editorSectionRef = useRef<HTMLElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const initializedEditorIdsRef = useRef(new Set<string>());
+  const loadingRoutineIdsRef = useRef(new Set<string>());
   const sqlTabsRef = useRef(sqlTabs);
   const activeSqlTabIdRef = useRef(activeSqlTabId);
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) ?? sqlTabs[0];
@@ -176,6 +177,49 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     setActiveTabId(id);
   };
 
+  const openRoutineTab = async (routine: ObjectMeta) => {
+    const id = `routine-${encodeURIComponent(selectedDatabase)}-${routine.object_type}-${encodeURIComponent(routine.signature ?? routine.name)}`;
+    if (sqlTabsRef.current.some((tab) => tab.id === id)) {
+      activeSqlTabIdRef.current = id;
+      setActiveSqlTabId(id);
+      setActiveTabId(id);
+      return;
+    }
+    if (loadingRoutineIdsRef.current.has(id)) {
+      return;
+    }
+
+    loadingRoutineIdsRef.current.add(id);
+    try {
+      const definition = await getRoutineDefinition(withDatabase(profile, selectedDatabase), routine);
+      const nextTabs = sqlTabsRef.current.some((tab) => tab.id === id)
+        ? sqlTabsRef.current
+        : [
+            ...sqlTabsRef.current,
+            {
+              id,
+              title: routine.name,
+              query: definition,
+              isDirty: false,
+              queryResult: null,
+              queryError: null,
+            },
+          ];
+      sqlTabsRef.current = nextTabs;
+      setSqlTabs(nextTabs);
+      activeSqlTabIdRef.current = id;
+      setActiveSqlTabId(id);
+      setActiveTabId(id);
+    } catch (error) {
+      toast.add({
+        title: `Unable to load ${routine.name}`,
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      loadingRoutineIdsRef.current.delete(id);
+    }
+  };
+
   const updateActiveQuery = (query: string) => {
     if (!activeSqlTab) {
       return;
@@ -283,6 +327,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
           selectedDatabase={selectedDatabase}
           onDatabaseChange={setSelectedDatabase}
           onTableSelect={openTableTab}
+          onRoutineSelect={(routine) => void openRoutineTab(routine)}
         />
 
         <main className="min-w-0 flex-1">
@@ -298,7 +343,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                 value={activeTabId}
                 onValueChange={(value) => {
                   setActiveTabId(value);
-                  if (value.startsWith("sql-")) {
+                  if (workspaceTabs.find((tab) => tab.id === value)?.type === "sql") {
                     setActiveSqlTabId(value);
                   }
                 }}
@@ -485,6 +530,7 @@ export function getQuerySegment(query: string, position: number): string {
 function findStatementSeparators(query: string): number[] {
   const separators: number[] = [];
   let quote: "'" | '"' | "`" | null = null;
+  let dollarQuote: string | null = null;
   let lineComment = false;
   let blockComment = false;
 
@@ -502,6 +548,13 @@ function findStatementSeparators(query: string): number[] {
       if (character === "*" && nextCharacter === "/") {
         blockComment = false;
         index += 1;
+      }
+      continue;
+    }
+    if (dollarQuote) {
+      if (query.startsWith(dollarQuote, index)) {
+        index += dollarQuote.length - 1;
+        dollarQuote = null;
       }
       continue;
     }
@@ -526,6 +579,14 @@ function findStatementSeparators(query: string): number[] {
       blockComment = true;
       index += 1;
       continue;
+    }
+    if (character === "$") {
+      const delimiter = query.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0];
+      if (delimiter) {
+        dollarQuote = delimiter;
+        index += delimiter.length - 1;
+        continue;
+      }
     }
     if (character === "'" || character === '"' || character === "`") {
       quote = character;

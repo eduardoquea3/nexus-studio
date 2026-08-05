@@ -116,6 +116,36 @@ export async function listSchemaObjects(
   return invoke("list_schema_objects", { request });
 }
 
+export async function getRoutineDefinition(
+  profile: ConnectionProfile,
+  routine: Pick<ObjectMeta, "name" | "object_type" | "signature">,
+): Promise<string> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_routine_definition", {
+    request: {
+      request,
+      routineName: routine.name,
+      routineType: routine.object_type,
+      signature: routine.signature ?? routine.name,
+    },
+  });
+}
+
 export async function getTableSchema(
   profile: ConnectionProfile,
   table: string,
