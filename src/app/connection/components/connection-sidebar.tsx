@@ -8,11 +8,13 @@ import {
   RiGitBranchLine,
   RiLogoutBoxLine,
   RiRefreshLine,
+  RiSearchLine,
   RiTableLine,
 } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -42,6 +44,7 @@ import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
 import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 import { cn } from "@/lib/utils";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 
 type ConnectionSidebarProps = {
   profile: ConnectionProfile;
@@ -110,6 +113,12 @@ export function ConnectionSidebar({
     refetch: refetchSchema,
   } = useSchemaObjects(profile, selectedDatabase);
   const { data: connections = [] } = useConnections();
+  const [filterText, setFilterText] = useState("");
+  const [openGroups, setOpenGroups] = useState<string[]>(["tables"]);
+  const previousFilterRef = useRef("");
+  const openGroupsBeforeFilterRef = useRef<string[] | null>(null);
+  const deferredFilterText = useDeferredValue(filterText);
+  const normalizedFilter = deferredFilterText.trim().toLowerCase();
   const databases = Array.from(
     new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
   ).map((value) => ({ value, label: value }));
@@ -124,6 +133,37 @@ export function ConnectionSidebar({
     .sort((left, right) => (right.last_opened_at ?? 0) - (left.last_opened_at ?? 0));
   const recentConnections = sortedConnections.slice(0, 4);
   const otherConnections = sortedConnections.slice(4);
+  const availableExplorerGroups = explorerGroups.filter(
+    (group) =>
+      profile.db_type !== "sqlite" || group.objectType === "table" || group.objectType === "view",
+  );
+  const matchingGroupIds = availableExplorerGroups
+    .filter((group) =>
+      schemaObjects.some(
+        (object) =>
+          object.object_type === group.objectType &&
+          object.name.toLowerCase().includes(normalizedFilter),
+      ),
+    )
+    .map((group) => group.id);
+  const matchingGroupKey = matchingGroupIds.join("|");
+
+  useEffect(() => {
+    const wasFiltering = previousFilterRef.current.length > 0;
+
+    if (normalizedFilter && !wasFiltering) {
+      openGroupsBeforeFilterRef.current = openGroups;
+    }
+
+    if (normalizedFilter) {
+      setOpenGroups(matchingGroupIds);
+    } else if (wasFiltering && openGroupsBeforeFilterRef.current) {
+      setOpenGroups(openGroupsBeforeFilterRef.current);
+      openGroupsBeforeFilterRef.current = null;
+    }
+
+    previousFilterRef.current = normalizedFilter;
+  }, [matchingGroupKey, normalizedFilter]);
 
   const switchConnection = async (connectionId: string) => {
     await markConnectionOpened(connectionId);
@@ -196,17 +236,32 @@ export function ConnectionSidebar({
               <RiRefreshLine className={cn(isFetchingSchema && "animate-spin")} aria-hidden="true" />
             </Button>
           </div>
-          <Files defaultOpen={["tables"]} className="min-w-0 p-0">
-            {explorerGroups
-              .filter(
-                (group) =>
-                  profile.db_type !== "sqlite" ||
-                  group.objectType === "table" ||
-                  group.objectType === "view",
-              )
-              .map((group) => {
+          <div className="relative px-2 pb-2">
+            <RiSearchLine
+              className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              aria-label="Filter explorer"
+              value={filterText}
+              onChange={(event) => setFilterText(event.target.value)}
+              placeholder="Filter explorer..."
+              className="h-7 pl-8 text-xs"
+            />
+          </div>
+          {isLoadingSchema ? (
+            <p className="px-2 py-2 text-[0.65rem] text-muted-foreground">Loading...</p>
+          ) : schemaError ? (
+            <p className="px-2 py-2 text-[0.65rem] text-destructive">Unable to load objects</p>
+          ) : normalizedFilter && matchingGroupIds.length === 0 ? (
+            <p className="px-2 py-2 text-[0.65rem] text-muted-foreground">No matching objects</p>
+          ) : (
+            <Files open={openGroups} onOpenChange={setOpenGroups} className="min-w-0 p-0">
+              {availableExplorerGroups.map((group) => {
                 const objects = schemaObjects.filter(
-                  (object) => object.object_type === group.objectType,
+                  (object) =>
+                    object.object_type === group.objectType &&
+                    object.name.toLowerCase().includes(normalizedFilter),
                 );
 
                 return (
@@ -220,12 +275,10 @@ export function ConnectionSidebar({
                       </span>
                     </FolderTrigger>
                     <FolderContent>
-                      {isLoadingSchema ? (
-                        <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">Loading...</p>
-                      ) : schemaError ? (
-                        <p className="px-2 py-1 text-[0.65rem] text-destructive">Unable to load objects</p>
-                      ) : objects.length === 0 ? (
-                        <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">{group.emptyLabel}</p>
+                      {objects.length === 0 ? (
+                        <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">
+                          {normalizedFilter ? "No matching objects" : group.emptyLabel}
+                        </p>
                       ) : (
                         objects.map((object) => (
                           <FileItem
@@ -257,7 +310,8 @@ export function ConnectionSidebar({
                   </FolderItem>
                 );
               })}
-          </Files>
+            </Files>
+          )}
         </div>
       </ScrollArea>
       <div className="border-t border-border/70 p-3">
