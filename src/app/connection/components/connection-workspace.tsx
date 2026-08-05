@@ -96,7 +96,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     setActiveTabId(nextTab.id);
   };
 
-  const closeEditorTab = (tabId: string) => {
+  const closeEditorTab = (tabId: string, focusTabId?: string) => {
     const tabIndex = sqlTabs.findIndex((tab) => tab.id === tabId);
     if (tabIndex === -1) {
       return;
@@ -111,7 +111,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
         actionProps: {
           children: "Discard",
           className: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-          onClick: () => removeEditorTab(tabId),
+          onClick: () => removeEditorTab(tabId, focusTabId),
         },
         data: {
           cancel: {
@@ -123,10 +123,10 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       return;
     }
 
-    removeEditorTab(tabId);
+    removeEditorTab(tabId, focusTabId);
   };
 
-  const removeEditorTab = (tabId: string) => {
+  const removeEditorTab = (tabId: string, focusTabId?: string) => {
     const currentTabs = sqlTabsRef.current;
     const tabIndex = currentTabs.findIndex((tab) => tab.id === tabId);
     if (tabIndex === -1) {
@@ -141,7 +141,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       const nextActiveTab = nextTabs[Math.max(0, tabIndex - 1)];
       activeSqlTabIdRef.current = nextActiveTab?.id ?? "";
       setActiveSqlTabId(nextActiveTab?.id ?? "");
-      setActiveTabId(nextActiveTab?.id ?? "");
+      setActiveTabId(focusTabId ?? nextActiveTab?.id ?? "");
 
       if (!nextActiveTab) {
         editorSectionRef.current?.focus();
@@ -149,12 +149,21 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     }
   };
 
-  const closeTableTab = (tabId: string) => {
+  const closeTableTab = (tabId: string, focusTabId?: string) => {
     setTableTabs((tabs) => tabs.filter((tab) => tab.id !== tabId));
 
     if (activeTabId === tabId) {
-      setActiveTabId(activeSqlTabId);
+      setActiveTabId(focusTabId ?? activeSqlTabId);
     }
+  };
+
+  const getPreviousWorkspaceTabId = (tabId: string) => {
+    const currentIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
+    if (currentIndex === -1) {
+      return undefined;
+    }
+
+    return workspaceTabs[currentIndex - 1]?.id ?? workspaceTabs[currentIndex + 1]?.id;
   };
 
   const openTableTab = (table: string) => {
@@ -256,13 +265,13 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
 
     if (event.key.toLowerCase() === "w" && activeTabId.startsWith("table-")) {
       event.preventDefault();
-      closeTableTab(activeTabId);
+      closeTableTab(activeTabId, getPreviousWorkspaceTabId(activeTabId));
       return;
     }
 
     if (event.key.toLowerCase() === "w" && activeSqlTab) {
       event.preventDefault();
-      closeEditorTab(activeSqlTab.id);
+      closeEditorTab(activeSqlTab.id, getPreviousWorkspaceTabId(activeSqlTab.id));
     }
   };
 

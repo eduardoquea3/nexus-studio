@@ -66,10 +66,19 @@ mock.module("@uiw/react-codemirror", () => ({
 }));
 
 mock.module("@/app/connection/components/connection-sidebar", () => ({
-  ConnectionSidebar: ({ onDatabaseChange }: { onDatabaseChange: (database: string) => void }) => (
+  ConnectionSidebar: ({
+    onDatabaseChange,
+    onTableSelect,
+  }: {
+    onDatabaseChange: (database: string) => void;
+    onTableSelect: (table: string) => void;
+  }) => (
     <aside data-testid="connection-sidebar">
       <button type="button" onClick={() => onDatabaseChange("development")}>
         Select development
+      </button>
+      <button type="button" onClick={() => onTableSelect("company")}>
+        Open company
       </button>
     </aside>
   ),
@@ -364,6 +373,27 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("region", { name: "SQL editor workspace" }),
     );
+  });
+
+  test("focuses the previous workspace tab when closing with Ctrl+W", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+    fireEvent.keyDown(workspace, { key: "w", code: "KeyW", ctrlKey: true });
+
+    expect(screen.getByRole("textbox", { name: "Query 2 SQL query editor" })).not.toBeNull();
+    expect(screen.queryByRole("tab", { name: "company" })).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 2 SQL query editor" }), {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Query 2 SQL query editor" })).toBeNull();
   });
 
   test("switches editors with Ctrl+Tab while CodeMirror has focus", () => {
