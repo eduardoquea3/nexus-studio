@@ -25,7 +25,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
   useTableSchema: () => ({
     data: {
       columns: [
-        { name: "name", data_type: "varchar", enum_values: [], nullable: false, default: null, is_pk: false, is_fk: false, is_unique: false },
+        { name: "name", data_type: "varchar", enum_values: [], nullable: true, default: null, is_pk: true, is_fk: false, is_unique: false },
         { name: "active", data_type: "boolean", enum_values: [], nullable: false, default: null, is_pk: false, is_fk: false, is_unique: false },
         { name: "status", data_type: "USER-DEFINED", enum_values: ["draft", "published"], nullable: false, default: null, is_pk: false, is_fk: false, is_unique: false },
       ],
@@ -74,6 +74,25 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("0 rows")).not.toBeNull();
     expect(screen.getByText("Showing 0")).not.toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
+  });
+
+  test("renders labeled structure checkboxes and toggles nullable state", async () => {
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Structure" }));
+
+    const nullableCheckbox = await screen.findByRole("checkbox", { name: "Nullable name" });
+    const primaryKeyCheckbox = screen.getByRole("checkbox", { name: "Primary key name" });
+    const nameRow = screen.getByRole("row", { name: /name varchar/ });
+
+    expect(nullableCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(primaryKeyCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(nameRow.textContent).toContain("YES");
+
+    fireEvent.click(nullableCheckbox);
+
+    expect(nullableCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(nameRow.textContent).toContain("NO");
   });
 
   test("adds a local editable row from the data toolbar", () => {
