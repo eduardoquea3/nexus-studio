@@ -8,11 +8,13 @@ import { Input } from "@/shared/components/ui/input";
 interface FileFieldProps {
   label: string;
   placeholder: string;
+  value?: string;
   onPathChange?: (path: string) => void;
 }
 
-function FileField({ label, placeholder, onPathChange }: FileFieldProps) {
+function FileField({ label, placeholder, value, onPathChange }: FileFieldProps) {
   const [fileName, setFileName] = useState("");
+  const displayedFileName = value === undefined ? fileName : value.split(/[\\/]/).pop() ?? value;
 
   const handlePickFile = async () => {
     const path = await open({ multiple: false, directory: false });
@@ -27,7 +29,7 @@ function FileField({ label, placeholder, onPathChange }: FileFieldProps) {
   return (
     <Field label={label}>
       <Input
-        value={fileName}
+        value={displayedFileName}
         placeholder={placeholder}
         readOnly
         aria-label={`${label} path`}

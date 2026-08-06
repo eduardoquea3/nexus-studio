@@ -6,6 +6,7 @@ use sqlx::{
     Connection, Column, Row,
 };
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use tauri_plugin_store::Builder as StoreBuilder;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -344,6 +345,28 @@ async fn list_schema_objects(
                 .collect())
         }
         database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
+#[tauri::command]
+async fn create_sqlite_database(path: String) -> Result<(), String> {
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| format!("Could not create SQLite database at '{path}': {error}"))?;
+    drop(file);
+
+    let options = SqliteConnectOptions::new()
+        .filename(&path)
+        .create_if_missing(true);
+
+    match SqliteConnection::connect_with(&options).await {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(&path);
+            Err(format!("Could not create SQLite database at '{path}': {error}"))
+        }
     }
 }
 
@@ -843,6 +866,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             test_connection,
+            create_sqlite_database,
             list_databases,
             list_schema_objects,
             get_routine_definition,

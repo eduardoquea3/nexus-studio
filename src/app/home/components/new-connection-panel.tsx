@@ -1,5 +1,6 @@
 import { SVGProps, useEffect, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   RiDatabase2Fill,
   RiDatabase2Line,
@@ -33,6 +34,7 @@ import { getConnection } from "@/app/home/services/connection-service";
 import { HomePanels } from "../lib/home-panels";
 import {
   saveConnection,
+  createSqliteDatabase,
   testConnectionFields,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
@@ -89,6 +91,7 @@ export function NewConnectionPanel() {
   const [form, setForm] = useState(initialFormValues);
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [isTesting, setIsTesting] = useState(false);
+  const [isCreatingSqlite, setIsCreatingSqlite] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
   useEffect(() => {
@@ -150,6 +153,31 @@ export function NewConnectionPanel() {
     }
   };
 
+  const handleCreateSqliteDatabase = async () => {
+    setIsCreatingSqlite(true);
+    try {
+      const path = await save({
+        defaultPath: "database.sqlite",
+        filters: [{ name: "SQLite database", extensions: ["sqlite", "db"] }],
+      });
+      if (!path) {
+        return;
+      }
+
+      await createSqliteDatabase(path);
+      updateField("sqlitePath", path);
+      toast.add({
+        title: "SQLite database created",
+        type: "success",
+        description: path,
+      });
+    } catch (error) {
+      toast.add({ title: "Could not create SQLite database", type: "error", description: String(error) });
+    } finally {
+      setIsCreatingSqlite(false);
+    }
+  };
+
   const handleConnect = async () => {
     setIsTesting(true);
     try {
@@ -202,11 +230,22 @@ export function NewConnectionPanel() {
         </Field>
 
         {form.dbType === "sqlite" ? (
-          <FileField
-            label="File path"
-            placeholder="Select a SQLite database"
-            onPathChange={(path) => updateField("sqlitePath", path)}
-          />
+          <div className="grid gap-2">
+            <FileField
+              label="File path"
+              placeholder="Select a SQLite database"
+              value={form.sqlitePath}
+              onPathChange={(path) => updateField("sqlitePath", path)}
+            />
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => void handleCreateSqliteDatabase()}
+              disabled={isCreatingSqlite || isTesting || isLoadingProfile}
+            >
+              {isCreatingSqlite ? "Creating database..." : "Create new SQLite database"}
+            </Button>
+          </div>
         ) : (
           <DatabaseConnectionFields
             values={form}
@@ -234,11 +273,11 @@ export function NewConnectionPanel() {
           <Button
             variant="outline"
             onClick={() => void handleTest()}
-            disabled={isTesting || isLoadingProfile}
+            disabled={isTesting || isCreatingSqlite || isLoadingProfile}
           >
             Test
           </Button>
-          <Button onClick={() => void handleConnect()} disabled={isTesting || isLoadingProfile}>
+          <Button onClick={() => void handleConnect()} disabled={isTesting || isCreatingSqlite || isLoadingProfile}>
             {editingId ? "Save changes" : "Connect"}
           </Button>
         </div>

@@ -31,6 +31,10 @@ export async function testConnectionFields(request: ConnectionTestRequest): Prom
   return invoke("test_connection", { request });
 }
 
+export async function createSqliteDatabase(path: string): Promise<void> {
+  return invoke("create_sqlite_database", { path });
+}
+
 export async function testSavedConnection(profile: ConnectionProfile): Promise<string> {
   if (profile.connect_mode.type === "connection_string") {
     if (profile.db_type !== "sqlite") {
