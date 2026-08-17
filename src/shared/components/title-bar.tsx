@@ -1,9 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { RiCloseLine, RiMoonLine, RiSubtractLine, RiSunLine } from "@remixicon/react";
+import { useNavigate } from "@tanstack/react-router";
+import { RiCloseLine, RiMoonLine, RiSettings3Line, RiSubtractLine, RiSunLine } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
 import { useThemeStore } from "../store/theme-store";
 
 export function TitleBar() {
+  const navigate = useNavigate();
   const { theme, toggle } = useThemeStore();
 
   async function handleMinimize() {
@@ -23,10 +25,11 @@ export function TitleBar() {
 
   return (
     <header
-      data-tauri-drag-region
       className="flex h-10 select-none items-center justify-between border-b border-border bg-background px-3"
     >
-      <span className="text-sm font-medium text-muted-foreground">Nexus Studio</span>
+      <span data-tauri-drag-region className="flex h-full flex-1 items-center text-sm font-medium text-muted-foreground">
+        Nexus Studio
+      </span>
 
       <div className="flex items-center gap-2">
         <button
@@ -36,8 +39,18 @@ export function TitleBar() {
           }}
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label="Toggle theme"
+          title="Toggle theme"
         >
           {theme === "dark" ? <RiSunLine size={16} /> : <RiMoonLine size={16} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => void navigate({ to: "/settings" })}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Open settings"
+          title="Settings"
+        >
+          <RiSettings3Line size={16} />
         </button>
 
         <div className="flex items-center gap-1.5">

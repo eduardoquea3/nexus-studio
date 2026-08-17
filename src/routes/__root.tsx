@@ -12,7 +12,7 @@ function RootLayout() {
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <GlobalKeymaps />
       <TitleBar />
-      <main className="flex-1 overflow-auto">
+      <main className="min-h-0 flex-1 overflow-hidden">
         <Outlet />
       </main>
       <Toaster />
