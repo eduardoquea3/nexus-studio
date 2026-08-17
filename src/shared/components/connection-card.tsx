@@ -2,6 +2,7 @@ import { RiDeleteBinLine, RiLockLine, RiPencilLine, RiShieldLine } from "@remixi
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,9 @@ export type ConnectionItem = {
   engine: "postgresql" | "mysql" | "sqlite";
   sshEnabled: boolean;
   sslEnabled: boolean;
+  metadata: { label: string; value: string }[];
+  status: { label: string; tone: "neutral" | "success" | "warning" };
+  lastOpenedAt?: number;
 };
 
 type ConnectionCardProps = {
@@ -49,10 +53,25 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
 
   return (
     <Card
-      className="group relative cursor-pointer select-none overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${connection.name}`}
+      className="group relative min-h-44 cursor-pointer select-none overflow-hidden rounded-md border border-border/80 bg-surface transition-[border-color,background,transform] duration-200 hover:-translate-y-0.5 hover:border-foreground/30 hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onDoubleClick={() => void handleOpen()}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+
+        if (event.key === "Enter") {
+          void handleOpen();
+        } else if (event.key === " ") {
+          event.preventDefault();
+          void handleOpen();
+        }
+      }}
     >
-      <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary via-primary/70 to-primary/20" />
+      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary" />
 
       <CardHeader className="gap-4 px-4 py-4 pl-5">
         <div className="flex items-center justify-between gap-3">
@@ -61,8 +80,8 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
               <EngineIcon className="size-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="mb-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                Connection
+              <p className="font-label mb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {connection.engine}
               </p>
               <CardTitle className="truncate text-[15px] tracking-[-0.02em]">
                 {connection.name}
@@ -99,31 +118,60 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-wrap items-center gap-2 px-4 pb-4 pl-5">
-        <Badge
-          variant="secondary"
-          className="gap-1.5 rounded-lg border border-primary/15 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary"
-        >
-          {connection.engine}
-        </Badge>
-        {connection.sshEnabled ? (
+      <CardContent className="flex flex-col gap-3 px-4 pb-4 pl-5">
+        <div className="grid grid-cols-2 gap-3 border-t border-border/60 pt-3">
+          {connection.metadata.map((item) => (
+            <div key={item.label} className="min-w-0">
+              <p className="font-label text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                {item.label}
+              </p>
+              <p
+                className="mt-1 truncate font-mono text-xs text-secondary-foreground"
+                title={item.value}
+              >
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Badge
-            variant="outline"
-            className="gap-1.5 rounded-lg px-2.5 py-1 text-[10px] uppercase tracking-[0.1em]"
+            variant="secondary"
+            className="rounded-sm border border-primary/20 bg-primary/10 px-2 py-1 font-label text-[10px] font-semibold uppercase tracking-[0.08em] text-primary"
           >
-            <RiShieldLine size={13} aria-hidden="true" />
-            SSH
+            {connection.engine}
           </Badge>
-        ) : null}
-        {connection.sslEnabled ? (
-          <Badge
-            variant="outline"
-            className="gap-1.5 rounded-lg px-2.5 py-1 text-[10px] uppercase tracking-[0.1em]"
+          {connection.sshEnabled ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 rounded-sm px-2 py-1 text-[10px] uppercase tracking-[0.1em]"
+            >
+              <RiShieldLine size={13} aria-hidden="true" />
+              SSH
+            </Badge>
+          ) : null}
+          {connection.sslEnabled ? (
+            <Badge
+              variant="outline"
+              className="gap-1.5 rounded-sm px-2 py-1 text-[10px] uppercase tracking-[0.1em]"
+            >
+              <RiLockLine size={13} aria-hidden="true" />
+              SSL
+            </Badge>
+          ) : null}
+          <span
+            className={`ml-auto inline-flex items-center gap-1.5 text-[11px] ${
+              connection.status.tone === "success"
+                ? "text-success"
+                : connection.status.tone === "warning"
+                  ? "text-warning"
+                  : "text-muted-foreground"
+            }`}
           >
-            <RiLockLine size={13} aria-hidden="true" />
-            SSL
-          </Badge>
-        ) : null}
+            <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+            {connection.status.label}
+          </span>
+        </div>
       </CardContent>
     </Card>
   );
