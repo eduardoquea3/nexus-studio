@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { ConnectionWorkspace } from "@/app/connection/components/connection-workspace";
 import { useConnection } from "@/app/home/hooks/use-connections";
 import { WorkspaceMessage } from "@/app/connection/components/workspace-message";
+import { markConnectionOpened } from "@/app/home/services/connection-service";
 
 export const Route = createFileRoute("/connections/$connectionId")({
   component: ConnectionWorkspaceRoute,
@@ -11,6 +12,7 @@ export const Route = createFileRoute("/connections/$connectionId")({
 function ConnectionWorkspaceRoute() {
   const { connectionId } = Route.useParams();
   const { data: profile, isLoading } = useConnection(connectionId);
+  const navigate = useNavigate();
 
   if (isLoading) {
     return <WorkspaceMessage message="Loading connection workspace..." />;
@@ -25,5 +27,13 @@ function ConnectionWorkspaceRoute() {
     );
   }
 
-  return <ConnectionWorkspace profile={profile} />;
+  return (
+    <ConnectionWorkspace
+      profile={profile}
+      onConnectionSwitch={async (nextProfile) => {
+        await markConnectionOpened(nextProfile.id);
+        await navigate({ to: "/connections/$connectionId", params: { connectionId: nextProfile.id } });
+      }}
+    />
+  );
 }

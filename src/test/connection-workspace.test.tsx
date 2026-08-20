@@ -3,10 +3,11 @@ import "./setup";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { ConnectionProfile } from "@/shared/types/models";
+import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
+import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const invalidateQueries = mock(() => Promise.resolve());
-const runQuery = mock(async () => ({
+const runQuery = mock(async (): Promise<QueryResult> => ({
   columns: [],
   rows: [],
   affected: 0,
@@ -25,7 +26,9 @@ const getTableSchema = mock(async () => ({
   columns: [],
   indexes: [],
 }));
+const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
+const availableConnections: ConnectionProfile[] = [];
 
 mock.module("@uiw/react-codemirror", () => ({
   default: ({
@@ -137,7 +140,16 @@ mock.module("@/shared/lib/tauriApi", () => ({
   runQuery,
   saveConnection: mock(async () => undefined),
   testConnectionFields: mock(async () => "ok"),
-  testSavedConnection: mock(async () => "ok"),
+  testSavedConnection,
+}));
+
+mock.module("@/app/home/hooks/use-connections", () => ({
+  useConnections: () => ({ data: availableConnections }),
+}));
+
+mock.module("@/app/connection/hooks/use-schema-objects", () => ({
+  schemaObjectsQueryKey: (connectionId: string, database?: string) => ["schema", connectionId, database],
+  useSchemaObjects: () => ({ data: [], isLoading: false, isFetching: false }),
 }));
 
 mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
@@ -179,6 +191,18 @@ function renderWorkspace(connectionProfile: ConnectionProfile = profile) {
   );
 }
 
+function renderWorkspaceWithSwitch(onConnectionSwitch: (nextProfile: ConnectionProfile) => void | Promise<void>) {
+  const queryClient = new QueryClient();
+  Object.assign(queryClient, { invalidateQueries });
+  useWorkspaceStore.setState({ isHydrated: true });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ConnectionWorkspace profile={profile} onConnectionSwitch={onConnectionSwitch} />
+    </QueryClientProvider>,
+  );
+}
+
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -186,10 +210,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
     runQuery.mockClear();
     getRoutineDefinition.mockClear();
     addToast.mockClear();
+    testSavedConnection.mockReset();
+    testSavedConnection.mockResolvedValue("ok");
+    availableConnections.splice(0);
+    useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
   });
 
   afterEach(() => {
     cleanup();
+    useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
   });
 
   test("renders one editor and keeps one editor when tabs are added", () => {
@@ -228,6 +257,235 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     const resultsPane = screen.getByRole("region", { name: "SQL query results" });
     expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+  });
+
+  test("shows JSON only for tabular results and switches without rerunning", async () => {
+    runQuery.mockResolvedValueOnce({
+      columns: ["id", "name"],
+      rows: [{ id: 1, name: "Ada" }],
+      affected: 0,
+      duration_ms: 2,
+    });
+    renderWorkspace();
+    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), { target: { textContent: "select 1;" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"name": "Ada"');
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+  });
+
+  test("hides the previous result and JSON actions while a new query is running", async () => {
+    let resolveQuery: ((result: QueryResult) => void) | undefined;
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    runQuery.mockImplementationOnce(() => new Promise<QueryResult>((resolve) => {
+      resolveQuery = resolve;
+    }));
+    renderWorkspace();
+    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), { target: { textContent: "select 1;" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 1');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/running query/i)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+
+    await act(async () => {
+      resolveQuery?.({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
+  });
+
+  test("does not expose JSON for a zero-row SELECT with columns", async () => {
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [], affected: 0, duration_ms: 1 });
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("SQL result JSON").textContent).toBe("[]");
+  });
+
+  test("does not expose JSON controls for SQL errors", async () => {
+    runQuery.mockRejectedValueOnce(new Error("syntax error"));
+    renderWorkspace();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("syntax error")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /copy sql result json/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /export sql result json/i })).toBeNull();
+  });
+
+  test("exposes selected mode and supports keyboard activation", async () => {
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    renderWorkspace();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    const tableButton = screen.getByRole("button", { name: "Table" });
+    const jsonButton = screen.getByRole("button", { name: "JSON" });
+    expect(tableButton.getAttribute("aria-pressed")).toBe("true");
+    expect(jsonButton.getAttribute("aria-pressed")).toBe("false");
+    jsonButton.focus();
+    expect(document.activeElement).toBe(jsonButton);
+
+    fireEvent.keyDown(jsonButton, { key: "Enter" });
+
+    expect(jsonButton.getAttribute("aria-pressed")).toBe("true");
+    expect(tableButton.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  test("announces export success and sends the exact displayed payload", async () => {
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    const createObjectURL = mock((value: Blob) => {
+      void value;
+      return "blob:sql-result";
+    });
+    const revokeObjectURL = mock(() => undefined);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    const click = mock(() => undefined);
+    const originalCreateElement = document.createElement.bind(document);
+    document.createElement = ((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === "a") element.click = click;
+      return element;
+    }) as typeof document.createElement;
+
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+      await Promise.resolve();
+    });
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    if (!(blob instanceof Blob)) throw new Error("Expected an exported JSON Blob");
+    expect(await blob.text()).toBe('[\n  {\n    "id": 1\n  }\n]');
+    expect(screen.getByText("JSON export started.")).not.toBeNull();
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  test("announces an actual export failure without mutating database state", async () => {
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: mock(() => { throw new Error("blocked"); }) });
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  test("warns when a large loaded SQL page is displayed without fetching more rows", async () => {
+    const rows = Array.from({ length: 10_001 }, (_, id) => ({ id }));
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows, affected: 0, duration_ms: 1 });
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    expect(screen.getByText("Large result: showing only the loaded rows.")).not.toBeNull();
+    expect(runQuery).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps JSON mode isolated between SQL tabs", async () => {
+    runQuery
+      .mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 })
+      .mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 2 }], affected: 0, duration_ms: 1 });
+    renderWorkspace();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /Query 1/ }));
+
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 1');
+  });
+
+  test("announces clipboard failure and leaves the JSON view usable", async () => {
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: mock(() => Promise.reject(new Error("denied"))) } });
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy SQL result JSON" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Could not copy JSON.")).not.toBeNull();
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 1');
+  });
+
+  test("does not expose JSON actions for non-tabular results", async () => {
+    runQuery.mockResolvedValueOnce({ columns: [], rows: [], affected: 1, duration_ms: 2 });
+    renderWorkspace();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.getByText(/1 row\(s\) affected/i)).not.toBeNull();
   });
 
   test("switches the single editor to the selected tab", () => {
@@ -435,24 +693,170 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.queryByRole("textbox", { name: "Query 2 SQL query editor" })).toBeNull();
   });
 
-  test("switches editors with Ctrl+Tab while CodeMirror has focus", () => {
+  test("opens the tab switcher while CodeMirror has focus", () => {
     renderWorkspace();
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
     const secondEditor = screen.getByRole("textbox", { name: "Query 2 SQL query editor" });
     secondEditor.focus();
 
     fireEvent.keyDown(secondEditor, { key: "Tab", code: "Tab", ctrlKey: true });
-    expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Open tabs" })).not.toBeNull();
 
-    const firstEditor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
-    firstEditor.focus();
-    fireEvent.keyDown(firstEditor, {
+    fireEvent.keyDown(secondEditor, {
       key: "Tab",
       code: "Tab",
       ctrlKey: true,
       shiftKey: true,
     });
-    expect(screen.getByRole("textbox", { name: "Query 2 SQL query editor" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Open tabs" })).not.toBeNull();
+  });
+
+  test("repeats Ctrl+Tab cycling while the switcher input owns focus", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true });
+    const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true });
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("cycles backward with repeated Ctrl+Shift+Tab and confirms on Ctrl release", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
+    const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyUp(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Control", code: "ControlLeft", ctrlKey: false });
+    expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Query 3" }).getAttribute("data-state")).toBe("active");
+  });
+
+  test("does not carry tabs into a connection with no stored workspace", () => {
+    useWorkspaceStore.setState({ isHydrated: true });
+    const view = renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+    expect(screen.getByRole("tab", { name: "company" })).not.toBeNull();
+
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConnectionWorkspace profile={{ ...profile, id: "connection-2", name: "Analytics" }} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("tab", { name: "company" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Query 1" })).not.toBeNull();
+    expect(useWorkspaceStore.getState().connections["connection-2"]?.tabs.map((tab) => tab.connectionId)).toEqual([
+      "connection-2",
+    ]);
+  });
+
+  test("opens Ctrl+P globally, including from native inputs", () => {
+    renderWorkspace();
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+
+    fireEvent.keyDown(input, { key: "p", code: "KeyP", ctrlKey: true });
+    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search commands" }), { key: "Escape" });
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+    });
+    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
+  });
+
+  test("validates a selected connection before navigating and closes the palette", async () => {
+    const nextProfile = { ...profile, id: "connection-2", name: "Analytics" };
+    availableConnections.push(profile, nextProfile);
+    const onConnectionSwitch = mock(async () => undefined);
+    renderWorkspaceWithSwitch(onConnectionSwitch);
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(testSavedConnection).toHaveBeenCalledWith(nextProfile);
+    expect(onConnectionSwitch).toHaveBeenCalledWith(nextProfile);
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+
+  test("keeps the current context and shows details when connection validation fails", async () => {
+    const nextProfile = { ...profile, id: "connection-2", name: "Unavailable" };
+    availableConnections.push(profile, nextProfile);
+    testSavedConnection.mockRejectedValueOnce(new Error("ECONNREFUSED: port 5432"));
+    const onConnectionSwitch = mock(async () => undefined);
+    renderWorkspaceWithSwitch(onConnectionSwitch);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Unavailable/ }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onConnectionSwitch).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
+    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Unable to connect to Unavailable",
+      description: expect.stringContaining("ECONNREFUSED"),
+    }));
+    expect(useWorkspaceStore.getState().activeConnectionId).toBe("connection-1");
+  });
+
+  test("does not start concurrent validation attempts for one connection", async () => {
+    const nextProfile = { ...profile, id: "connection-2", name: "Slow connection" };
+    availableConnections.push(profile, nextProfile);
+    let resolveValidation: (value: string) => void = () => undefined;
+    testSavedConnection.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveValidation = resolve;
+    }));
+    renderWorkspaceWithSwitch(async () => undefined);
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+    });
+    const connectionButton = screen.getByRole("button", { name: /Slow connection/ });
+    fireEvent.click(connectionButton);
+    fireEvent.click(connectionButton);
+
+    expect(testSavedConnection).toHaveBeenCalledTimes(1);
+    resolveValidation("ok");
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   test("creates another editor when Ctrl+T is pressed on the focused empty section", () => {

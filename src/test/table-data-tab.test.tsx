@@ -1,7 +1,9 @@
 import "./setup";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { ReactNode } from "react";
 import type { DataPage } from "@/shared/types/models";
+import { serializeJson } from "@/shared/lib/json-serialization";
 
 const emptyTableData: DataPage = {
   columns: [],
@@ -11,13 +13,16 @@ const emptyTableData: DataPage = {
   page_size: 100,
 };
 let currentTableData = emptyTableData;
+let tableLoading = false;
+let tableError: Error | null = null;
+const refetchTable = mock(() => Promise.resolve());
 
 mock.module("@/app/connection/hooks/use-table-data", () => ({
   useTableData: () => ({
     data: currentTableData,
-    error: null,
-    isLoading: false,
-    refetch: mock(() => Promise.resolve()),
+    error: tableError,
+    isLoading: tableLoading,
+    refetch: refetchTable,
   }),
 }));
 
@@ -37,8 +42,35 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
   }),
 }));
 
+mock.module("@/shared/components/json-code-panel", () => ({
+  JsonCodePanel: ({
+    ariaLabel,
+    text,
+    meta,
+    actions,
+    largeMessage,
+  }: {
+    ariaLabel: string;
+    text: string;
+    meta?: string;
+    actions?: ReactNode;
+    largeMessage?: string;
+  }) => (
+    <div aria-label={ariaLabel}>
+      {meta ? <span>{meta}</span> : null}
+      {largeMessage ? null : <pre>{text}</pre>}
+      {actions}
+      {largeMessage ? <p>{largeMessage}</p> : null}
+    </div>
+  ),
+}));
+
 const { TableDataTab } = await import("../app/connection/components/table-data-tab");
-const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const originalClipboard = navigator.clipboard;
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+const originalCreateElement = document.createElement;
 
 const profile = {
   id: "connection-1",
@@ -55,6 +87,13 @@ describe("TableDataTab empty rows", () => {
   afterEach(() => {
     cleanup();
     currentTableData = emptyTableData;
+    tableLoading = false;
+    tableError = null;
+    refetchTable.mockClear();
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+    document.createElement = originalCreateElement;
   });
 
   test("shows table headers even when there are no rows", () => {
@@ -73,6 +112,7 @@ describe("TableDataTab empty rows", () => {
     expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByText("0 rows")).not.toBeNull();
     expect(screen.getByText("Showing 0")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
   });
 
@@ -132,5 +172,231 @@ describe("TableDataTab empty rows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
 
     expect(screen.getByRole("cell", { name: "3" })).not.toBeNull();
+  });
+
+  test("does not show JSON actions while loading or after a data error", () => {
+    tableLoading = true;
+    render(<TableDataTab profile={profile} table="auth" />);
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    cleanup();
+
+    tableLoading = false;
+    tableError = new Error("connection lost");
+    render(<TableDataTab profile={profile} table="auth" />);
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.getByText("Could not load data for auth.")).not.toBeNull();
+  });
+
+  test("switching to JSON does not refetch the loaded page", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(refetchTable).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Table data JSON").textContent).toContain('"id": 1');
+  });
+
+  test("copies the exact displayed payload and announces success", async () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    const writeText = mock(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    const expected = serializeJson(currentTableData.columns, currentTableData.rows, {
+      page: currentTableData.page,
+      pageSize: currentTableData.page_size,
+    }).text;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy table data JSON" }));
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith(expected);
+    expect(screen.getByText("JSON copied to clipboard.")).not.toBeNull();
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+  });
+
+  test("announces clipboard failure and leaves the JSON view usable", async () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mock(() => Promise.reject(new Error("denied"))) },
+    });
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy table data JSON" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Could not copy JSON.")).not.toBeNull();
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+  });
+
+  test("exports the exact displayed payload and announces success", async () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    const createObjectURL = mock((value: Blob) => {
+      void value;
+      return "blob:table-data";
+    });
+    const revokeObjectURL = mock(() => undefined);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    const click = mock(() => undefined);
+    const originalCreateElement = document.createElement.bind(document);
+    document.createElement = ((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === "a") element.click = click;
+      return element;
+    }) as typeof document.createElement;
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const expected = serializeJson(currentTableData.columns, currentTableData.rows, {
+      page: currentTableData.page,
+      pageSize: currentTableData.page_size,
+    }).text;
+
+    fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    if (!(blob instanceof Blob)) throw new Error("Expected an exported JSON Blob");
+    expect(await blob.text()).toBe(expected);
+    expect(screen.getByText("JSON export started.")).not.toBeNull();
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+  });
+
+  test("announces export failure and leaves the JSON view usable", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: mock(() => { throw new Error("blocked"); }),
+    });
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
+
+    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+  });
+
+  test("announces export cancellation and leaves the JSON view usable", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    render(
+      <TableDataTab
+        profile={profile}
+        table="auth"
+        exportJson={() => "cancelled"}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
+
+    expect(screen.getByText("JSON export cancelled.")).not.toBeNull();
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+  });
+
+  test("shows an explicit loading state while the page is loading", () => {
+    tableLoading = true;
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    expect(screen.getByRole("status")).not.toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/loading/i);
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+  });
+
+  test("exposes selected Table/JSON state and supports keyboard activation", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const tableButton = screen.getByRole("button", { name: "Table" });
+    const jsonButton = screen.getByRole("button", { name: "JSON" });
+    expect(tableButton.getAttribute("aria-pressed")).toBe("true");
+    expect(jsonButton.getAttribute("aria-pressed")).toBe("false");
+    jsonButton.focus();
+    expect(document.activeElement).toBe(jsonButton);
+    fireEvent.keyDown(jsonButton, { key: "Enter" });
+
+    expect(jsonButton.getAttribute("aria-pressed")).toBe("true");
+    expect(tableButton.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  test("warns for a large loaded page without requesting another page", () => {
+    const rows = Array.from({ length: 10_001 }, (_, id) => ({ id }));
+    currentTableData = {
+      columns: ["id"], rows, total: 20_000, page: 2, page_size: 10_001,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    expect(screen.getByText("Large page: only loaded rows are shown.")).not.toBeNull();
+    expect(refetchTable).not.toHaveBeenCalled();
+  }, 15_000);
+
+  test("keeps Data JSON mode isolated from Structure and preserves it when returning", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Structure" }));
+    expect(screen.queryByLabelText("Table data JSON")).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Data" }));
+
+    expect(screen.getByLabelText("Table data JSON").textContent).toContain('"id": 1');
+  });
+
+  test("shows JSON for the loaded page and excludes a local draft row", () => {
+    currentTableData = {
+      columns: ["name", "active", "status"],
+      rows: [{ name: "first", active: true, status: "draft" }],
+      total: 4,
+      page: 2,
+      page_size: 1,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    expect(screen.getByLabelText("Table data JSON").textContent).toContain('"first"');
+    expect(screen.getByLabelText("Table data JSON").textContent).not.toContain("Draft row");
+    expect(screen.getByText("Page 2 · 1 loaded")).not.toBeNull();
+  });
+
+  test("resets JSON mode when the selected table changes", () => {
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+    };
+    const view = render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
+
+    currentTableData = {
+      columns: ["id"], rows: [{ id: 2 }], total: 1, page: 1, page_size: 100,
+    };
+    view.rerender(<TableDataTab profile={profile} table="users" />);
+
+    expect(screen.queryByLabelText("Table data JSON")).toBeNull();
+    expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Table" }).getAttribute("aria-pressed")).toBe("true");
   });
 });

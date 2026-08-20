@@ -1,14 +1,15 @@
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 
 import { sql } from "@codemirror/lang-sql";
-import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiPlayLine, RiTableLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiDownloadLine, RiFileCopyLine, RiPlayLine, RiTableLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 
-import type { ConnectionProfile, ObjectMeta, QueryResult } from "@/shared/types/models";
+import type { ConnectionProfile, ObjectMeta, QueryResult, ViewMode } from "@/shared/types/models";
+import type { DataTableTab, QueryTab, WorkspaceTab } from "@/shared/types/connection-workspace";
 
 import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
 import { TableDataTab } from "@/app/connection/components/table-data-tab";
@@ -20,38 +21,311 @@ import {
 } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/shared/components/data-table";
+import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import { cn } from "@/lib/utils";
 import { useDataTable } from "@/shared/hooks/use-data-table";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 import { getRoutineDefinition, runQuery } from "@/shared/lib/tauriApi";
+import { testSavedConnection } from "@/shared/lib/tauriApi";
+import { exceedsJsonRenderThreshold, serializeJson } from "@/shared/lib/json-serialization";
+import { copyJsonToClipboard, exportJsonFile } from "@/shared/lib/json-actions";
 import { databasesQueryKey } from "@/app/connection/hooks/use-databases";
 import { schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
+import { useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
+import { useConnections } from "@/app/home/hooks/use-connections";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
+import { useWorkspaceStore } from "@/shared/store/workspace-store";
+import { CommandBar } from "@/app/command-bar/command-bar";
+import {
+  describeConnection,
+  describeTab,
+  nextTabIndex,
+  type CommandBarItem,
+  type CommandBarMode,
+  updateTabHistory,
+} from "@/app/command-bar/command-bar-utils";
 
 type ConnectionWorkspaceProps = {
   profile: ConnectionProfile;
+  onConnectionSwitch?: (profile: ConnectionProfile) => void | Promise<void>;
 };
 
-export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
+export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionWorkspaceProps) {
   const queryClient = useQueryClient();
+  const storedWorkspace = useWorkspaceStore((state) => state.connections[profile.id]);
+  const workspaceHydrated = useWorkspaceStore((state) => state.isHydrated);
+  const setConnectionWorkspace = useWorkspaceStore((state) => state.setConnectionWorkspace);
+  const setActiveConnection = useWorkspaceStore((state) => state.setActiveConnection);
+  const openWorkspaceTab = useWorkspaceStore((state) => state.openTab);
+  const activateWorkspaceTab = useWorkspaceStore((state) => state.activateTab);
+  const {
+    data: connections = [],
+    isLoading: isLoadingConnections,
+    isFetching: isFetchingConnections,
+  } = useConnections();
   const [selectedDatabase, setSelectedDatabase] = useState(() => getInitialDatabase(profile));
-  const [sqlTabs, setSqlTabs] = useState<SqlEditorTab[]>([createSqlTab(1)]);
+  const [sqlTabs, setSqlTabs] = useState<SqlEditorTab[]>([
+    createSqlTab(1, profile.id, getInitialDatabase(profile)),
+  ]);
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const [activeTabId, setActiveTabId] = useState("sql-1");
   const [isRunning, setIsRunning] = useState(false);
+  const [tableRefreshToken, setTableRefreshToken] = useState(0);
+  const [commandBarMode, setCommandBarMode] = useState<CommandBarMode | null>(null);
+  const [switcherCycle, setSwitcherCycle] = useState<{ sequence: number; direction: -1 | 1 } | undefined>();
+  const [switcherInitialDirection, setSwitcherInitialDirection] = useState<-1 | 1>(1);
+  const [switchingConnectionIds, setSwitchingConnectionIds] = useState<ReadonlySet<string>>(new Set());
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const previewOriginTabIdRef = useRef<string | null>(null);
+  const switcherCycleRef = useRef(0);
+  const selectedSwitcherTabIdRef = useRef<string | null>(null);
+  const switchingConnectionIdsRef = useRef(new Set<string>());
+  const {
+    data: schemaObjects = [],
+    isLoading: isLoadingSchema,
+    isFetching: isFetchingSchema,
+  } = useSchemaObjects(profile, selectedDatabase);
   const editorSectionRef = useRef<HTMLElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const initializedEditorIdsRef = useRef(new Set<string>());
   const loadingRoutineIdsRef = useRef(new Set<string>());
+  const restoringWorkspaceRef = useRef(false);
+  const initializedWorkspaceConnectionIdRef = useRef<string | null>(null);
   const sqlTabsRef = useRef(sqlTabs);
   const activeSqlTabIdRef = useRef(activeSqlTabId);
+  const tabHistoryRef = useRef<string[]>([]);
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) ?? sqlTabs[0];
   const activeTableTab = tableTabs.find((tab) => tab.id === activeTabId);
   const workspaceTabs = [
     ...sqlTabs.map((tab) => ({ ...tab, type: "sql" as const })),
     ...tableTabs.map((tab) => ({ ...tab, type: "table" as const })),
   ];
+  const switcherTabsRef = useRef<typeof workspaceTabs>([]);
+  const orderedWorkspaceTabs = [
+    ...tabHistoryRef.current
+      .map((tabId) => workspaceTabs.find((tab) => tab.id === tabId))
+      .filter((tab): tab is (typeof workspaceTabs)[number] => Boolean(tab)),
+    ...workspaceTabs.filter((tab) => !tabHistoryRef.current.includes(tab.id)),
+  ];
+  const commandBarTabs = commandBarMode === "tab-switcher" ? switcherTabsRef.current : orderedWorkspaceTabs;
+  const commandBarItems = useMemo<CommandBarItem[]>(
+    () =>
+      commandBarMode === "tab-switcher"
+         ? commandBarTabs.map((tab) => {
+            const workspaceTab: QueryTab | DataTableTab = tab.type === "sql"
+              ? { ...tab, type: "query" }
+              : { ...tab, type: "datatable" };
+            const description = describeTab(workspaceTab);
+            return {
+              id: workspaceTab.id,
+              kind: "tab",
+              label: description.label,
+              detail: description.detail,
+              isActive: workspaceTab.id === activeTabId,
+              tab: workspaceTab,
+            };
+          })
+        : [
+            ...connections.map((connection) => ({
+              id: `connection:${connection.id}`,
+              kind: "connection" as const,
+              label: connection.name,
+              detail: describeConnection(connection),
+              isActive: connection.id === profile.id,
+              connection,
+            })),
+             ...schemaObjects
+              .filter((object) => object.object_type === "table")
+              .map((table) => ({
+                id: `table:${profile.id}:${selectedDatabase}:${table.schema ?? ""}:${table.name}`,
+                kind: "table" as const,
+                label: table.name,
+                detail: `${table.schema ?? "public"} · ${selectedDatabase} · table`,
+                isActive: false as const,
+               table,
+             })),
+            ...workspaceTabs.map((tab) => {
+              const workspaceTab: QueryTab | DataTableTab = tab.type === "sql"
+                ? { ...tab, type: "query" }
+                : { ...tab, type: "datatable" };
+              const description = describeTab(workspaceTab);
+              return {
+                id: workspaceTab.id,
+                kind: "tab" as const,
+                label: description.label,
+                detail: description.detail,
+                isActive: workspaceTab.id === activeTabId,
+                tab: workspaceTab,
+              };
+            }),
+          ],
+    [activeTabId, commandBarMode, commandBarTabs, connections, profile.id, schemaObjects, selectedDatabase, workspaceTabs, orderedWorkspaceTabs],
+  );
+
+  useEffect(() => {
+    if (!activeTabId || commandBarMode === "tab-switcher") {
+      return;
+    }
+
+    tabHistoryRef.current = updateTabHistory(
+      tabHistoryRef.current,
+      workspaceTabs.map((tab) => tab.id),
+      activeTabId,
+    );
+  }, [activeTabId, commandBarMode, workspaceTabs]);
+
+  const closeCommandBar = (commitPreview = false) => {
+    if (
+      commandBarMode === "tab-switcher" &&
+      !commitPreview &&
+      previewOriginTabIdRef.current &&
+      previewOriginTabIdRef.current !== activeTabId
+    ) {
+      const originTabId = previewOriginTabIdRef.current;
+      activateWorkspaceTab(profile.id, originTabId);
+      setActiveTabId(originTabId);
+      const originTab = workspaceTabs.find((tab) => tab.id === originTabId);
+      if (originTab?.type === "sql") {
+        setActiveSqlTabId(originTab.id);
+      }
+    }
+
+    setCommandBarMode(null);
+    setSwitcherCycle(undefined);
+    previewOriginTabIdRef.current = null;
+    requestAnimationFrame(() => {
+      if (restoreFocusRef.current?.isConnected) {
+        restoreFocusRef.current.focus();
+      } else {
+        editorSectionRef.current?.focus();
+      }
+    });
+  };
+
+  const openCommandBar = (mode: CommandBarMode, direction: -1 | 1 = 1) => {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setCommandBarMode(mode);
+    if (mode === "tab-switcher") {
+      previewOriginTabIdRef.current = activeTabId;
+      switcherTabsRef.current = orderedWorkspaceTabs;
+      selectedSwitcherTabIdRef.current = null;
+      setSwitcherInitialDirection(direction);
+      setSwitcherCycle(undefined);
+    }
+  };
+
+  const switchConnection = async (nextProfile: ConnectionProfile) => {
+    if (switchingConnectionIdsRef.current.has(nextProfile.id)) {
+      return;
+    }
+
+    switchingConnectionIdsRef.current.add(nextProfile.id);
+    setSwitchingConnectionIds((current) => new Set(current).add(nextProfile.id));
+    try {
+      await testSavedConnection(nextProfile);
+      setConnectionWorkspace({
+        connectionId: profile.id,
+        activeTabId: activeTabId || null,
+        tabs: [...sqlTabsRef.current, ...tableTabs],
+      });
+      await onConnectionSwitch?.(nextProfile);
+      closeCommandBar();
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      toast.add({
+        title: `Unable to connect to ${nextProfile.name}`,
+        description: detail ? `The connection was not changed. Details: ${detail}` : "The connection was not changed.",
+      });
+    } finally {
+      switchingConnectionIdsRef.current.delete(nextProfile.id);
+      setSwitchingConnectionIds((current) => {
+        const next = new Set(current);
+        next.delete(nextProfile.id);
+        return next;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const isCodeMirror = Boolean(target.closest(".cm-editor, .cm-content"))
+        || target.getAttribute("aria-label")?.endsWith("SQL query editor") === true;
+      return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+        || (!isCodeMirror && target.isContentEditable)
+        || (!isCodeMirror && Boolean(target.closest("[contenteditable='true']")));
+    };
+
+    const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
+      const hasModifier = event.ctrlKey || event.metaKey;
+      if (!hasModifier || event.altKey) {
+        return;
+      }
+
+      if (commandBarMode === "palette") {
+        return;
+      }
+
+      if (event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        event.stopPropagation();
+        openCommandBar("palette");
+        return;
+      }
+
+      if (event.key === "Tab") {
+        if (workspaceTabs.length === 0) {
+          return;
+        }
+        const isTabSwitcherOpen = commandBarMode === "tab-switcher";
+        if (!isTabSwitcherOpen && isEditableTarget(event.target)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (!isTabSwitcherOpen) {
+          openCommandBar("tab-switcher", event.shiftKey ? -1 : 1);
+        } else {
+          const direction = event.shiftKey ? -1 : 1;
+          switcherCycleRef.current += 1;
+          setSwitcherCycle({ sequence: switcherCycleRef.current, direction });
+        }
+        return;
+      }
+
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+    };
+
+    const handleGlobalKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (commandBarMode === "tab-switcher" && (event.key === "Control" || event.key === "Meta")) {
+        event.preventDefault();
+        const selectedTabId = selectedSwitcherTabIdRef.current;
+        const selectedTab = commandBarItems.find(
+          (item): item is Extract<CommandBarItem, { kind: "tab" }> => item.kind === "tab" && item.id === selectedTabId,
+        );
+        if (selectedTab) {
+          activateWorkspaceTab(profile.id, selectedTab.id);
+          setActiveTabId(selectedTab.id);
+          if (selectedTab.tab.type === "query") {
+            setActiveSqlTabId(selectedTab.id);
+          }
+        }
+        closeCommandBar(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    window.addEventListener("keyup", handleGlobalKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown, true);
+      window.removeEventListener("keyup", handleGlobalKeyUp, true);
+    };
+  }, [activateWorkspaceTab, commandBarItems, commandBarMode, profile.id, workspaceTabs.length]);
 
   const focusEditor = (view: EditorView, tabId: string) => {
     view.focus();
@@ -75,6 +349,79 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
   }, [profile]);
 
   useEffect(() => {
+    if (
+      !workspaceHydrated ||
+      restoringWorkspaceRef.current ||
+      initializedWorkspaceConnectionIdRef.current === profile.id
+    ) {
+      return;
+    }
+
+    initializedWorkspaceConnectionIdRef.current = profile.id;
+    restoringWorkspaceRef.current = true;
+    setActiveConnection(profile.id);
+    if (storedWorkspace) {
+      const restoredSqlTabs = storedWorkspace.tabs.flatMap((tab): SqlEditorTab[] => {
+        if (tab.type === "query") {
+          return [tab];
+        }
+        if (tab.type === "routine") {
+          return [
+            {
+              id: tab.id,
+              type: "query",
+              connectionId: tab.connectionId,
+              database: tab.database,
+              title: tab.title,
+              query: tab.query,
+              isDirty: tab.isDirty,
+              queryResult: null,
+              queryError: null,
+              viewMode: "table",
+            },
+          ];
+        }
+        return [];
+      });
+      const restoredTableTabs = storedWorkspace.tabs.filter(
+        (tab): tab is TableTab => tab.type === "datatable",
+      );
+      const activeTab = storedWorkspace.tabs.find((tab) => tab.id === storedWorkspace.activeTabId);
+      setSqlTabs(restoredSqlTabs);
+      sqlTabsRef.current = restoredSqlTabs;
+      setTableTabs(restoredTableTabs);
+      setActiveTabId(storedWorkspace.activeTabId ?? restoredSqlTabs[0]?.id ?? "");
+      const activeSqlTab = activeTab?.type === "query" ? activeTab : restoredSqlTabs[0];
+      setActiveSqlTabId(activeSqlTab?.id ?? "");
+      setSelectedDatabase(activeSqlTab?.database ?? activeTab?.database ?? getInitialDatabase(profile));
+    } else {
+      const initialTab = createSqlTab(1, profile.id, getInitialDatabase(profile));
+      setSqlTabs([initialTab]);
+      sqlTabsRef.current = [initialTab];
+      setTableTabs([]);
+      setActiveTabId(initialTab.id);
+      setActiveSqlTabId(initialTab.id);
+      setSelectedDatabase(initialTab.database);
+      setConnectionWorkspace({ connectionId: profile.id, activeTabId: initialTab.id, tabs: [initialTab] });
+    }
+  }, [profile, setActiveConnection, setConnectionWorkspace, sqlTabs, storedWorkspace, workspaceHydrated]);
+
+  useEffect(() => {
+    if (!workspaceHydrated) {
+      return;
+    }
+    if (restoringWorkspaceRef.current) {
+      restoringWorkspaceRef.current = false;
+      return;
+    }
+    setConnectionWorkspace({
+      connectionId: profile.id,
+      activeTabId: activeTabId || null,
+      tabs: [...sqlTabs, ...tableTabs],
+    });
+  }, [activeTabId, profile.id, setConnectionWorkspace, sqlTabs, tableTabs, workspaceHydrated]);
+
+  useEffect(() => {
     sqlTabsRef.current = sqlTabs;
   }, [sqlTabs]);
 
@@ -82,13 +429,33 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     activeSqlTabIdRef.current = activeSqlTabId;
   }, [activeSqlTabId]);
 
+  useEffect(() => {
+    const handleRefreshShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "r" ||
+        (!event.ctrlKey && !event.metaKey) ||
+        event.altKey ||
+        !activeTabId.startsWith("table-")
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setTableRefreshToken((token) => token + 1);
+    };
+
+    window.addEventListener("keydown", handleRefreshShortcut, true);
+    return () => window.removeEventListener("keydown", handleRefreshShortcut, true);
+  }, [activeTabId]);
+
   const createEditorTab = () => {
     const nextNumber =
       sqlTabsRef.current.reduce((highest, tab) => {
         const number = Number(tab.id.replace("sql-", ""));
         return Number.isNaN(number) ? highest : Math.max(highest, number);
       }, 0) + 1;
-    const nextTab = createSqlTab(nextNumber);
+    const nextTab = createSqlTab(nextNumber, profile.id, selectedDatabase);
     const nextTabs = [...sqlTabsRef.current, nextTab];
     sqlTabsRef.current = nextTabs;
     setSqlTabs(nextTabs);
@@ -167,14 +534,34 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     return workspaceTabs[currentIndex - 1]?.id ?? workspaceTabs[currentIndex + 1]?.id;
   };
 
-  const openTableTab = (table: string) => {
-    const id = `table-${encodeURIComponent(selectedDatabase)}-${encodeURIComponent(table)}`;
-    setTableTabs((tabs) =>
-      tabs.some((tab) => tab.id === id)
-        ? tabs
-        : [...tabs, { id, table, database: selectedDatabase }],
+  const openTableTab = (table: string, schema?: string) => {
+    const id = `table-${encodeURIComponent(selectedDatabase)}-${encodeURIComponent(schema ?? "")}-${encodeURIComponent(table)}`;
+    const nextTab: DataTableTab = {
+      id,
+      type: "datatable",
+      connectionId: profile.id,
+      tableName: table,
+      database: selectedDatabase,
+      schema,
+    };
+    openWorkspaceTab(nextTab);
+    const storedTab = useWorkspaceStore.getState().connections[profile.id]?.tabs.find(
+      (tab): tab is DataTableTab =>
+        tab.type === "datatable" &&
+        tab.database === selectedDatabase &&
+        tab.schema === schema &&
+        tab.tableName === table,
     );
-    setActiveTabId(id);
+    const activeTable = storedTab ?? nextTab;
+    setTableTabs((tabs) => tabs.some((tab) => tab.id === activeTable.id) ? tabs : [...tabs, activeTable]);
+    setActiveTabId(activeTable.id);
+  };
+
+  const handleDatabaseChange = (database: string) => {
+    setSelectedDatabase(database);
+    const nextTabs = sqlTabsRef.current.map((tab) => ({ ...tab, database }));
+    sqlTabsRef.current = nextTabs;
+    setSqlTabs(nextTabs);
   };
 
   const openRoutineTab = async (routine: ObjectMeta) => {
@@ -198,11 +585,15 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
             ...sqlTabsRef.current,
             {
               id,
+              type: "query" as const,
+              connectionId: profile.id,
+              database: selectedDatabase,
               title: routine.name,
               query: definition,
               isDirty: false,
               queryResult: null,
               queryError: null,
+              viewMode: "table" as const,
             },
           ];
       sqlTabsRef.current = nextTabs;
@@ -242,7 +633,9 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
 
     setIsRunning(true);
     setSqlTabs((tabs) =>
-      tabs.map((tab) => (tab.id === activeSqlTab.id ? { ...tab, queryError: null } : tab)),
+      tabs.map((tab) =>
+        tab.id === activeSqlTab.id ? { ...tab, queryResult: null, queryError: null, viewMode: "table" } : tab,
+      ),
     );
     try {
       const result = await runQuery(withDatabase(profile, selectedDatabase), query);
@@ -275,22 +668,6 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
       return;
     }
 
-    if (event.key === "Tab") {
-      if (workspaceTabs.length === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      const currentIndex = workspaceTabs.findIndex((tab) => tab.id === activeTabId);
-      const direction = event.shiftKey ? -1 : 1;
-      const nextIndex = (currentIndex + direction + workspaceTabs.length) % workspaceTabs.length;
-      setActiveTabId(workspaceTabs[nextIndex].id);
-      if (workspaceTabs[nextIndex].type === "sql") {
-        setActiveSqlTabId(workspaceTabs[nextIndex].id);
-      }
-      return;
-    }
-
     if (event.shiftKey) {
       return;
     }
@@ -319,25 +696,83 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
     }
   };
 
+  const tabItems: WorkspaceTab[] = (commandBarMode === "tab-switcher" ? switcherTabsRef.current : orderedWorkspaceTabs).map((tab) =>
+      tab.type === "sql" ? { ...tab, type: "query" } : { ...tab, type: "datatable" },
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+    <div className="relative flex h-full min-h-0 flex-col bg-background text-foreground">
+      {commandBarMode ? (
+        <CommandBar
+          mode={commandBarMode}
+          items={commandBarItems}
+          initialIndex={commandBarMode === "tab-switcher" ? nextTabIndex(tabItems, activeTabId, switcherInitialDirection) : 0}
+          cycleRequest={commandBarMode === "tab-switcher" ? switcherCycle : undefined}
+           onHighlightChange={(item) => {
+             if (commandBarMode === "tab-switcher") {
+               if (item?.kind !== "tab") {
+                 selectedSwitcherTabIdRef.current = null;
+                 return;
+                }
+
+                selectedSwitcherTabIdRef.current = item.tab.id;
+                if (item.tab.id === activeTabId) {
+                  return;
+                }
+
+                activateWorkspaceTab(profile.id, item.tab.id);
+                setActiveTabId(item.tab.id);
+               if (item.tab.type === "query") {
+                 setActiveSqlTabId(item.tab.id);
+               }
+             }
+           }}
+          onClose={closeCommandBar}
+          inline
+          onSelect={(item) => {
+            if (item.kind === "tab") {
+              activateWorkspaceTab(profile.id, item.tab.id);
+              setActiveTabId(item.tab.id);
+              if (item.tab.type === "query") {
+                setActiveSqlTabId(item.tab.id);
+              }
+               closeCommandBar(true);
+              return;
+            }
+            if (item.kind === "table") {
+              openTableTab(item.table.name, item.table.schema);
+              closeCommandBar();
+              return;
+            }
+          }}
+          onConnectionSelect={(connection) => void switchConnection(connection)}
+          groups={commandBarMode === "palette" ? ["connections", "tables", "tabs"] : ["tabs"]}
+          isLoading={commandBarMode === "palette" && (
+            switchingConnectionIds.size > 0 ||
+            isLoadingConnections ||
+            isFetchingConnections ||
+            isLoadingSchema ||
+            isFetchingSchema
+          )}
+        />
+      ) : null}
       <div className="flex min-h-0 flex-1">
         <ConnectionSidebar
           profile={profile}
           selectedDatabase={selectedDatabase}
-          onDatabaseChange={setSelectedDatabase}
+          onDatabaseChange={handleDatabaseChange}
           onTableSelect={openTableTab}
           onRoutineSelect={(routine) => void openRoutineTab(routine)}
         />
 
         <main className="min-w-0 flex-1">
-          <div className="flex h-full min-h-0 flex-col p-4">
+          <div className="flex h-full min-h-0 flex-col">
             <section
               ref={editorSectionRef}
               tabIndex={0}
               aria-label="SQL editor workspace"
               onKeyDownCapture={handleWorkspaceKeyDown}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex h-full min-h-0 flex-col overflow-hidden border border-border/70 bg-card shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Tabs
                 value={activeTabId}
@@ -375,7 +810,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                             ) : (
                               <RiTableLine className="size-3.5 text-primary" />
                             )}
-                            <span className="truncate">{tab.type === "sql" ? tab.title : tab.table}</span>
+                            <span className="truncate">{tab.type === "sql" ? tab.title : tab.tableName}</span>
                             {tab.type === "sql" ? (
                               <span
                                 className="inline-flex size-1.5 shrink-0 items-center justify-center"
@@ -419,7 +854,7 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                                     closeTableTab(tab.id);
                                   }
                                 }}
-                                aria-label={`Close ${tab.type === "sql" ? tab.title : tab.table}`}
+                                 aria-label={`Close ${tab.type === "sql" ? tab.title : tab.tableName}`}
                               >
                                 <RiCloseLine className="size-3" />
                             </span>
@@ -453,8 +888,11 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
                     <TableDataTab
+                      key={activeTableTab.id}
                       profile={withDatabase(profile, activeTableTab.database)}
-                      table={activeTableTab.table}
+                      schema={activeTableTab.schema}
+                      table={activeTableTab.tableName}
+                      refreshToken={tableRefreshToken}
                     />
                   </TabsContent>
                 ) : activeSqlTab ? (
@@ -463,13 +901,20 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
                     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
-                      <div className="flex min-h-0 flex-[1_1_0%] overflow-hidden border-b border-border/70 bg-card/60">
+                      <div className="flex min-h-0 basis-[30%] overflow-hidden border-b border-border/70 bg-card/60">
                         <CodeMirror
                           value={activeSqlTab.query}
                           onChange={updateActiveQuery}
-                          extensions={[sql(), sqlEditorTheme]}
-                          basicSetup
-                          theme="none"
+                           basicSetup={{ lineNumbers: true, foldGutter: false }}
+                           theme="none"
+                           extensions={[
+                             sql(),
+                             sqlEditorTheme,
+                             EditorView.theme({
+                               ".cm-content": { padding: "0.35rem 0" },
+                               ".cm-line": { padding: "0 0.5rem", lineHeight: "1.5" },
+                             }),
+                           ]}
                           height="100%"
                           width="100%"
                           className="h-full w-full"
@@ -482,12 +927,24 @@ export function ConnectionWorkspace({ profile }: ConnectionWorkspaceProps) {
                       </div>
                       <section
                         aria-label="SQL query results"
-                        className="flex min-h-0 flex-[1_1_0%] overflow-auto border-t border-border/70 bg-background/80 px-4 py-3 text-xs text-muted-foreground"
+                        className="flex min-h-0 flex-[1_1_0%] overflow-hidden border-t border-border/70 bg-background/80 text-xs text-muted-foreground"
                       >
-                        {activeSqlTab.queryError ? (
+                        {isRunning ? (
+                          <p role="status">Running query...</p>
+                        ) : activeSqlTab.queryError ? (
                           <p className="text-destructive">{activeSqlTab.queryError}</p>
                         ) : activeSqlTab.queryResult ? (
-                          <QueryResultView result={activeSqlTab.queryResult} />
+                          <QueryResultView
+                            result={activeSqlTab.queryResult}
+                            viewMode={activeSqlTab.viewMode}
+                            onViewModeChange={(viewMode) => {
+                              setSqlTabs((tabs) =>
+                                tabs.map((tab) =>
+                                  tab.id === activeSqlTab.id ? { ...tab, viewMode } : tab,
+                                ),
+                              );
+                            }}
+                          />
                         ) : (
                           "Place the cursor in a statement and press Ctrl+Enter to run it."
                         )}
@@ -600,7 +1057,9 @@ function findStatementSeparators(query: string): number[] {
   return separators;
 }
 
-function QueryResultView({ result }: { result: QueryResult }) {
+function QueryResultView({ result, viewMode, onViewModeChange }: { result: QueryResult; viewMode: ViewMode; onViewModeChange: (viewMode: ViewMode) => void }) {
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const payload = useMemo(() => serializeJson(result.columns, result.rows), [result.columns, result.rows]);
   const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
     () =>
       result.columns.map((column) => ({
@@ -620,12 +1079,68 @@ function QueryResultView({ result }: { result: QueryResult }) {
     );
   }
 
+  const isJson = viewMode === "json";
+
+  const copyJson = async () => {
+    setFeedback(
+      (await copyJsonToClipboard(payload.text)) === "success"
+        ? "JSON copied to clipboard."
+        : "Could not copy JSON.",
+    );
+  };
+
+  const exportJson = () => {
+    const result = exportJsonFile(payload.text, "sql-result.json");
+    setFeedback(
+      result === "success"
+        ? "JSON export started."
+        : result === "cancelled"
+          ? "JSON export cancelled."
+          : "Could not export JSON.",
+    );
+  };
+
+  const activateViewMode = (event: KeyboardEvent<HTMLButtonElement>, nextMode: ViewMode) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onViewModeChange(nextMode);
+    }
+  };
+
   return (
-    <div className="min-w-max">
-      <div className="mb-2">
-        {result.rows.length} row(s) in {result.duration_ms} ms.
+    <div className="flex h-full min-w-0 flex-col gap-0">
+      <div
+        aria-label="Query result statistics"
+        className="flex shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 py-1.5 text-[0.65rem] text-muted-foreground"
+      >
+        <span>{result.rows.length} rows</span>
+        <span>{result.columns.length} columns</span>
+        <span>{result.duration_ms} ms</span>
       </div>
-      <DataTable table={table} className="h-auto" />
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        {isJson ? (
+          <JsonCodePanel
+            ariaLabel="SQL result JSON"
+            text={payload.text}
+            meta={`${result.rows.length} rows · ${result.duration_ms} ms`}
+            issues={payload.issues.length > 0}
+            largeMessage={exceedsJsonRenderThreshold(payload.rowCount) ? "Large result: showing only the loaded rows." : undefined}
+            actions={
+              <>
+                <Button type="button" size="xs" variant="ghost" onClick={() => void copyJson()} aria-label="Copy SQL result JSON"><RiFileCopyLine data-icon="inline-start" />Copy</Button>
+                <Button type="button" size="xs" variant="ghost" onClick={exportJson} aria-label="Export SQL result JSON"><RiDownloadLine data-icon="inline-start" />Export</Button>
+              </>
+            }
+          />
+        ) : <DataTable table={table} className="h-full w-full" withShell={false} />}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-background/80 px-2 py-2">
+        <div className="flex items-center gap-1" role="group" aria-label="SQL result view">
+          <Button type="button" size="xs" variant={!isJson ? "secondary" : "ghost"} aria-pressed={!isJson} onClick={() => onViewModeChange("table")} onKeyDown={(event) => activateViewMode(event, "table")}>Table</Button>
+          <Button type="button" size="xs" variant={isJson ? "secondary" : "ghost"} aria-pressed={isJson} onClick={() => onViewModeChange("json")} onKeyDown={(event) => activateViewMode(event, "json")}>JSON</Button>
+        </div>
+      </div>
+      <p aria-live="polite" className="sr-only">{feedback}</p>
     </div>
   );
 }
@@ -637,20 +1152,8 @@ function formatCell(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-type SqlEditorTab = {
-  id: string;
-  title: string;
-  query: string;
-  isDirty: boolean;
-  queryResult: QueryResult | null;
-  queryError: string | null;
-};
-
-type TableTab = {
-  id: string;
-  database: string;
-  table: string;
-};
+type SqlEditorTab = QueryTab;
+type TableTab = DataTableTab;
 
 function withDatabase(profile: ConnectionProfile, database: string): ConnectionProfile {
   if (profile.connect_mode.type !== "fields") {
@@ -663,14 +1166,18 @@ function withDatabase(profile: ConnectionProfile, database: string): ConnectionP
   };
 }
 
-function createSqlTab(number: number): SqlEditorTab {
+function createSqlTab(number: number, connectionId: string, database: string): SqlEditorTab {
   return {
     id: `sql-${number}`,
+    type: "query",
+    connectionId,
+    database,
     title: `Query ${number}`,
     query: "",
     isDirty: false,
     queryResult: null,
     queryError: null,
+    viewMode: "table",
   };
 }
 

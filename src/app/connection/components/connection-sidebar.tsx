@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   RiArrowLeftRightLine,
+  RiArrowRightSLine,
   RiDatabase2Line,
   RiEditLine,
   RiEyeLine,
@@ -10,6 +11,7 @@ import {
   RiRefreshLine,
   RiSearchLine,
   RiTableLine,
+  RiLoader4Line,
 } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +44,8 @@ import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { Select } from "@/shared/components/ui/select";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
-import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
+import type { ColumnInfo, ConnectionProfile, ObjectMeta } from "@/shared/types/models";
+import { getTableSchema } from "@/shared/lib/tauriApi";
 import { cn } from "@/lib/utils";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 
@@ -50,7 +53,7 @@ type ConnectionSidebarProps = {
   profile: ConnectionProfile;
   selectedDatabase: string;
   onDatabaseChange: (database: string) => void;
-  onTableSelect: (table: string) => void;
+  onTableSelect: (table: string, schema?: string) => void;
   onRoutineSelect: (routine: ObjectMeta) => void;
 };
 
@@ -115,6 +118,10 @@ export function ConnectionSidebar({
   const { data: connections = [] } = useConnections();
   const [filterText, setFilterText] = useState("");
   const [openGroups, setOpenGroups] = useState<string[]>(["tables"]);
+  const [expandedTables, setExpandedTables] = useState<string[]>([]);
+  const [tableColumns, setTableColumns] = useState<Record<string, ColumnInfo[]>>({});
+  const [loadingTables, setLoadingTables] = useState<Record<string, boolean>>({});
+  const [tableSchemaErrors, setTableSchemaErrors] = useState<Record<string, boolean>>({});
   const previousFilterRef = useRef("");
   const openGroupsBeforeFilterRef = useRef<string[] | null>(null);
   const deferredFilterText = useDeferredValue(filterText);
@@ -168,6 +175,34 @@ export function ConnectionSidebar({
   const switchConnection = async (connectionId: string) => {
     await markConnectionOpened(connectionId);
     await navigate({ to: "/connections/$connectionId", params: { connectionId } });
+  };
+
+  const toggleTable = async (table: string, schema?: string) => {
+    const resolvedSchema = schema ?? schemaObjects.find((object) => object.object_type === "table" && object.name === table)?.schema;
+    const resourceKey = tableResourceKey(profile.id, resolvedSchema, table);
+    onTableSelect(table, resolvedSchema);
+
+    if (expandedTables.includes(resourceKey)) {
+      setExpandedTables((current) => current.filter((key) => key !== resourceKey));
+      return;
+    }
+
+    setExpandedTables((current) => [...current, resourceKey]);
+    if (tableColumns[resourceKey] || loadingTables[resourceKey]) {
+      return;
+    }
+
+    setLoadingTables((current) => ({ ...current, [resourceKey]: true }));
+    setTableSchemaErrors((current) => ({ ...current, [resourceKey]: false }));
+
+    try {
+      const tableSchema = await getTableSchema(profile, table, resolvedSchema);
+      setTableColumns((current) => ({ ...current, [resourceKey]: tableSchema.columns }));
+    } catch {
+      setTableSchemaErrors((current) => ({ ...current, [resourceKey]: true }));
+    } finally {
+      setLoadingTables((current) => ({ ...current, [resourceKey]: false }));
+    }
   };
 
   return (
@@ -280,31 +315,85 @@ export function ConnectionSidebar({
                           {normalizedFilter ? "No matching objects" : group.emptyLabel}
                         </p>
                       ) : (
-                        objects.map((object) => (
-                          <FileItem
-                            key={object.signature ?? object.name}
-                            icon={group.icon}
-                            className={cn(
-                              "text-xs",
-                              (group.objectType === "table" ||
-                                group.objectType === "function" ||
-                                group.objectType === "procedure") &&
-                                "cursor-pointer hover:text-foreground",
-                            )}
-                            onClick={
-                              group.objectType === "table"
-                                ? () => onTableSelect(object.name)
-                                : undefined
-                            }
-                            onDoubleClick={
-                              group.objectType === "function" || group.objectType === "procedure"
-                                ? () => onRoutineSelect(object)
-                                : undefined
-                            }
-                          >
-                            {object.name}
-                          </FileItem>
-                        ))
+                        objects.map((object) => {
+                          const isTable = group.objectType === "table";
+                          const resourceKey = tableResourceKey(profile.id, object.schema, object.name);
+                          const isExpanded = expandedTables.includes(resourceKey);
+                          const columns = tableColumns[resourceKey];
+
+                          return (
+                            <div key={tableResourceKey(profile.id, object.schema, object.name)}>
+                              <FileItem
+                                icon={group.icon}
+                                className={cn(
+                                  "text-xs",
+                                  (isTable ||
+                                    group.objectType === "function" ||
+                                    group.objectType === "procedure") &&
+                                    "cursor-pointer hover:text-foreground",
+                                )}
+                                onClick={
+                                  isTable
+                                    ? () => void toggleTable(object.name, object.schema)
+                                    : undefined
+                                }
+                                onDoubleClick={
+                                  group.objectType === "function" || group.objectType === "procedure"
+                                    ? () => onRoutineSelect(object)
+                                    : undefined
+                                }
+                              >
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {isTable ? (
+                                    <RiArrowRightSLine
+                                      className={cn(
+                                        "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                                        isExpanded && "rotate-90",
+                                      )}
+                                      aria-hidden="true"
+                                    />
+                                  ) : null}
+                                  <span className="truncate">{object.name}</span>
+                                </span>
+                              </FileItem>
+                              {isTable && isExpanded ? (
+                                <div className="ml-8 border-l border-border/60 py-1 pl-2">
+                                  {loadingTables[resourceKey] ? (
+                                    <div className="flex items-center gap-1.5 px-2 py-1 text-[0.65rem] text-muted-foreground">
+                                      <RiLoader4Line className="size-3 animate-spin" aria-hidden="true" />
+                                      Loading columns...
+                                    </div>
+                                  ) : tableSchemaErrors[resourceKey] ? (
+                                    <p className="px-2 py-1 text-[0.65rem] text-destructive">
+                                      Unable to load columns
+                                    </p>
+                                  ) : columns?.length ? (
+                                    <div className="space-y-0.5">
+                                      {columns.map((column) => (
+                                        <div
+                                          key={column.name}
+                                          className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1 text-[0.65rem]"
+                                          title={`${column.name}: ${column.data_type}`}
+                                        >
+                                          <span className="min-w-0 truncate text-foreground/80">
+                                            {column.name}
+                                          </span>
+                                          <span className="shrink-0 truncate text-muted-foreground">
+                                            {column.data_type}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">
+                                      No columns found
+                                    </p>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })
                       )}
                     </FolderContent>
                   </FolderItem>
@@ -394,6 +483,10 @@ export function ConnectionSidebar({
       </div>
     </aside>
   );
+}
+
+function tableResourceKey(connectionId: string, schema: string | undefined, table: string): string {
+  return `${connectionId}:${schema ?? ""}:${table}`;
 }
 
 function renderDatabaseOption(option: DatabaseOption) {

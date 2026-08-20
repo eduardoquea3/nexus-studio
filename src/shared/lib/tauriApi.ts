@@ -153,6 +153,7 @@ export async function getRoutineDefinition(
 export async function getTableSchema(
   profile: ConnectionProfile,
   table: string,
+  schema?: string,
 ): Promise<TableSchema> {
   const request: ConnectionTestRequest =
     profile.connect_mode.type === "connection_string"
@@ -166,7 +167,7 @@ export async function getTableSchema(
           password: profile.password,
         };
 
-  return invoke("get_table_schema", { request: { request, table } });
+  return invoke("get_table_schema", { request: { request, table, schema } });
 }
 
 export async function getTableRules(id: string, table: string): Promise<TableRules> {
@@ -180,6 +181,7 @@ export async function getTableData(
   pageSize: number,
   sort?: string,
   filter?: string,
+  schema?: string,
 ): Promise<DataPage> {
   const request: ConnectionTestRequest =
     profile.connect_mode.type === "connection_string"
@@ -198,7 +200,7 @@ export async function getTableData(
         };
 
   return invoke("get_table_data", {
-    request: { request, table, page, pageSize, sort, filter },
+    request: { request, table, schema, page, pageSize, sort, filter },
   });
 }
 

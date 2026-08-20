@@ -1,4 +1,4 @@
-import { flexRender, type Table as TanStackTable } from "@tanstack/react-table";
+import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
 import { RiLoader4Line } from "@remixicon/react";
 
 import {
@@ -21,6 +21,8 @@ type DataTableProps<TData> = {
   draftRow?: Record<string, unknown> | null;
   draftColumns?: ColumnInfo[];
   onDraftChange?: (column: string, value: string) => void;
+  selectedRowId?: string | null;
+  onRowClick?: (row: Row<TData>) => void;
 };
 
 export function DataTable<TData>({
@@ -31,6 +33,8 @@ export function DataTable<TData>({
   draftRow = null,
   draftColumns = [],
   onDraftChange,
+  selectedRowId = null,
+  onRowClick,
 }: DataTableProps<TData>) {
   if (isLoading) {
     return (
@@ -78,7 +82,23 @@ export function DataTable<TData>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} className="hover:bg-muted/40">
+              <TableRow
+                key={row.id}
+                data-state={row.id === selectedRowId ? "selected" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                className={cn(
+                  "hover:bg-muted/40",
+                  onRowClick && "cursor-pointer",
+                  row.id === selectedRowId && "bg-primary/10 hover:bg-primary/15",
+                )}
+                onClick={() => onRowClick?.(row)}
+                onKeyDown={(event) => {
+                  if (onRowClick && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    onRowClick(row);
+                  }
+                }}
+              >
                 <TableCell className="w-12 border-b border-r border-border/50 px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground">
                   {row.index + 1}
                 </TableCell>

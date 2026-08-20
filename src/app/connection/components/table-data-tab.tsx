@@ -1,5 +1,5 @@
-import { RiAddLine, RiRefreshLine } from "@remixicon/react";
-import { useMemo } from "react";
+import { RiAddLine, RiDownloadLine, RiFileCopyLine, RiRefreshLine } from "@remixicon/react";
+import { type KeyboardEvent, useMemo } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -16,8 +16,11 @@ import {
 import { useTableSchema } from "@/app/connection/hooks/use-table-schema";
 import { useTableData } from "@/app/connection/hooks/use-table-data";
 import { DataTable } from "@/shared/components/data-table";
+import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import { useDataTable } from "@/shared/hooks/use-data-table";
-import type { ConnectionProfile } from "@/shared/types/models";
+import type { ConnectionProfile, ViewMode } from "@/shared/types/models";
+import { exceedsJsonRenderThreshold, serializeJson } from "@/shared/lib/json-serialization";
+import { copyJsonToClipboard, exportJsonFile, type JsonActionResult } from "@/shared/lib/json-actions";
 
 type StructureDraft = {
   name: string;
@@ -31,14 +34,27 @@ type StructureDraft = {
 type TableDataTabProps = {
   profile: ConnectionProfile;
   table: string;
+  schema?: string;
+  refreshToken?: number;
+  exportJson?: (text: string, filename: string) => JsonActionResult;
 };
 
-export function TableDataTab({ profile, table }: TableDataTabProps) {
-  const { data, error, isLoading, refetch } = useTableData(profile, table);
-  const schema = useTableSchema(profile, table, true);
+export function TableDataTab({
+  profile,
+  table,
+  schema,
+  refreshToken = 0,
+  exportJson: exportJsonAction = exportJsonFile,
+}: TableDataTabProps) {
+  const { data, error, isLoading, refetch } = useTableData(profile, table, schema);
+  const tableSchema = useTableSchema(profile, table, true, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
-  const schemaColumns = schema.data?.columns;
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const previousRefreshTokenRef = useRef(refreshToken);
+  const schemaColumns = tableSchema.data?.columns;
   const columnNames = data?.columns.length
     ? data.columns
     : (schemaColumns ?? []).map((column) => column.name);
@@ -58,6 +74,38 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
     [columnNames],
   );
   const dataTable = useDataTable({ columns, data: data?.rows ?? [] });
+  const payload = useMemo(
+    () => (data ? serializeJson(data.columns, data.rows, { page: data.page, pageSize: data.page_size }) : null),
+    [data],
+  );
+  const canShowJson = Boolean(data && data.rows.length > 0 && data.columns.length > 0 && payload);
+  const selectedRow = selectedRowIndex === null ? null : data?.rows[selectedRowIndex] ?? null;
+  const selectedRowPayload = useMemo(
+    () =>
+      selectedRow && data
+        ? serializeJson(data.columns, [selectedRow])
+        : null,
+    [data, selectedRow],
+  );
+
+  useEffect(() => {
+    setViewMode("table");
+    setFeedback(null);
+    setSelectedRowIndex(null);
+  }, [table]);
+
+  useEffect(() => {
+    setSelectedRowIndex(null);
+  }, [data]);
+
+  useEffect(() => {
+    if (previousRefreshTokenRef.current === refreshToken) {
+      return;
+    }
+
+    previousRefreshTokenRef.current = refreshToken;
+    void refetch();
+  }, [refreshToken, refetch]);
 
   useEffect(() => {
     if (!schemaColumns) {
@@ -83,7 +131,12 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
   }, [schemaColumns, structureSignature]);
 
   if (isLoading) {
-    return <DataTable table={dataTable} isLoading />;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <p role="status" className="sr-only">Loading data...</p>
+        <DataTable table={dataTable} isLoading />
+      </div>
+    );
   }
 
   if (error) {
@@ -107,7 +160,7 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
       className="flex h-full min-h-0 flex-col gap-0"
       onValueChange={(value) => {
         if (value === "structure") {
-          void schema.refetch();
+          void tableSchema.refetch();
         }
       }}
     >
@@ -115,24 +168,43 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
         <TabsContent value="data" className="h-full min-h-0 overflow-hidden p-0 m-0">
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
             <div className="min-h-0 flex-1 overflow-hidden">
-              <DataTable
-                table={dataTable}
-                isLoading={isLoading || (columnNames.length === 0 && schema.isLoading)}
-                withShell={false}
-                className="h-full"
-                draftRow={draftRow}
-                draftColumns={schemaColumns}
-                onDraftChange={(column, value) => {
-                  setDraftRow((row) => (row ? { ...row, [column]: value } : row));
-                }}
-              />
+              {viewMode === "json" && canShowJson && payload ? (
+                <JsonCodePanel
+                  ariaLabel="Table data JSON"
+                  text={payload.text}
+                  meta={`Page ${data?.page ?? 0} · ${data?.rows.length ?? 0} loaded`}
+                  issues={payload.issues.length > 0}
+                  largeMessage={exceedsJsonRenderThreshold(payload.rowCount) ? "Large page: only loaded rows are shown." : undefined}
+                  actions={
+                    <>
+                      <Button type="button" size="xs" variant="ghost" onClick={() => void copyJson(payload.text).then(setFeedback)} aria-label="Copy table data JSON"><RiFileCopyLine data-icon="inline-start" />Copy</Button>
+                      <Button type="button" size="xs" variant="ghost" onClick={() => setFeedback(exportJson(payload.text, exportJsonAction))} aria-label="Export table data JSON"><RiDownloadLine data-icon="inline-start" />Export</Button>
+                    </>
+                  }
+                />
+              ) : (
+                <DataTable
+                  table={dataTable}
+                  isLoading={isLoading || (columnNames.length === 0 && tableSchema.isLoading)}
+                  withShell={false}
+                  className="h-full"
+                  draftRow={draftRow}
+                  draftColumns={schemaColumns}
+                  selectedRowId={selectedRowIndex === null ? null : String(selectedRowIndex)}
+                  onRowClick={(row) => setSelectedRowIndex(row.index)}
+                  onDraftChange={(column, value) => {
+                    setDraftRow((row) => (row ? { ...row, [column]: value } : row));
+                  }}
+                />
+              )}
             </div>
+            <p aria-live="polite" className="sr-only">{feedback}</p>
           </div>
         </TabsContent>
         <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0">
-          {schema.isLoading ? (
+          {tableSchema.isLoading ? (
             <div className="text-xs text-muted-foreground">Loading structure...</div>
-          ) : schema.error ? (
+          ) : tableSchema.error ? (
             <div className="text-xs text-destructive">Could not load table structure.</div>
           ) : (
             <div className="flex h-fit min-h-0 max-h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card/40">
@@ -249,6 +321,12 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
       </div>
       <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
         <div className="flex items-center gap-2">
+          {canShowJson ? (
+            <div className="flex items-center gap-1" role="group" aria-label="Table data view">
+              <Button type="button" size="xs" variant={viewMode === "table" ? "secondary" : "ghost"} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")} onKeyDown={(event) => activateViewMode(event, "table", setViewMode)}>Table</Button>
+              <Button type="button" size="xs" variant={viewMode === "json" ? "secondary" : "ghost"} aria-pressed={viewMode === "json"} onClick={() => setViewMode("json")} onKeyDown={(event) => activateViewMode(event, "json", setViewMode)}>JSON</Button>
+            </div>
+          ) : null}
           <TabsList className="h-auto justify-start gap-1 rounded-none bg-transparent p-0">
             <TabsTrigger value="data" className="h-7 px-2 text-xs">
               Data
@@ -271,6 +349,19 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
             Add row
           </Button>
           {draftRow ? <span className="text-[0.625rem] text-primary/80">Draft row</span> : null}
+          {selectedRowPayload ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={() => setFeedback(exportJson(selectedRowPayload.text, exportJsonAction, "selected-row.json"))}
+              aria-label={`Export selected row ${selectedRowIndex === null ? "" : selectedRowIndex + 1} as JSON`}
+            >
+              <RiDownloadLine data-icon="inline-start" />
+              Export row
+            </Button>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="h-6 rounded-full px-2 text-[0.625rem]">
@@ -285,6 +376,21 @@ export function TableDataTab({ profile, table }: TableDataTabProps) {
   );
 }
 
+async function copyJson(text: string) {
+  return (await copyJsonToClipboard(text)) === "success"
+    ? "JSON copied to clipboard."
+    : "Could not copy JSON.";
+}
+
+function exportJson(text: string, exportJsonAction: (text: string, filename: string) => JsonActionResult, filename = "table-data.json") {
+  const result = exportJsonAction(text, filename);
+  return result === "success"
+    ? "JSON export started."
+    : result === "cancelled"
+      ? "JSON export cancelled."
+      : "Could not export JSON.";
+}
+
 function formatCell(value: unknown) {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
@@ -293,4 +399,11 @@ function formatCell(value: unknown) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function activateViewMode(event: KeyboardEvent<HTMLButtonElement>, nextMode: ViewMode, setViewMode: (mode: ViewMode) => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    setViewMode(nextMode);
+  }
 }

@@ -32,6 +32,8 @@ struct ObjectMeta {
     name: String,
     object_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     signature: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     definition: Option<String>,
@@ -42,6 +44,7 @@ struct ObjectMeta {
 struct TableDataRequest {
     request: ConnectionTestRequest,
     table: String,
+    schema: Option<String>,
     page: u32,
     page_size: u32,
 }
@@ -69,6 +72,7 @@ struct TableDataPage {
 struct TableSchemaRequest {
     request: ConnectionTestRequest,
     table: String,
+    schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,7 +215,7 @@ async fn list_schema_objects(
             let mut objects = Vec::new();
 
             let rows = sqlx::query(
-                "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type IN ('BASE TABLE', 'VIEW') ORDER BY table_type, table_name",
+                "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type IN ('BASE TABLE', 'VIEW') ORDER BY table_type, table_name",
             )
             .fetch_all(&mut connection)
             .await
@@ -225,6 +229,7 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: row.get("table_name"),
                     object_type: object_type.to_string(),
+                    schema: Some(row.get("table_schema")),
                     signature: None,
                     definition: None,
                 });
@@ -247,6 +252,7 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: routine_name.clone(),
                     object_type: object_type.to_string(),
+                    schema: Some(routine_schema.clone()),
                     signature: Some(format!("{routine_schema}.{}", row.get::<String, _>("specific_name"))),
                     definition: None,
                 });
@@ -267,7 +273,7 @@ async fn list_schema_objects(
             let mut objects = Vec::new();
 
             let rows = sqlx::query(
-                "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type IN ('BASE TABLE', 'VIEW') ORDER BY table_type, table_name",
+                "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type IN ('BASE TABLE', 'VIEW') ORDER BY table_type, table_name",
             )
             .fetch_all(&mut connection)
             .await
@@ -281,6 +287,7 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: row.get("table_name"),
                     object_type: object_type.to_string(),
+                    schema: Some(row.get("table_schema")),
                     signature: None,
                     definition: None,
                 });
@@ -302,6 +309,7 @@ async fn list_schema_objects(
                 objects.push(ObjectMeta {
                     name: routine_name.clone(),
                     object_type: object_type.to_string(),
+                    schema: Some(row.get("routine_schema")),
                     signature: Some(format!(
                         "{}.{}",
                         row.get::<String, _>("routine_schema"),
@@ -339,6 +347,7 @@ async fn list_schema_objects(
                         "view" => "view".to_string(),
                         _ => "table".to_string(),
                     },
+                    schema: None,
                     signature: None,
                     definition: None,
                 })
@@ -449,6 +458,20 @@ fn validate_table_name(table: &str) -> Result<(), String> {
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
     {
         return Err("Invalid table name".to_string());
+    }
+
+    Ok(())
+}
+
+fn validate_schema_name(schema: Option<&str>) -> Result<(), String> {
+    if let Some(schema) = schema {
+        if schema.is_empty()
+            || !schema
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        {
+            return Err("Invalid schema name".to_string());
+        }
     }
 
     Ok(())
@@ -630,6 +653,7 @@ async fn run_query(request: QueryRequest) -> Result<QueryResult, String> {
 #[tauri::command]
 async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, String> {
     validate_table_name(&request.table)?;
+    validate_schema_name(request.schema.as_deref())?;
     let page = request.page.max(1);
     let page_size = request.page_size.clamp(1, 100);
     let offset = (page - 1) * page_size;
@@ -646,10 +670,10 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
             let mut connection = PgConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
-            let query = format!(
-                "SELECT * FROM \"{}\" LIMIT $1 OFFSET $2",
-                request.table
-            );
+            let query = match request.schema.as_deref() {
+                Some(schema) => format!("SELECT * FROM \"{}\".\"{}\" LIMIT $1 OFFSET $2", schema, request.table),
+                None => format!("SELECT * FROM \"{}\" LIMIT $1 OFFSET $2", request.table),
+            };
             let rows = sqlx::query(&query)
                 .bind(page_size as i64)
                 .bind(offset as i64)
@@ -746,6 +770,7 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
 #[tauri::command]
 async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResult, String> {
     validate_table_name(&request.table)?;
+    validate_schema_name(request.schema.as_deref())?;
 
     match request.request.db_type.as_str() {
         "postgres" => {
@@ -759,10 +784,17 @@ async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResu
             let mut connection = PgConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
-            let rows = sqlx::query(
-                "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(array_agg(e.enumlabel ORDER BY e.enumsortorder) FILTER (WHERE e.enumlabel IS NOT NULL), ARRAY[]::text[]) AS enum_values FROM information_schema.columns c LEFT JOIN pg_namespace n ON n.nspname = c.table_schema LEFT JOIN pg_type t ON t.typname = c.udt_name AND t.typnamespace = n.oid LEFT JOIN pg_enum e ON e.enumtypid = t.oid WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema') GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position",
-            )
-            .bind(&request.table)
+            let query = "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(array_agg(e.enumlabel ORDER BY e.enumsortorder) FILTER (WHERE e.enumlabel IS NOT NULL), ARRAY[]::text[]) AS enum_values FROM information_schema.columns c LEFT JOIN pg_namespace n ON n.nspname = c.table_schema LEFT JOIN pg_type t ON t.typname = c.udt_name AND t.typnamespace = n.oid LEFT JOIN pg_enum e ON e.enumtypid = t.oid WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema')";
+            let query = if request.schema.is_some() {
+                format!("{query} AND c.table_schema = $2 GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position")
+            } else {
+                format!("{query} GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position")
+            };
+            let mut query = sqlx::query(&query).bind(&request.table);
+            if let Some(schema) = request.schema.as_deref() {
+                query = query.bind(schema);
+            }
+            let rows = query
             .fetch_all(&mut connection)
             .await
             .map_err(|error| format!("Could not load table structure: {error}"))?;

@@ -39,6 +39,7 @@ export type SshAuth =
 export interface ObjectMeta {
   name: string;
   object_type: "table" | "view" | "function" | "procedure" | "other";
+  schema?: string;
   signature?: string;
   definition?: string;
 }
@@ -71,6 +72,25 @@ export interface DataPage {
   page: number;
   page_size: number;
 }
+
+export type ViewMode = "table" | "json";
+
+export type JsonIssue = {
+  path: string;
+  message: string;
+  representation: "string" | "null";
+};
+
+export type JsonPayload = {
+  text: string;
+  issues: JsonIssue[];
+  rowCount: number;
+  scope?: {
+    page: number;
+    pageSize: number;
+    loadedCount: number;
+  };
+};
 
 export interface QueryResult {
   columns: string[];
