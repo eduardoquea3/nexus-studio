@@ -322,16 +322,16 @@ export function TableDataTab({
       <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
         <div className="flex items-center gap-2">
           {canShowJson ? (
-            <div className="flex items-center gap-1" role="group" aria-label="Table data view">
-              <Button type="button" size="xs" variant={viewMode === "table" ? "secondary" : "ghost"} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")} onKeyDown={(event) => activateViewMode(event, "table", setViewMode)}>Table</Button>
-              <Button type="button" size="xs" variant={viewMode === "json" ? "secondary" : "ghost"} aria-pressed={viewMode === "json"} onClick={() => setViewMode("json")} onKeyDown={(event) => activateViewMode(event, "json", setViewMode)}>JSON</Button>
+            <div className="flex items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5" role="group" aria-label="Table data view">
+              <Button type="button" size="xs" variant="ghost" className={viewMode === "table" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"} aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")} onKeyDown={(event) => activateViewMode(event, "table", setViewMode)}>Table</Button>
+              <Button type="button" size="xs" variant="ghost" className={viewMode === "json" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"} aria-pressed={viewMode === "json"} onClick={() => setViewMode("json")} onKeyDown={(event) => activateViewMode(event, "json", setViewMode)}>JSON</Button>
             </div>
           ) : null}
-          <TabsList className="h-auto justify-start gap-1 rounded-none bg-transparent p-0">
-            <TabsTrigger value="data" className="h-7 px-2 text-xs">
+          <TabsList className="h-8 justify-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5">
+            <TabsTrigger value="data" className="h-7 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm">
               Data
             </TabsTrigger>
-            <TabsTrigger value="structure" className="h-7 px-2 text-xs">
+            <TabsTrigger value="structure" className="h-7 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm">
               Structure
             </TabsTrigger>
           </TabsList>
