@@ -208,7 +208,7 @@ export function ConnectionSidebar({
   return (
     <aside
       className={cn(
-        "w-60 shrink-0 border-r border-border/70 bg-muted/10",
+        "w-60 basis-60 shrink-0 border-r border-border/70 bg-muted/10",
         sidebarOpen ? "flex flex-col" : "hidden",
       )}
     >
@@ -323,39 +323,61 @@ export function ConnectionSidebar({
 
                           return (
                             <div key={tableResourceKey(profile.id, object.schema, object.name)}>
-                              <FileItem
-                                icon={group.icon}
-                                className={cn(
-                                  "text-xs",
-                                  (isTable ||
-                                    group.objectType === "function" ||
-                                    group.objectType === "procedure") &&
-                                    "cursor-pointer hover:text-foreground",
-                                )}
-                                onClick={
-                                  isTable
-                                    ? () => void toggleTable(object.name, object.schema)
-                                    : undefined
-                                }
-                                onDoubleClick={
-                                  group.objectType === "function" || group.objectType === "procedure"
-                                    ? () => onRoutineSelect(object)
-                                    : undefined
-                                }
-                              >
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  {isTable ? (
-                                    <RiArrowRightSLine
+                              {isTable ? (
+                                <div className="group flex items-center gap-2 rounded-md p-2 text-xs transition-colors hover:bg-muted/60 hover:text-foreground">
+                                  <button
+                                    type="button"
+                                    className="group/icon relative flex size-4.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                                    aria-label={`${isExpanded ? "Collapse" : "Expand"} ${object.name} columns`}
+                                    title={`${isExpanded ? "Collapse" : "Expand"} columns`}
+                                    onClick={() => void toggleTable(object.name, object.schema)}
+                                  >
+                                    <RiTableLine
                                       className={cn(
-                                        "size-3.5 shrink-0 text-muted-foreground transition-transform",
-                                        isExpanded && "rotate-90",
+                                        "size-4 transition-opacity",
+                                        isExpanded ? "hidden" : "group-hover/icon:opacity-0",
                                       )}
                                       aria-hidden="true"
                                     />
-                                  ) : null}
-                                  <span className="truncate">{object.name}</span>
-                                </span>
-                              </FileItem>
+                                    <RiArrowRightSLine
+                                      className={cn(
+                                        "absolute size-3.5 opacity-0 transition-transform group-hover/icon:opacity-100",
+                                        isExpanded && "rotate-90 opacity-100",
+                                      )}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="min-w-0 flex-1 truncate cursor-default"
+                                    onDoubleClick={() => onTableSelect(object.name, object.schema)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        onTableSelect(object.name, object.schema);
+                                      }
+                                    }}
+                                  >
+                                    {object.name}
+                                  </span>
+                                </div>
+                              ) : (
+                                <FileItem
+                                  icon={group.icon}
+                                  className={cn(
+                                    "text-xs",
+                                    (group.objectType === "function" || group.objectType === "procedure") &&
+                                      "cursor-pointer hover:text-foreground",
+                                  )}
+                                  onDoubleClick={
+                                    group.objectType === "function" || group.objectType === "procedure"
+                                      ? () => onRoutineSelect(object)
+                                      : undefined
+                                  }
+                                >
+                                  {object.name}
+                                </FileItem>
+                              )}
                               {isTable && isExpanded ? (
                                 <div className="ml-8 border-l border-border/60 py-1 pl-2">
                                   {loadingTables[resourceKey] ? (

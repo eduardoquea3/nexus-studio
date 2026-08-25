@@ -58,20 +58,6 @@ export function nextTabIndex(tabs: readonly WorkspaceTab[], activeTabId: string 
   return moveSelection(activeIndex === -1 ? 0 : activeIndex, tabs.length, direction);
 }
 
-export function updateTabHistory(
-  history: readonly string[],
-  currentTabIds: readonly string[],
-  committedTabId: string | null,
-): string[] {
-  const currentIds = new Set(currentTabIds);
-  const knownIds = new Set(history);
-  const committed = committedTabId && currentIds.has(committedTabId) ? [committedTabId] : [];
-  const retained = history.filter((tabId) => currentIds.has(tabId) && tabId !== committedTabId);
-  const unvisited = currentTabIds.filter((tabId) => !knownIds.has(tabId) && tabId !== committedTabId);
-
-  return [...committed, ...retained, ...unvisited];
-}
-
 export function describeConnection(profile: ConnectionProfile): string {
   if (profile.connect_mode.type === "connection_string") {
     return `${profile.db_type} · connection string`;

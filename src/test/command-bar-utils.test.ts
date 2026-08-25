@@ -5,7 +5,6 @@ import {
   filterCommandBarItems,
   moveSelection,
   nextTabIndex,
-  updateTabHistory,
   type CommandBarItem,
 } from "@/app/command-bar/command-bar-utils";
 
@@ -80,15 +79,4 @@ describe("command bar selection", () => {
     expect(nextTabIndex(tabs, otherConnectionTab.id, 1)).toBe(0);
   });
 
-  test("keeps every current tab and moves only the committed tab to the front", () => {
-    expect(updateTabHistory(["one", "three"], ["one", "two", "three"], "two")).toEqual([
-      "two",
-      "one",
-      "three",
-    ]);
-    expect(updateTabHistory(["one", "old", "three"], ["one", "three"], "three")).toEqual([
-      "three",
-      "one",
-    ]);
-  });
 });

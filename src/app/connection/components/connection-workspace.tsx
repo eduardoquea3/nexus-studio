@@ -36,13 +36,13 @@ import { useConnections } from "@/app/home/hooks/use-connections";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 import { CommandBar } from "@/app/command-bar/command-bar";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import {
   describeConnection,
   describeTab,
   nextTabIndex,
   type CommandBarItem,
   type CommandBarMode,
-  updateTabHistory,
 } from "@/app/command-bar/command-bar-utils";
 
 type ConnectionWorkspaceProps = {
@@ -94,7 +94,6 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
   const initializedWorkspaceConnectionIdRef = useRef<string | null>(null);
   const sqlTabsRef = useRef(sqlTabs);
   const activeSqlTabIdRef = useRef(activeSqlTabId);
-  const tabHistoryRef = useRef<string[]>([]);
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) ?? sqlTabs[0];
   const activeTableTab = tableTabs.find((tab) => tab.id === activeTabId);
   const workspaceTabs = [
@@ -102,13 +101,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
     ...tableTabs.map((tab) => ({ ...tab, type: "table" as const })),
   ];
   const switcherTabsRef = useRef<typeof workspaceTabs>([]);
-  const orderedWorkspaceTabs = [
-    ...tabHistoryRef.current
-      .map((tabId) => workspaceTabs.find((tab) => tab.id === tabId))
-      .filter((tab): tab is (typeof workspaceTabs)[number] => Boolean(tab)),
-    ...workspaceTabs.filter((tab) => !tabHistoryRef.current.includes(tab.id)),
-  ];
-  const commandBarTabs = commandBarMode === "tab-switcher" ? switcherTabsRef.current : orderedWorkspaceTabs;
+  const commandBarTabs = commandBarMode === "tab-switcher" ? switcherTabsRef.current : workspaceTabs;
   const commandBarItems = useMemo<CommandBarItem[]>(
     () =>
       commandBarMode === "tab-switcher"
@@ -160,20 +153,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
               };
             }),
           ],
-    [activeTabId, commandBarMode, commandBarTabs, connections, profile.id, schemaObjects, selectedDatabase, workspaceTabs, orderedWorkspaceTabs],
+    [activeTabId, commandBarMode, commandBarTabs, connections, profile.id, schemaObjects, selectedDatabase, workspaceTabs],
   );
-
-  useEffect(() => {
-    if (!activeTabId || commandBarMode === "tab-switcher") {
-      return;
-    }
-
-    tabHistoryRef.current = updateTabHistory(
-      tabHistoryRef.current,
-      workspaceTabs.map((tab) => tab.id),
-      activeTabId,
-    );
-  }, [activeTabId, commandBarMode, workspaceTabs]);
 
   const closeCommandBar = (commitPreview = false) => {
     if (
@@ -208,7 +189,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
     setCommandBarMode(mode);
     if (mode === "tab-switcher") {
       previewOriginTabIdRef.current = activeTabId;
-      switcherTabsRef.current = orderedWorkspaceTabs;
+      switcherTabsRef.current = workspaceTabs;
       selectedSwitcherTabIdRef.current = null;
       setSwitcherInitialDirection(direction);
       setSwitcherCycle(undefined);
@@ -696,7 +677,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
     }
   };
 
-  const tabItems: WorkspaceTab[] = (commandBarMode === "tab-switcher" ? switcherTabsRef.current : orderedWorkspaceTabs).map((tab) =>
+  const tabItems: WorkspaceTab[] = (commandBarMode === "tab-switcher" ? switcherTabsRef.current : workspaceTabs).map((tab) =>
       tab.type === "sql" ? { ...tab, type: "query" } : { ...tab, type: "datatable" },
   );
 
@@ -900,56 +881,83 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                     value={activeTabId}
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
-                    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
-                      <div className="flex min-h-0 basis-[30%] overflow-hidden border-b border-border/70 bg-card/60">
-                        <CodeMirror
-                          value={activeSqlTab.query}
-                          onChange={updateActiveQuery}
-                           basicSetup={{ lineNumbers: true, foldGutter: false }}
-                           theme="none"
-                           extensions={[
-                             sql(),
-                             sqlEditorTheme,
-                             EditorView.theme({
-                               ".cm-content": { padding: "0.35rem 0" },
-                               ".cm-line": { padding: "0 0.5rem", lineHeight: "1.5" },
-                             }),
-                           ]}
-                          height="100%"
-                          width="100%"
-                          className="h-full w-full"
-                          onCreateEditor={(view) => {
-                            editorViewRef.current = view;
-                            focusEditor(view, activeSqlTabId);
-                          }}
-                          aria-label={`${activeSqlTab.title} SQL query editor`}
-                        />
-                      </div>
-                      <section
-                        aria-label="SQL query results"
-                        className="flex min-h-0 flex-[1_1_0%] overflow-hidden border-t border-border/70 bg-background/80 text-xs text-muted-foreground"
-                      >
-                        {isRunning ? (
-                          <p role="status">Running query...</p>
-                        ) : activeSqlTab.queryError ? (
-                          <p className="text-destructive">{activeSqlTab.queryError}</p>
-                        ) : activeSqlTab.queryResult ? (
-                          <QueryResultView
-                            result={activeSqlTab.queryResult}
-                            viewMode={activeSqlTab.viewMode}
-                            onViewModeChange={(viewMode) => {
-                              setSqlTabs((tabs) =>
-                                tabs.map((tab) =>
-                                  tab.id === activeSqlTab.id ? { ...tab, viewMode } : tab,
-                                ),
-                              );
+                    <Group orientation="vertical" className="h-full min-h-0 overflow-hidden rounded-b-xl">
+                      <Panel defaultSize="30%" minSize="15%" maxSize="80%" className="min-h-0 overflow-hidden">
+                        <div className="h-full overflow-hidden border-b border-border/70 bg-card/60">
+                          <CodeMirror
+                            value={activeSqlTab.query}
+                            onChange={updateActiveQuery}
+                            basicSetup={{ lineNumbers: true, foldGutter: true }}
+                            theme="none"
+                            extensions={[
+                              sql(),
+                              sqlEditorTheme,
+                              EditorView.theme({
+                                ".cm-content": { padding: "0.35rem 0" },
+                                ".cm-line": { padding: "0 1rem 0 0.5rem", lineHeight: "1.5" },
+                                ".cm-lineNumbers": { width: "1.5rem" },
+                                ".cm-lineNumbers .cm-gutterElement": {
+                                  minWidth: "1.5rem",
+                                  boxSizing: "border-box",
+                                  padding: "0 0 0 0.5rem",
+                                  textAlign: "left",
+                                },
+                                ".cm-foldGutter": { width: "1rem" },
+                                ".cm-foldGutter .cm-gutterElement": {
+                                  width: "1rem",
+                                  boxSizing: "border-box",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  lineHeight: "1.5",
+                                  padding: "0",
+                                },
+                              }),
+                            ]}
+                            height="100%"
+                            width="100%"
+                            className="h-full w-full"
+                            onCreateEditor={(view) => {
+                              editorViewRef.current = view;
+                              focusEditor(view, activeSqlTabId);
                             }}
+                            aria-label={`${activeSqlTab.title} SQL query editor`}
                           />
-                        ) : (
-                          "Place the cursor in a statement and press Ctrl+Enter to run it."
-                        )}
-                      </section>
-                    </div>
+                        </div>
+                      </Panel>
+                      <Separator
+                        className="group/separator relative z-10 h-1 shrink-0 cursor-row-resize border-y border-border/70 bg-background transition-colors hover:bg-primary/30 focus-visible:bg-primary/30 focus-visible:outline-none"
+                        aria-label="Resize SQL editor and results"
+                      >
+                        <span className="absolute inset-x-1/2 top-1/2 h-0.5 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground/40 transition-colors group-hover/separator:bg-primary" />
+                      </Separator>
+                      <Panel defaultSize="70%" minSize="20%" className="min-h-0 overflow-hidden">
+                        <section
+                          aria-label="SQL query results"
+                          className="flex h-full min-h-0 overflow-hidden bg-background/80 text-xs text-muted-foreground"
+                        >
+                          {isRunning ? (
+                            <p role="status">Running query...</p>
+                          ) : activeSqlTab.queryError ? (
+                            <p className="text-destructive">{activeSqlTab.queryError}</p>
+                          ) : activeSqlTab.queryResult ? (
+                            <QueryResultView
+                              result={activeSqlTab.queryResult}
+                              viewMode={activeSqlTab.viewMode}
+                              onViewModeChange={(viewMode) => {
+                                setSqlTabs((tabs) =>
+                                  tabs.map((tab) =>
+                                    tab.id === activeSqlTab.id ? { ...tab, viewMode } : tab,
+                                  ),
+                                );
+                              }}
+                            />
+                          ) : (
+                            "Place the cursor in a statement and press Ctrl+Enter to run it."
+                          )}
+                        </section>
+                      </Panel>
+                    </Group>
                   </TabsContent>
                 ) : (
                   <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/10 px-4 text-xs text-muted-foreground">

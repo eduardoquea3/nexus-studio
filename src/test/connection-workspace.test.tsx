@@ -2,7 +2,7 @@ import "./setup";
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
@@ -67,6 +67,18 @@ mock.module("@uiw/react-codemirror", () => ({
       </div>
     );
   },
+}));
+
+mock.module("react-resizable-panels", () => ({
+  Group: ({ children, className }: { children?: ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  Panel: ({ children, className }: { children?: ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  Separator: ({ children, className, "aria-label": ariaLabel }: { children?: ReactNode; className?: string; "aria-label"?: string }) => (
+    <div className={className} aria-label={ariaLabel}>{children}</div>
+  ),
 }));
 
 mock.module("@/app/connection/components/connection-sidebar", () => ({
@@ -720,10 +732,10 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true });
     const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
-    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true });
-    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
   });
 
   test("cycles backward with repeated Ctrl+Shift+Tab and confirms on Ctrl release", () => {
@@ -735,14 +747,14 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
     const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
-    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
-    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyUp(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Control", code: "ControlLeft", ctrlKey: false });
     expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Query 3" }).getAttribute("data-state")).toBe("active");
+    expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
   });
 
   test("does not carry tabs into a connection with no stored workspace", () => {
