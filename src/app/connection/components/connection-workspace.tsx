@@ -128,7 +128,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
               isActive: connection.id === profile.id,
               connection,
             })),
-             ...schemaObjects
+            ...schemaObjects
               .filter((object) => object.object_type === "table")
               .map((table) => ({
                 id: `table:${profile.id}:${selectedDatabase}:${table.schema ?? ""}:${table.name}`,
@@ -136,22 +136,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                 label: table.name,
                 detail: `${table.schema ?? "public"} · ${selectedDatabase} · table`,
                 isActive: false as const,
-               table,
-             })),
-            ...workspaceTabs.map((tab) => {
-              const workspaceTab: QueryTab | DataTableTab = tab.type === "sql"
-                ? { ...tab, type: "query" }
-                : { ...tab, type: "datatable" };
-              const description = describeTab(workspaceTab);
-              return {
-                id: workspaceTab.id,
-                kind: "tab" as const,
-                label: description.label,
-                detail: description.detail,
-                isActive: workspaceTab.id === activeTabId,
-                tab: workspaceTab,
-              };
-            }),
+                table,
+              })),
           ],
     [activeTabId, commandBarMode, commandBarTabs, connections, profile.id, schemaObjects, selectedDatabase, workspaceTabs],
   );
@@ -727,7 +713,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
             }
           }}
           onConnectionSelect={(connection) => void switchConnection(connection)}
-          groups={commandBarMode === "palette" ? ["connections", "tables", "tabs"] : ["tabs"]}
+          groups={commandBarMode === "palette" ? ["connections", "tables"] : ["tabs"]}
           isLoading={commandBarMode === "palette" && (
             switchingConnectionIds.size > 0 ||
             isLoadingConnections ||

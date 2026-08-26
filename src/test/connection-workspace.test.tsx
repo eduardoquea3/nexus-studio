@@ -794,6 +794,20 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
   });
 
+  test("does not show open tabs in the Ctrl+P palette", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+
+    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+    });
+
+    const palette = screen.getByRole("dialog", { name: "Command palette" });
+    expect(within(palette).queryByRole("button", { name: /company/ })).toBeNull();
+  });
+
   test("validates a selected connection before navigating and closes the palette", async () => {
     const nextProfile = { ...profile, id: "connection-2", name: "Analytics" };
     availableConnections.push(profile, nextProfile);
