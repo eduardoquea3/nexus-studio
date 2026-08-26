@@ -37,11 +37,12 @@ export function TitleBar() {
           onClick={() => {
             void toggle();
           }}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          aria-label="Toggle theme"
-          title="Toggle theme"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label={theme.mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          aria-pressed={theme.mode === "dark"}
+          title={theme.mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >
-          {theme === "dark" ? <RiSunLine size={16} /> : <RiMoonLine size={16} />}
+          {theme.mode === "dark" ? <RiSunLine size={16} /> : <RiMoonLine size={16} />}
         </button>
         <button
           type="button"
