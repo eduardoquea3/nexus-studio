@@ -1,3 +1,4 @@
+use font_kit::source::SystemSource;
 use serde::{Deserialize, Serialize};
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlConnection},
@@ -13,6 +14,16 @@ use tauri_plugin_store::Builder as StoreBuilder;
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn list_system_fonts() -> Result<Vec<String>, String> {
+    let mut families = SystemSource::new()
+        .all_families()
+        .map_err(|error| format!("Could not list system fonts: {error}"))?;
+    families.sort_unstable_by_key(|family| family.to_ascii_lowercase());
+    families.dedup();
+    Ok(families)
 }
 
 #[derive(Debug, Deserialize)]
@@ -897,6 +908,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
+            list_system_fonts,
             test_connection,
             create_sqlite_database,
             list_databases,

@@ -869,7 +869,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                   >
                     <Group orientation="vertical" className="h-full min-h-0 overflow-hidden rounded-b-xl">
                       <Panel defaultSize="30%" minSize="15%" maxSize="80%" className="min-h-0 overflow-hidden">
-                        <div className="h-full overflow-hidden border-b border-border/70 bg-card/60">
+                        <div className="sql-editor-font h-full overflow-hidden border-b border-border/70 bg-card/60">
                           <CodeMirror
                             value={activeSqlTab.query}
                             onChange={updateActiveQuery}
@@ -920,7 +920,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                       <Panel defaultSize="70%" minSize="20%" className="min-h-0 overflow-hidden">
                         <section
                           aria-label="SQL query results"
-                          className="flex h-full min-h-0 overflow-hidden bg-background/80 text-xs text-muted-foreground"
+                          className="results-font flex h-full min-h-0 overflow-hidden bg-background/80 text-xs text-muted-foreground"
                         >
                           {isRunning ? (
                             <p role="status">Running query...</p>
@@ -1117,6 +1117,7 @@ function QueryResultView({ result, viewMode, onViewModeChange }: { result: Query
             ariaLabel="SQL result JSON"
             text={payload.text}
             meta={`${result.rows.length} rows · ${result.duration_ms} ms`}
+            fontScope="results"
             issues={payload.issues.length > 0}
             largeMessage={exceedsJsonRenderThreshold(payload.rowCount) ? "Large result: showing only the loaded rows." : undefined}
             actions={

@@ -227,3 +227,22 @@ export async function runQuery(profile: ConnectionProfile, sql: string): Promise
 export async function listSshConfigAliases(): Promise<string[]> {
   return invoke("list_ssh_config_aliases");
 }
+
+type LocalFont = { family: string };
+type LocalFontWindow = Window & {
+  queryLocalFonts?: () => Promise<LocalFont[]>;
+};
+
+export async function listSystemFonts(): Promise<string[]> {
+  try {
+    return await invoke<string[]>("list_system_fonts");
+  } catch (error) {
+    const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts;
+    if (!queryLocalFonts) {
+      throw error;
+    }
+
+    const fonts = await queryLocalFonts();
+    return [...new Set(fonts.map((font) => font.family))].sort((a, b) => a.localeCompare(b));
+  }
+}

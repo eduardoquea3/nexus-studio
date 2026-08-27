@@ -22,7 +22,7 @@ export const sqlEditorTheme = [
       color: "var(--muted-foreground)",
       backgroundColor: "var(--card)",
       borderRight: "1px solid var(--border)",
-      fontFamily: "var(--font-sans)",
+      fontFamily: "var(--code-font-family, var(--font-sans))",
       lineHeight: "1.7",
     },
     ".cm-gutterElement": {
@@ -44,7 +44,8 @@ export const sqlEditorTheme = [
       borderLeftColor: "var(--ring)",
     },
     ".cm-scroller": {
-      fontFamily: "var(--font-sans)",
+      fontFamily: "var(--code-font-family, var(--font-sans))",
+      fontSize: "var(--code-font-size, var(--font-size-sql-editor))",
       lineHeight: "1.7",
       scrollbarColor: "var(--border) transparent",
       scrollbarWidth: "thin",
@@ -77,8 +78,8 @@ export const sqlEditorTheme = [
       scrollbarWidth: "thin",
     },
     ".cm-tooltip-autocomplete ul": {
-      fontFamily: "var(--font-sans)",
-      fontSize: "0.75rem",
+      fontFamily: "var(--code-font-family, var(--font-sans))",
+      fontSize: "var(--code-font-size, var(--font-size-sql-editor))",
     },
     ".cm-tooltip-autocomplete ul li": {
       borderRadius: "var(--radius-sm)",

@@ -1,25 +1,80 @@
+import { useEffect, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import {
+  RiAddLine,
   RiArrowLeftLine,
   RiContrast2Line,
-  RiLayoutLeftLine,
+  RiFontFamily,
   RiMoonLine,
   RiSettings3Line,
+  RiSubtractLine,
   RiSunLine,
 } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { THEME_VARIANTS, useThemeStore } from "@/shared/store/theme-store";
+import { Select } from "@/shared/components/ui/select";
+import { listSystemFonts } from "@/shared/lib/tauriApi";
+import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  THEME_VARIANTS,
+  useThemeStore,
+} from "@/shared/store/theme-store";
 
 const sections = [
   { label: "Appearance", description: "Theme and interface", icon: RiContrast2Line },
-  { label: "Workspace", description: "Editor preferences", icon: RiLayoutLeftLine },
 ] as const;
 
 export function SettingsScreen() {
   const router = useRouter();
-  const { theme, setTheme } = useThemeStore();
+  const {
+    theme,
+    interfaceFontFamily,
+    sqlEditorFontFamily,
+    resultFontFamily,
+    setTheme,
+    setInterfaceFontFamily,
+    setSqlEditorFontFamily,
+    setResultFontFamily,
+    interfaceFontSize,
+    sqlEditorFontSize,
+    resultFontSize,
+    setInterfaceFontSize,
+    setSqlEditorFontSize,
+    setResultFontSize,
+  } = useThemeStore();
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  const [isLoadingFonts, setIsLoadingFonts] = useState(true);
+  const [fontLoadError, setFontLoadError] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void listSystemFonts()
+      .then((fonts) => {
+        if (mounted) {
+          setSystemFonts(fonts);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load system fonts", error);
+        if (mounted) {
+          setFontLoadError(true);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoadingFonts(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const systemFontOptions = systemFonts.map((family) => ({ value: family, family, label: family }));
 
   const goBack = () => {
     if (router.history.canGoBack()) {
@@ -128,24 +183,143 @@ export function SettingsScreen() {
                   ))}
                 </div>
               </div>
-            </section>
-
-            <section aria-labelledby="workspace-heading">
-              <div className="mb-4">
-                <h2 id="workspace-heading" className="text-base font-semibold">Workspace</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Keep the interface quiet so the schema stays in focus.</p>
+              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+                <FontSetting
+                  title="SQL editor"
+                  description="Font used while writing and editing SQL queries."
+                  defaultLabel="Editor default"
+                  value={sqlEditorFontFamily}
+                  options={systemFontOptions}
+                  isLoading={isLoadingFonts}
+                  onChange={(fontFamily) => void setSqlEditorFontFamily(fontFamily)}
+                  fontSize={sqlEditorFontSize}
+                  onFontSizeChange={(fontSize) => void setSqlEditorFontSize(fontSize)}
+                />
+                <FontSetting
+                  title="Results"
+                  description="Font used for query result tables, JSON and status details."
+                  defaultLabel="Interface default"
+                  value={resultFontFamily}
+                  options={systemFontOptions}
+                  isLoading={isLoadingFonts}
+                  onChange={(fontFamily) => void setResultFontFamily(fontFamily)}
+                  fontSize={resultFontSize}
+                  onFontSizeChange={(fontSize) => void setResultFontSize(fontSize)}
+                />
+                <FontSetting
+                  title="Interface"
+                  description="Font used everywhere else, including table tabs and settings."
+                  defaultLabel="Theme default"
+                  value={interfaceFontFamily}
+                  options={systemFontOptions}
+                  isLoading={isLoadingFonts}
+                  onChange={(fontFamily) => void setInterfaceFontFamily(fontFamily)}
+                  fontSize={interfaceFontSize}
+                  onFontSizeChange={(fontSize) => void setInterfaceFontSize(fontSize)}
+                />
               </div>
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-4 py-4 sm:px-5">
-                <div>
-                  <p className="text-sm font-medium">Explorer sidebar</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Use Ctrl+B inside a connection to toggle the database explorer.</p>
-                </div>
-                <span className="shrink-0 rounded-sm bg-muted px-2 py-1 font-mono text-[0.65rem] text-muted-foreground">Ctrl+B</span>
-              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {fontLoadError
+                  ? "System fonts could not be loaded. Theme defaults remain active."
+                  : `${systemFonts.length} installed ${systemFonts.length === 1 ? "font" : "fonts"} available`}
+              </p>
             </section>
           </main>
         </div>
       </ScrollArea>
+    </div>
+  );
+}
+
+type FontOption = {
+  value: string;
+  family: string;
+  label: string;
+};
+
+type FontSettingProps = {
+  title: string;
+  description: string;
+  defaultLabel: string;
+  value: string | null;
+  options: FontOption[];
+  isLoading: boolean;
+  onChange: (fontFamily: string | null) => void;
+  fontSize: number;
+  onFontSizeChange: (fontSize: number) => void;
+};
+
+function FontSetting({
+  title,
+  description,
+  defaultLabel,
+  value,
+  options,
+  isLoading,
+  onChange,
+  fontSize,
+  onFontSizeChange,
+}: FontSettingProps) {
+  const fontOptions: FontOption[] = [
+    { value: `default-${title}`, family: "", label: defaultLabel },
+    ...(value && !options.some((option) => option.family === value)
+      ? [{ value: `saved-${value}`, family: value, label: `${value} (saved)` }]
+      : []),
+    ...options,
+  ];
+  const selectedFont = fontOptions.find((option) => option.family === (value ?? "")) ?? fontOptions[0];
+
+  return (
+    <div className="rounded-lg border border-border bg-card">
+      <div className="flex items-start gap-3 border-b border-border px-4 py-4">
+        <RiFontFamily className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="p-4">
+        <Select
+          options={fontOptions}
+          valueKey="value"
+          value={selectedFont}
+          isLoading={isLoading}
+          placeholder="Select a font"
+          aria-label={`${title} font`}
+          onValueChange={(option) => onChange(option?.family || null)}
+          render={(option) => (
+            <span style={option.family ? { fontFamily: option.family } : undefined}>{option.label}</span>
+          )}
+        />
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
+          <span className="text-xs text-muted-foreground">Font size</span>
+          <div className="flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={fontSize <= FONT_SIZE_MIN}
+              onClick={() => onFontSizeChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
+              aria-label={`Decrease ${title} font size`}
+            >
+              <RiSubtractLine aria-hidden="true" />
+            </Button>
+            <span className="min-w-12 text-center font-mono text-xs text-foreground" aria-live="polite">
+              {fontSize} px
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={fontSize >= FONT_SIZE_MAX}
+              onClick={() => onFontSizeChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
+              aria-label={`Increase ${title} font size`}
+            >
+              <RiAddLine aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

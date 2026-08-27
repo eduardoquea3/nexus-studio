@@ -44,6 +44,11 @@
   --font-label: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sql-editor: var(--font-mono);
+  --font-results: var(--font-sans);
+  --font-size-interface: 16px;
+  --font-size-sql-editor: 16px;
+  --font-size-results: 12px;
   --radius: 0.625rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -222,5 +227,25 @@
   }
   body {
     @apply m-0 bg-background text-foreground;
+  }
+  .sql-editor-font {
+    --code-font-family: var(--font-sql-editor);
+    --code-font-size: var(--font-size-sql-editor);
+    font-family: var(--font-sql-editor);
+    font-size: var(--font-size-sql-editor);
+  }
+  .results-font {
+    --code-font-family: var(--font-results);
+    --code-font-size: var(--font-size-results);
+    font-family: var(--font-results);
+    font-size: var(--font-size-results);
+  }
+  .sql-editor-font,
+  .sql-editor-font * {
+    font-size: var(--font-size-sql-editor) !important;
+  }
+  .results-font,
+  .results-font * {
+    font-size: var(--font-size-results) !important;
   }
 }
