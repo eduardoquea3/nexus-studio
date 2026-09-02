@@ -681,6 +681,15 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
             let mut connection = PgConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
+            let count_query = match request.schema.as_deref() {
+                Some(schema) => format!("SELECT COUNT(*) AS total FROM \"{}\".\"{}\"", schema, request.table),
+                None => format!("SELECT COUNT(*) AS total FROM \"{}\"", request.table),
+            };
+            let total = sqlx::query(&count_query)
+                .fetch_one(&mut connection)
+                .await
+                .map_err(|error| format!("Could not count table data: {error}"))?
+                .get::<i64, _>("total") as usize;
             let query = match request.schema.as_deref() {
                 Some(schema) => format!("SELECT * FROM \"{}\".\"{}\" LIMIT $1 OFFSET $2", schema, request.table),
                 None => format!("SELECT * FROM \"{}\" LIMIT $1 OFFSET $2", request.table),
@@ -705,7 +714,7 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
                         .collect()
                 })
                 .collect::<Vec<_>>();
-            Ok(TableDataPage { columns, total: data_rows.len(), rows: data_rows, page, page_size })
+            Ok(TableDataPage { columns, total, rows: data_rows, page, page_size })
         }
         "mysql" => {
             let connection_request = request.request;
@@ -718,6 +727,12 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
             let mut connection = MySqlConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("MySQL connection failed: {error}"))?;
+            let count_query = format!("SELECT COUNT(*) AS total FROM `{}`", request.table);
+            let total = sqlx::query(&count_query)
+                .fetch_one(&mut connection)
+                .await
+                .map_err(|error| format!("Could not count table data: {error}"))?
+                .get::<i64, _>("total") as usize;
             let query = format!("SELECT * FROM `{}` LIMIT ? OFFSET ?", request.table);
             let rows = sqlx::query(&query)
                 .bind(page_size)
@@ -739,7 +754,7 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
                         .collect()
                 })
                 .collect::<Vec<_>>();
-            Ok(TableDataPage { columns, total: data_rows.len(), rows: data_rows, page, page_size })
+            Ok(TableDataPage { columns, total, rows: data_rows, page, page_size })
         }
         "sqlite" => {
             let path = request
@@ -751,6 +766,12 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
             let mut connection = SqliteConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("SQLite connection failed: {error}"))?;
+            let count_query = format!("SELECT COUNT(*) AS total FROM \"{}\"", request.table);
+            let total = sqlx::query(&count_query)
+                .fetch_one(&mut connection)
+                .await
+                .map_err(|error| format!("Could not count table data: {error}"))?
+                .get::<i64, _>("total") as usize;
             let query = format!("SELECT * FROM \"{}\" LIMIT ? OFFSET ?", request.table);
             let rows = sqlx::query(&query)
                 .bind(page_size as i64)
@@ -772,9 +793,73 @@ async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, Stri
                         .collect()
                 })
                 .collect::<Vec<_>>();
-            Ok(TableDataPage { columns, total: data_rows.len(), rows: data_rows, page, page_size })
+            Ok(TableDataPage { columns, total, rows: data_rows, page, page_size })
         }
         database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_table_data_reports_total_across_pages() {
+        tauri::async_runtime::block_on(async {
+            let database_path = std::env::temp_dir().join(format!(
+                "nexus-studio-table-data-{}-{}.sqlite",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock should be after the Unix epoch")
+                    .as_nanos()
+            ));
+            let database_path = database_path.to_string_lossy().into_owned();
+
+            let result = async {
+                let options = SqliteConnectOptions::new()
+                    .filename(&database_path)
+                    .create_if_missing(true);
+                let mut connection = SqliteConnection::connect_with(&options)
+                    .await
+                    .expect("test database should open");
+                sqlx::query("CREATE TABLE entries (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+                    .execute(&mut connection)
+                    .await
+                    .expect("test table should be created");
+                sqlx::query("INSERT INTO entries (id, name) VALUES (1, 'one'), (2, 'two'), (3, 'three')")
+                    .execute(&mut connection)
+                    .await
+                    .expect("test rows should be inserted");
+                drop(connection);
+
+                get_table_data(TableDataRequest {
+                    request: ConnectionTestRequest {
+                        db_type: "sqlite".to_string(),
+                        host: None,
+                        port: None,
+                        database: None,
+                        username: None,
+                        password: None,
+                        sqlite_path: Some(database_path.clone()),
+                    },
+                    table: "entries".to_string(),
+                    schema: None,
+                    page: 2,
+                    page_size: 2,
+                })
+                .await
+            }
+            .await;
+
+            let _ = std::fs::remove_file(&database_path);
+            let page = result.expect("table data should load");
+            assert_eq!(page.columns, ["id", "name"]);
+            assert_eq!(page.rows.len(), 1);
+            assert_eq!(page.total, 3);
+            assert_eq!(page.page, 2);
+            assert_eq!(page.page_size, 2);
+        });
     }
 }
 
