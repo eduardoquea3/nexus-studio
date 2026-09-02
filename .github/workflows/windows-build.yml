@@ -68,7 +68,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run frontend tests
-        run: bun test
+        run: bun test --parallel=1
 
       - name: Build Tauri application
         run: bun run tauri build
