@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import {
   RiAddLine,
   RiArrowLeftLine,
   RiContrast2Line,
+  RiArrowDownSLine,
+  RiCheckLine,
   RiFontFamily,
   RiMoonLine,
-  RiSettings3Line,
   RiSubtractLine,
   RiSunLine,
 } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Select } from "@/shared/components/ui/select";
 import { listSystemFonts } from "@/shared/lib/tauriApi";
+import { Combobox } from "@base-ui/react/combobox";
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -89,15 +90,6 @@ export function SettingsScreen() {
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-4">
-            <div className="mb-8 flex items-center gap-2 px-2">
-              <div className="flex size-8 items-center justify-center rounded-md bg-primary/15 text-primary">
-                <RiSettings3Line className="size-4" aria-hidden="true" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-label text-sm font-semibold tracking-tight">Nexus Studio</p>
-                <p className="text-[0.65rem] uppercase tracking-[0.16em] text-muted-foreground">Settings</p>
-              </div>
-            </div>
             <nav aria-label="Settings sections" className="space-y-1">
               <p className="mb-3 px-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Configure
@@ -268,6 +260,16 @@ function FontSetting({
     ...options,
   ];
   const selectedFont = fontOptions.find((option) => option.family === (value ?? "")) ?? fontOptions[0];
+  const [fontFilter, setFontFilter] = useState(selectedFont.label);
+  const fontInputRef = useRef<HTMLInputElement>(null);
+  const normalizedFontFilter = fontFilter.trim().toLowerCase();
+  const filteredFontOptions = fontOptions.filter((option) =>
+    option.label.toLowerCase().includes(normalizedFontFilter),
+  );
+
+  useEffect(() => {
+    setFontFilter(selectedFont.label);
+  }, [selectedFont.value]);
 
   return (
     <div className="rounded-lg border border-border bg-card">
@@ -279,18 +281,72 @@ function FontSetting({
         </div>
       </div>
       <div className="p-4">
-        <Select
-          options={fontOptions}
-          valueKey="value"
+        <Combobox.Root
+          items={fontOptions}
           value={selectedFont}
-          isLoading={isLoading}
-          placeholder="Select a font"
-          aria-label={`${title} font`}
-          onValueChange={(option) => onChange(option?.family || null)}
-          render={(option) => (
-            <span style={option.family ? { fontFamily: option.family } : undefined}>{option.label}</span>
-          )}
-        />
+          disabled={isLoading}
+          autoHighlight
+          openOnInputClick
+          inputValue={fontFilter}
+          filteredItems={filteredFontOptions}
+          itemToStringLabel={(option: FontOption | null) => option?.label ?? ""}
+          onInputValueChange={setFontFilter}
+          onValueChange={(option) => {
+            setFontFilter(option?.label ?? "");
+            onChange(option?.family || null);
+          }}
+        >
+          <div className="relative">
+            <Combobox.Input
+              ref={fontInputRef}
+              aria-label={`${title} font`}
+              placeholder={isLoading ? "Loading fonts..." : "Search fonts"}
+              className="h-10 w-full rounded-md border border-border/70 bg-background/80 px-3 pr-9 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-background/90 focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+              style={selectedFont.family ? { fontFamily: selectedFont.family } : undefined}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <Combobox.Trigger
+              aria-label={`Toggle ${title} fonts`}
+              className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+              onFocus={() => fontInputRef.current?.select()}
+            >
+              <RiArrowDownSLine aria-hidden="true" />
+            </Combobox.Trigger>
+          </div>
+          <Combobox.Portal>
+            <Combobox.Positioner align="start" sideOffset={4} className="z-50">
+              <Combobox.Popup className="w-(--anchor-width) overflow-hidden rounded-lg border border-border/70 bg-popover/95 text-popover-foreground shadow-lg ring-1 ring-border/50">
+                {filteredFontOptions.length === 0 ? (
+                  <Combobox.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    No fonts found.
+                  </Combobox.Empty>
+                ) : null}
+                <Combobox.List
+                  className="max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground [&::-webkit-scrollbar-track]:bg-transparent"
+                  style={{ scrollbarColor: "var(--border) transparent", scrollbarWidth: "thin" }}
+                >
+                  {(option: FontOption) => (
+                    <Combobox.Item
+                      key={option.value}
+                      value={option}
+                      className="flex min-h-8 w-full cursor-default items-center gap-2 px-3 py-1.5 text-xs outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                    >
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        style={option.family ? { fontFamily: option.family } : undefined}
+                      >
+                        {option.label}
+                      </span>
+                      <Combobox.ItemIndicator>
+                        <RiCheckLine aria-hidden="true" />
+                      </Combobox.ItemIndicator>
+                    </Combobox.Item>
+                  )}
+                </Combobox.List>
+              </Combobox.Popup>
+            </Combobox.Positioner>
+          </Combobox.Portal>
+        </Combobox.Root>
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
           <span className="text-xs text-muted-foreground">Font size</span>
           <div className="flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-0.5">
