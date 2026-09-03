@@ -1,6 +1,3 @@
-import { SVGProps, useEffect, useState } from "react";
-import { toast } from "@/components/ui/toast";
-import { save } from "@tauri-apps/plugin-dialog";
 import {
   RiDatabase2Fill,
   RiDatabase2Line,
@@ -14,6 +11,21 @@ import {
   RiUserLine,
 } from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { save } from "@tauri-apps/plugin-dialog";
+import { SVGProps, useEffect, useRef, useState } from "react";
+
+import type { ConnectionProfile, DbType } from "@/shared/types/models";
+
+import { connectionsQueryKey } from "@/app/home/hooks/use-connections";
+import {
+  getConnectionSessionKey,
+  isUnsupportedLegacyConnection,
+  shouldLoadConnectionProfile,
+  shouldResetConnectionSession,
+} from "@/app/home/lib/connection-panel-state";
+import { parseConnectionString } from "@/app/home/lib/connection-string-parser";
+import { getConnection } from "@/app/home/services/connection-service";
 import {
   Accordion,
   AccordionContent,
@@ -21,24 +33,22 @@ import {
   AccordionTrigger,
 } from "@/components/animate-ui/components/radix/accordion";
 import { Button } from "@/components/ui/button";
-import { Input, type InputProps } from "@/shared/components/ui/input";
+import { toast } from "@/components/ui/toast";
+import { Panel } from "@/shared/components/panel";
 import { Field } from "@/shared/components/ui/field";
 import { FileField } from "@/shared/components/ui/file-field";
+import { Input, type InputProps } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
-import { Panel } from "@/shared/components/panel";
-import { useModalStore } from "@/shared/store/modalStore";
-import { useConnectionStore } from "@/shared/store/connectionStore";
-import { useQueryClient } from "@tanstack/react-query";
-import { connectionsQueryKey } from "@/app/home/hooks/use-connections";
-import { getConnection } from "@/app/home/services/connection-service";
-import { HomePanels } from "../lib/home-panels";
 import {
   saveConnection,
   createSqliteDatabase,
   testConnectionFields,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
-import type { ConnectionProfile, DbType } from "@/shared/types/models";
+import { useConnectionStore } from "@/shared/store/connectionStore";
+import { useModalStore } from "@/shared/store/modalStore";
+
+import { HomePanels } from "../lib/home-panels";
 
 type ConnectionType = {
   value: string;
@@ -80,6 +90,7 @@ const initialFormValues: ConnectionFormValues = {
 };
 
 export function NewConnectionPanel() {
+  const isOpen = useModalStore((state) => state.modals.includes(HomePanels.NewConnection));
   const closeModal = useModalStore((state) => state.closeModal);
   const modalPayload = useModalStore(
     (state) => state.modalProps[HomePanels.NewConnection] as { connectionId?: string } | undefined,
@@ -89,17 +100,64 @@ export function NewConnectionPanel() {
   const queryClient = useQueryClient();
   const editingId = modalPayload?.connectionId;
   const [form, setForm] = useState(initialFormValues);
+  const [connectionString, setConnectionString] = useState("");
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingSqlite, setIsCreatingSqlite] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [unsupportedLegacyProfileId, setUnsupportedLegacyProfileId] = useState<string>();
+  const sessionKey = getConnectionSessionKey(isOpen, editingId);
+  const sessionKeyRef = useRef<string | null>(null);
+  const loadedProfileSessionKeyRef = useRef<string | null>(null);
+  const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
+  const isCurrentSession = sessionKeyRef.current === sessionKey;
+  const isUnsupportedLegacyProfile = isCurrentSession && unsupportedLegacyProfileId === editingId;
+  const displayedForm = isCurrentSession ? form : initialFormValues;
+
+  const clearImportedFormValues = () => {
+    if (importedFieldsRef.current.length === 0) return;
+    setForm(
+      (current) =>
+        ({
+          ...current,
+          ...Object.fromEntries(
+            importedFieldsRef.current.map((field) => [field, initialFormValues[field]]),
+          ),
+        }) as ConnectionFormValues,
+    );
+    importedFieldsRef.current = [];
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      setConnectionString("");
+      clearImportedFormValues();
+      sessionKeyRef.current = null;
+      loadedProfileSessionKeyRef.current = null;
+      setUnsupportedLegacyProfileId(undefined);
+      return;
+    }
+
+    if (shouldResetConnectionSession(sessionKeyRef.current, sessionKey)) {
+      sessionKeyRef.current = sessionKey;
+      setForm(initialFormValues);
+      setConnectionString("");
+      setSshAuthType("key-file");
+      setUnsupportedLegacyProfileId(undefined);
+      loadedProfileSessionKeyRef.current = null;
+      importedFieldsRef.current = [];
+    }
+  }, [isOpen, sessionKey]);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!editingId) {
+    if (
+      !isOpen ||
+      !editingId ||
+      !shouldLoadConnectionProfile(loadedProfileSessionKeyRef.current, sessionKey, editingId)
+    ) {
       setIsLoadingProfile(false);
-      setForm(initialFormValues);
       return;
     }
 
@@ -107,6 +165,10 @@ export function NewConnectionPanel() {
     void getConnection(editingId)
       .then((profile) => {
         if (!cancelled && profile) {
+          loadedProfileSessionKeyRef.current = sessionKey;
+          setUnsupportedLegacyProfileId(
+            isUnsupportedLegacyConnection(profile) ? profile.id : undefined,
+          );
           setForm(profileToFormValues(profile));
         }
       })
@@ -119,7 +181,7 @@ export function NewConnectionPanel() {
     return () => {
       cancelled = true;
     };
-  }, [editingId]);
+  }, [editingId, isOpen, sessionKey]);
 
   const updateField = <K extends keyof ConnectionFormValues>(
     field: K,
@@ -153,6 +215,40 @@ export function NewConnectionPanel() {
     }
   };
 
+  const handleImportConnectionString = () => {
+    const result = parseConnectionString(connectionString);
+    if (!result.ok) {
+      setConnectionString("");
+      clearImportedFormValues();
+      toast.add({
+        title: "Could not import connection string",
+        type: "error",
+        description: result.error,
+      });
+      return;
+    }
+
+    const importedFields: (keyof ConnectionFormValues)[] =
+      result.value.dbType === "sqlite"
+        ? ["dbType", "sqlitePath"]
+        : ["dbType", "host", "port", "database", "username", "password"];
+    importedFieldsRef.current = [...new Set([...importedFieldsRef.current, ...importedFields])];
+    setForm((current) =>
+      result.value.dbType === "sqlite"
+        ? { ...current, dbType: "sqlite", sqlitePath: result.value.sqlitePath }
+        : {
+            ...current,
+            dbType: result.value.dbType,
+            host: result.value.host,
+            port: result.value.port,
+            database: result.value.database,
+            username: result.value.username,
+            password: result.value.password,
+          },
+    );
+    setConnectionString("");
+  };
+
   const handleCreateSqliteDatabase = async () => {
     setIsCreatingSqlite(true);
     try {
@@ -172,13 +268,26 @@ export function NewConnectionPanel() {
         description: path,
       });
     } catch (error) {
-      toast.add({ title: "Could not create SQLite database", type: "error", description: String(error) });
+      toast.add({
+        title: "Could not create SQLite database",
+        type: "error",
+        description: String(error),
+      });
     } finally {
       setIsCreatingSqlite(false);
     }
   };
 
   const handleConnect = async () => {
+    if (isUnsupportedLegacyProfile) {
+      toast.add({
+        title: "Connection cannot be edited",
+        type: "error",
+        description: "This legacy connection format is preserved and cannot be safely edited here.",
+      });
+      return;
+    }
+
     setIsTesting(true);
     try {
       await testConnectionFields(getTestRequest());
@@ -214,74 +323,116 @@ export function NewConnectionPanel() {
       }
       icon={<RiDatabase2Fill size={19} />}
       className="w-140"
-    >
-      <div className="flex flex-col gap-4 text-sm">
-        <Field label="Connection Type">
-          <Select
-            options={connectionTypes}
-            valueKey="value"
-            value={connectionTypes.find((item) => item.value === form.dbType)}
-            onValueChange={(value) =>
-              value && updateField("dbType", value.value as ConnectionFormValues["dbType"])
-            }
-            render={(option) => <ConnectionTypeOption type={option} />}
-            placeholder="Select type"
-          />
-        </Field>
-
-        {form.dbType === "sqlite" ? (
-          <div className="grid gap-2">
-            <FileField
-              label="File path"
-              placeholder="Select a SQLite database"
-              value={form.sqlitePath}
-              onPathChange={(path) => updateField("sqlitePath", path)}
-            />
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => void handleCreateSqliteDatabase()}
-              disabled={isCreatingSqlite || isTesting || isLoadingProfile}
-            >
-              {isCreatingSqlite ? "Creating database..." : "Create new SQLite database"}
-            </Button>
-          </div>
-        ) : (
-          <DatabaseConnectionFields
-            values={form}
-            onChange={updateField}
-            sshAuthType={sshAuthType}
-            onSshAuthTypeChange={(value) => value && setSshAuthType(value)}
-          />
-        )}
-
-        <Field label="Connection name">
-          <Input
-            iconLeft={RiDatabase2Line}
-            placeholder="Production database"
-            value={form.name}
-            onChange={(event) => updateField("name", event.target.value)}
-          />
-        </Field>
-      </div>
-
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-border">
-        <Button variant="outline" onClick={() => closeModal(HomePanels.NewConnection)}>
-          Cancel
-        </Button>
-        <div className="flex items-center gap-2">
+      footer={
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-popover px-6 py-4">
           <Button
             variant="outline"
-            onClick={() => void handleTest()}
-            disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+            onClick={() => {
+              setConnectionString("");
+              clearImportedFormValues();
+              closeModal(HomePanels.NewConnection);
+            }}
           >
-            Test
+            Cancel
           </Button>
-          <Button onClick={() => void handleConnect()} disabled={isTesting || isCreatingSqlite || isLoadingProfile}>
-            {editingId ? "Save changes" : "Connect"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void handleTest()}
+              disabled={
+                isTesting || isCreatingSqlite || isLoadingProfile || isUnsupportedLegacyProfile
+              }
+            >
+              Test
+            </Button>
+            {!isUnsupportedLegacyProfile && (
+              <Button
+                onClick={() => void handleConnect()}
+                disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+              >
+                {editingId ? "Save changes" : "Connect"}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      }
+    >
+      {isUnsupportedLegacyProfile ? (
+        <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          This legacy connection format cannot be safely edited here. Its saved connection data is
+          preserved; create a new profile to use structured connection fields.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 text-sm">
+          <Field label="Connection Type">
+            <Select
+              options={connectionTypes}
+              valueKey="value"
+              value={connectionTypes.find((item) => item.value === displayedForm.dbType)}
+              onValueChange={(value) =>
+                value && updateField("dbType", value.value as ConnectionFormValues["dbType"])
+              }
+              render={(option) => <ConnectionTypeOption type={option} />}
+              placeholder="Select type"
+            />
+          </Field>
+
+          {displayedForm.dbType === "sqlite" ? (
+            <div className="grid gap-2">
+              <FileField
+                label="File path"
+                placeholder="Select a SQLite database"
+                value={displayedForm.sqlitePath}
+                onPathChange={(path) => updateField("sqlitePath", path)}
+              />
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => void handleCreateSqliteDatabase()}
+                disabled={isCreatingSqlite || isTesting || isLoadingProfile}
+              >
+                {isCreatingSqlite ? "Creating database..." : "Create new SQLite database"}
+              </Button>
+            </div>
+          ) : (
+            <DatabaseConnectionFields
+              values={displayedForm}
+              onChange={updateField}
+              sshAuthType={sshAuthType}
+              onSshAuthTypeChange={(value) => value && setSshAuthType(value)}
+            />
+          )}
+
+          <Field label="Connection name">
+            <Input
+              iconLeft={RiDatabase2Line}
+              placeholder="Production database"
+              value={displayedForm.name}
+              onChange={(event) => updateField("name", event.target.value)}
+            />
+          </Field>
+
+          <div className="border-t border-border/70 pt-4">
+            <Field label="Import connection string">
+              <div className="flex gap-2">
+                <PasswordInput
+                  value={connectionString}
+                  onChange={(event) => setConnectionString(event.target.value)}
+                  placeholder="postgresql://user:password@host/database"
+                />
+                <Button
+                  variant="outline"
+                  onClick={handleImportConnectionString}
+                  disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+                >
+                  Import
+                </Button>
+              </div>
+            </Field>
+          </div>
+        </div>
+      )}
+
     </Panel>
   );
 }
@@ -332,7 +483,7 @@ function profileToFormValues(profile: ConnectionProfile): ConnectionFormValues {
       port: "5432",
       database: "",
       username: "",
-      password: profile.password ?? "",
+      password: "",
       sqlitePath: profile.connect_mode.value,
     };
   }
@@ -465,10 +616,7 @@ function DatabaseConnectionFields({
                     <Input iconLeft={RiUserLine} placeholder="SSH username" />
                   </Field>
                   <Field label="SSH password">
-                    <PasswordInput
-                      iconLeft={RiLockPasswordLine}
-                      placeholder="SSH password"
-                    />
+                    <PasswordInput iconLeft={RiLockPasswordLine} placeholder="SSH password" />
                   </Field>
                 </div>
               )}

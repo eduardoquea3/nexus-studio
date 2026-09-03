@@ -14,7 +14,6 @@ import {
   RiLoader4Line,
 } from "@remixicon/react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -130,11 +129,6 @@ export function ConnectionSidebar({
     new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
   ).map((value) => ({ value, label: value }));
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
-  const engine = profile.db_type === "postgres" ? "postgresql" : profile.db_type;
-  const endpoint =
-    profile.connect_mode.type === "fields"
-      ? `${profile.connect_mode.host}:${profile.connect_mode.port}`
-      : profile.connect_mode.value;
   const sortedConnections = connections
     .filter((connection) => connection.id !== profile.id)
     .sort((left, right) => (right.last_opened_at ?? 0) - (left.last_opened_at ?? 0));
@@ -212,16 +206,6 @@ export function ConnectionSidebar({
         sidebarOpen ? "flex flex-col" : "hidden",
       )}
     >
-      <div className="border-b border-border/70 px-4 py-4">
-        <div className="flex items-center gap-2">
-          <RiDatabase2Line className="size-4 shrink-0 text-primary" />
-          <h1 className="truncate text-sm font-semibold tracking-tight">{profile.name}</h1>
-          <Badge variant="outline" className="text-[0.65rem] uppercase tracking-wider">
-            {engine}
-          </Badge>
-        </div>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{endpoint}</p>
-      </div>
       <div className="border-b border-border/70 px-4 py-4">
         <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Database

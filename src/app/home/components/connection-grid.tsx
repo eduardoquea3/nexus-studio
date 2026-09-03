@@ -23,7 +23,7 @@ export function ConnectionGrid({ connections, onOpen, onEdit, onDelete }: Connec
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3">
       {connections.map((connection) => (
         <ConnectionCard
           key={connection.id}

@@ -24,6 +24,9 @@ export function DashboardHeader({ onNewConnection }: DashboardHeaderProps) {
       <Button className="h-9 rounded-md px-3 text-xs" onClick={onNewConnection}>
         <RiAddLine size={15} aria-hidden="true" />
         New connection
+        <kbd className="ml-1 rounded-sm border border-primary-foreground/25 px-1 py-0.5 font-mono text-[9px] font-medium text-primary-foreground/80">
+          Ctrl N
+        </kbd>
       </Button>
     </header>
   );

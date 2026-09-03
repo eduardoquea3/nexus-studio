@@ -10,9 +10,10 @@ import { testSavedConnection } from "@/shared/lib/tauriApi";
 
 type HomeCommandBarProps = {
   activeConnectionId: string | null;
+  onOpenChange?: (isOpen: boolean) => void;
 };
 
-export function HomeCommandBar({ activeConnectionId }: HomeCommandBarProps) {
+export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommandBarProps) {
   const { data: connections = [], isLoading, isFetching } = useConnections();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
@@ -83,6 +84,10 @@ export function HomeCommandBar({ activeConnectionId }: HomeCommandBarProps) {
       });
     }
   };
+
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
