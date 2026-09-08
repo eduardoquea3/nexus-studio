@@ -1,6 +1,6 @@
 import { EditorView } from "@codemirror/view";
 
-import { sql } from "@codemirror/lang-sql";
+import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
 import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiDownloadLine, RiFileCopyLine, RiPlayLine, RiTableLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +25,9 @@ import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import { cn } from "@/lib/utils";
 import { useDataTable } from "@/shared/hooks/use-data-table";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
-import { getRoutineDefinition, runQuery } from "@/shared/lib/tauriApi";
+import { createSqlColumnCompletionSource, createSqlTableCompletions } from "@/shared/lib/sql-autocomplete";
+import { sqlCompletionIcons } from "@/shared/lib/sql-completion-icons";
+import { getRoutineDefinition, getTableSchema, runQuery } from "@/shared/lib/tauriApi";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
 import { exceedsJsonRenderThreshold, serializeJson } from "@/shared/lib/json-serialization";
 import { copyJsonToClipboard, exportJsonFile } from "@/shared/lib/json-actions";
@@ -96,6 +98,26 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
   const activeSqlTabIdRef = useRef(activeSqlTabId);
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) ?? sqlTabs[0];
   const activeTableTab = tableTabs.find((tab) => tab.id === activeTabId);
+  const sqlTables = useMemo(
+    () => schemaObjects.filter((object) => object.object_type === "table"),
+    [schemaObjects],
+  );
+  const sqlDialect = profile.db_type === "postgres" ? PostgreSQL : profile.db_type === "mysql" ? MySQL : SQLite;
+  const sqlIdentifierQuote = profile.db_type === "mysql" ? "`" : '"';
+  const sqlLanguageExtensions = useMemo(() => {
+    const support = sql({
+      dialect: sqlDialect,
+      schema: {},
+      tables: createSqlTableCompletions(sqlTables),
+    });
+    const columnCompletion = createSqlColumnCompletionSource(
+      sqlTables,
+      (table) => getTableSchema(withDatabase(profile, selectedDatabase), table.name, table.schema).then((schema) => schema.columns),
+      sqlIdentifierQuote,
+    );
+
+    return [support, support.language.data.of({ autocomplete: columnCompletion })];
+  }, [profile, selectedDatabase, sqlDialect, sqlIdentifierQuote, sqlTables]);
   const workspaceTabs = [
     ...sqlTabs.map((tab) => ({ ...tab, type: "sql" as const })),
     ...tableTabs.map((tab) => ({ ...tab, type: "table" as const })),
@@ -873,10 +895,11 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                           <CodeMirror
                             value={activeSqlTab.query}
                             onChange={updateActiveQuery}
-                            basicSetup={{ lineNumbers: true, foldGutter: true }}
+                            basicSetup={{ lineNumbers: true, foldGutter: true, autocompletion: false }}
                             theme="none"
                             extensions={[
-                              sql(),
+                              ...sqlLanguageExtensions,
+                              sqlCompletionIcons,
                               sqlEditorTheme,
                               EditorView.theme({
                                 ".cm-content": { padding: "0.35rem 0" },

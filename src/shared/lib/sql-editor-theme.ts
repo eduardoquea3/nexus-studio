@@ -105,6 +105,36 @@ export const sqlEditorTheme = [
       color: "var(--muted-foreground)",
       opacity: "0.8",
     },
+    ".cm-sqlCompletionIcon": {
+      display: "inline-flex",
+      width: "1rem",
+      height: "1rem",
+      marginRight: "0.45rem",
+      alignItems: "center",
+      justifyContent: "center",
+      color: "var(--muted-foreground)",
+      opacity: "0.85",
+    },
+    ".cm-sqlCompletionIcon svg": {
+      width: "0.9rem",
+      height: "0.9rem",
+      strokeWidth: "1.8",
+    },
+    ".cm-sqlCompletionIcon-table": { color: "var(--primary)" },
+    ".cm-sqlCompletionIcon-field, .cm-sqlCompletionIcon-property": {
+      color: "var(--editor-variable)",
+    },
+    ".cm-sqlCompletionIcon-keyword": { color: "var(--editor-keyword)" },
+    ".cm-sqlCompletionIcon-variable": { color: "var(--editor-variable)" },
+    ".cm-sqlCompletionIcon-constant": { color: "var(--editor-number)" },
+    ".cm-sqlCompletionIcon-type": { color: "var(--editor-type)" },
+    ".cm-sqlCompletionIcon-function, .cm-sqlCompletionIcon-method": {
+      color: "var(--editor-function)",
+    },
+    ".cm-tooltip-autocomplete ul li[aria-selected] .cm-sqlCompletionIcon": {
+      color: "var(--editor-picker-selected-foreground)",
+      opacity: "1",
+    },
   }),
   syntaxHighlighting(
     HighlightStyle.define([

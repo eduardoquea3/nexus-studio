@@ -33,6 +33,7 @@ mock.module("@/app/home/services/connection-service", () => ({
 }));
 
 mock.module("@/shared/lib/tauriApi", () => ({
+  getTableSchema: mock(async () => ({ columns: [], indexes: [] })),
   testSavedConnection,
   listSchemaObjects,
 }));
