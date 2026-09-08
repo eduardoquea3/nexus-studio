@@ -174,7 +174,6 @@ export function ConnectionSidebar({
   const toggleTable = async (table: string, schema?: string) => {
     const resolvedSchema = schema ?? schemaObjects.find((object) => object.object_type === "table" && object.name === table)?.schema;
     const resourceKey = tableResourceKey(profile.id, resolvedSchema, table);
-    onTableSelect(table, resolvedSchema);
 
     if (expandedTables.includes(resourceKey)) {
       setExpandedTables((current) => current.filter((key) => key !== resourceKey));
@@ -335,6 +334,7 @@ export function ConnectionSidebar({
                                     role="button"
                                     tabIndex={0}
                                     className="min-w-0 flex-1 truncate cursor-default"
+                                    onClick={() => onTableSelect(object.name, object.schema)}
                                     onDoubleClick={() => onTableSelect(object.name, object.schema)}
                                     onKeyDown={(event) => {
                                       if (event.key === "Enter") {
@@ -381,10 +381,10 @@ export function ConnectionSidebar({
                                           className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1 text-[0.65rem]"
                                           title={`${column.name}: ${column.data_type}`}
                                         >
-                                          <span className="min-w-0 truncate text-foreground/80">
+                                          <span className="min-w-0 flex-[2] truncate text-foreground/80">
                                             {column.name}
                                           </span>
-                                          <span className="shrink-0 truncate text-muted-foreground">
+                                          <span className="min-w-0 max-w-24 flex-1 truncate text-right text-muted-foreground">
                                             {column.data_type}
                                           </span>
                                         </div>
