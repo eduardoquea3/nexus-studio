@@ -1,8 +1,10 @@
 import "./setup";
+import type { ReactNode } from "react";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { ReactNode } from "react";
+
 import type { DataPage } from "@/shared/types/models";
+
 import { serializeJson } from "@/shared/lib/json-serialization";
 
 const emptyTableData: DataPage = {
@@ -30,9 +32,36 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
   useTableSchema: () => ({
     data: {
       columns: [
-        { name: "name", data_type: "varchar", enum_values: [], nullable: true, default: null, is_pk: true, is_fk: false, is_unique: false },
-        { name: "active", data_type: "boolean", enum_values: [], nullable: false, default: null, is_pk: false, is_fk: false, is_unique: false },
-        { name: "status", data_type: "USER-DEFINED", enum_values: ["draft", "published"], nullable: false, default: null, is_pk: false, is_fk: false, is_unique: false },
+        {
+          name: "name",
+          data_type: "varchar",
+          enum_values: [],
+          nullable: true,
+          default: null,
+          is_pk: true,
+          is_fk: false,
+          is_unique: false,
+        },
+        {
+          name: "active",
+          data_type: "boolean",
+          enum_values: [],
+          nullable: false,
+          default: null,
+          is_pk: false,
+          is_fk: false,
+          is_unique: false,
+        },
+        {
+          name: "status",
+          data_type: "USER-DEFINED",
+          enum_values: ["draft", "published"],
+          nullable: false,
+          default: null,
+          is_pk: false,
+          is_fk: false,
+          is_unique: false,
+        },
       ],
       indexes: [],
     },
@@ -91,8 +120,14 @@ describe("TableDataTab empty rows", () => {
     tableError = null;
     refetchTable.mockClear();
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
     document.createElement = originalCreateElement;
   });
 
@@ -114,6 +149,11 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("Showing 0")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
+    expect(screen.getByRole("table").className.includes("h-full")).toBe(true);
+    expect(screen.getByRole("table").className.includes("w-full")).toBe(true);
+    expect(
+      document.querySelector('[data-slot="table-container"]')?.parentElement?.className.includes("h-full"),
+    ).toBe(true);
   });
 
   test("renders labeled structure checkboxes and toggles nullable state", async () => {
@@ -142,11 +182,17 @@ describe("TableDataTab empty rows", () => {
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.getAllByRole("combobox")).toHaveLength(2);
-    expect((screen.getByRole("combobox", { name: "New active" }) as HTMLSelectElement).value).toBe("");
-    expect((screen.getByRole("combobox", { name: "New status" }) as HTMLSelectElement).value).toBe("");
+    expect((screen.getByRole("combobox", { name: "New active" }) as HTMLSelectElement).value).toBe(
+      "",
+    );
+    expect((screen.getByRole("combobox", { name: "New status" }) as HTMLSelectElement).value).toBe(
+      "",
+    );
     expect(screen.getByRole("option", { name: "true" })).not.toBeNull();
     expect(screen.getByRole("option", { name: "published" })).not.toBeNull();
-    expect((screen.getByRole("textbox") as HTMLInputElement).className.includes("bg-primary/10")).toBe(true);
+    expect(
+      (screen.getByRole("textbox") as HTMLInputElement).className.includes("bg-primary/10"),
+    ).toBe(true);
     expect(screen.getByRole("cell", { name: "1" })).not.toBeNull();
     expect(screen.getByText("Draft row")).not.toBeNull();
   });
@@ -189,7 +235,11 @@ describe("TableDataTab empty rows", () => {
 
   test("switching to JSON does not refetch the loaded page", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -199,7 +249,11 @@ describe("TableDataTab empty rows", () => {
 
   test("copies the exact displayed payload and announces success", async () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     const writeText = mock(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
@@ -222,7 +276,11 @@ describe("TableDataTab empty rows", () => {
 
   test("announces clipboard failure and leaves the JSON view usable", async () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -242,7 +300,11 @@ describe("TableDataTab empty rows", () => {
 
   test("exports the exact displayed payload and announces success", async () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     const createObjectURL = mock((value: Blob) => {
       void value;
@@ -278,11 +340,17 @@ describe("TableDataTab empty rows", () => {
 
   test("announces export failure and leaves the JSON view usable", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
-      value: mock(() => { throw new Error("blocked"); }),
+      value: mock(() => {
+        throw new Error("blocked");
+      }),
     });
     render(<TableDataTab profile={profile} table="auth" />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -294,15 +362,13 @@ describe("TableDataTab empty rows", () => {
 
   test("announces export cancellation and leaves the JSON view usable", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
-    render(
-      <TableDataTab
-        profile={profile}
-        table="auth"
-        exportJson={() => "cancelled"}
-      />,
-    );
+    render(<TableDataTab profile={profile} table="auth" exportJson={() => "cancelled"} />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
 
@@ -321,7 +387,11 @@ describe("TableDataTab empty rows", () => {
 
   test("exposes selected Table/JSON state and supports keyboard activation", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
 
@@ -340,7 +410,11 @@ describe("TableDataTab empty rows", () => {
   test("warns for a large loaded page without requesting another page", () => {
     const rows = Array.from({ length: 10_001 }, (_, id) => ({ id }));
     currentTableData = {
-      columns: ["id"], rows, total: 20_000, page: 2, page_size: 10_001,
+      columns: ["id"],
+      rows,
+      total: 20_000,
+      page: 2,
+      page_size: 10_001,
     };
     render(<TableDataTab profile={profile} table="auth" />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -351,7 +425,11 @@ describe("TableDataTab empty rows", () => {
 
   test("keeps Data JSON mode isolated from Structure and preserves it when returning", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -384,14 +462,22 @@ describe("TableDataTab empty rows", () => {
 
   test("resets JSON mode when the selected table changes", () => {
     currentTableData = {
-      columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     const view = render(<TableDataTab profile={profile} table="auth" />);
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(screen.getByLabelText("Table data JSON")).not.toBeNull();
 
     currentTableData = {
-      columns: ["id"], rows: [{ id: 2 }], total: 1, page: 1, page_size: 100,
+      columns: ["id"],
+      rows: [{ id: 2 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
     };
     view.rerender(<TableDataTab profile={profile} table="users" />);
 

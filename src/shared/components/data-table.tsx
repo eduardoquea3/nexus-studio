@@ -1,6 +1,9 @@
-import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
 import { RiLoader4Line } from "@remixicon/react";
+import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
 
+import type { ColumnInfo } from "@/shared/types/models";
+
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -9,9 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { ColumnInfo } from "@/shared/types/models";
 
 type DataTableProps<TData> = {
   table: TanStackTable<TData>;
@@ -38,7 +39,12 @@ export function DataTable<TData>({
 }: DataTableProps<TData>) {
   if (isLoading) {
     return (
-      <div className={cn("flex h-full items-center justify-center gap-2 text-xs text-muted-foreground", className)}>
+      <div
+        className={cn(
+          "flex h-full items-center justify-center gap-2 text-xs text-muted-foreground",
+          className,
+        )}
+      >
         <RiLoader4Line className="size-4 animate-spin" aria-hidden="true" />
         Loading data...
       </div>
@@ -55,19 +61,25 @@ export function DataTable<TData>({
       )}
     >
       <ScrollArea className="h-full [&_[data-orientation=vertical]]:hidden">
-        <div className="min-w-max pb-3">
-          <Table className="min-w-max text-xs">
-          <TableHeader className="sticky top-0 bg-muted/90 text-left">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                <TableHead className="w-12 border-b border-r border-border/70 px-3 py-2 text-right font-medium">#</TableHead>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="border-b border-r border-border/70 px-3 py-2 font-medium" colSpan={header.colSpan}>
-                    {header.isPlaceholder
-                      ? null
-                      : (
+        <div className="h-full min-w-full w-max pb-3 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
+          <Table className="h-full min-w-max text-xs">
+            <TableHeader className="sticky top-0 bg-muted/90 text-left">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  <TableHead className="w-12 border-b border-r border-border/70 px-3 py-2 text-right font-medium">
+                    #
+                  </TableHead>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead
+                      key={header.id}
+                      className="border-b border-r border-border/70 px-3 py-2 font-medium"
+                      colSpan={header.colSpan}
+                    >
+                      {header.isPlaceholder ? null : (
                         <div className="flex min-w-28 items-baseline gap-2 whitespace-nowrap">
-                          <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                          <span>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
                           {getColumnInfo(draftColumns, header.column.id) ? (
                             <span className="text-[0.625rem] font-normal text-muted-foreground/75">
                               {getDisplayType(getColumnInfo(draftColumns, header.column.id))}
@@ -75,58 +87,64 @@ export function DataTable<TData>({
                           ) : null}
                         </div>
                       )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.id === selectedRowId ? "selected" : undefined}
-                tabIndex={onRowClick ? 0 : undefined}
-                className={cn(
-                  "hover:bg-muted/40",
-                  onRowClick && "cursor-pointer",
-                  row.id === selectedRowId && "bg-primary/10 hover:bg-primary/15",
-                )}
-                onClick={() => onRowClick?.(row)}
-                onKeyDown={(event) => {
-                  if (onRowClick && (event.key === "Enter" || event.key === " ")) {
-                    event.preventDefault();
-                    onRowClick(row);
-                  }
-                }}
-              >
-                <TableCell className="w-12 border-b border-r border-border/50 px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground">
-                  {row.index + 1}
-                </TableCell>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="max-w-72 truncate border-b border-r border-border/50 px-3 py-2">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.id === selectedRowId ? "selected" : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  className={cn(
+                    "hover:bg-muted/40",
+                    onRowClick && "cursor-pointer",
+                    row.id === selectedRowId && "bg-primary/10 hover:bg-primary/15",
+                  )}
+                  onClick={() => onRowClick?.(row)}
+                  onKeyDown={(event) => {
+                    if (onRowClick && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  }}
+                >
+                  <TableCell className="w-12 border-b border-r border-border/50 px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground">
+                    {row.index + 1}
                   </TableCell>
-                ))}
-              </TableRow>
-            ))}
-            {draftRow ? (
-              <TableRow className="bg-primary/5 hover:bg-primary/10">
-                <TableCell className="w-12 border-b border-r border-primary/20 px-3 py-1.5 text-right font-mono text-[0.65rem] text-primary/80">
-                  {table.getRowModel().rows.length + 1}
-                </TableCell>
-                {table.getVisibleLeafColumns().map((column) => (
-                  <TableCell key={column.id} className="h-9 border-b border-r border-primary/20 p-0">
-                    <DraftEditor
-                      column={draftColumns.find((draftColumn) => draftColumn?.name === column.id)}
-                      columnName={column.id}
-                      value={String(draftRow[column.id] ?? "")}
-                      onChange={(value) => onDraftChange?.(column.id, value)}
-                    />
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className="max-w-72 truncate border-b border-r border-border/50 px-3 py-2"
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+              {draftRow ? (
+                <TableRow className="bg-primary/5 hover:bg-primary/10">
+                  <TableCell className="w-12 border-b border-r border-primary/20 px-3 py-1.5 text-right font-mono text-[0.65rem] text-primary/80">
+                    {table.getRowModel().rows.length + 1}
                   </TableCell>
-                ))}
-              </TableRow>
-            ) : null}
-          </TableBody>
+                  {table.getVisibleLeafColumns().map((column) => (
+                    <TableCell
+                      key={column.id}
+                      className="h-9 border-b border-r border-primary/20 p-0"
+                    >
+                      <DraftEditor
+                        column={draftColumns.find((draftColumn) => draftColumn?.name === column.id)}
+                        columnName={column.id}
+                        value={String(draftRow[column.id] ?? "")}
+                        onChange={(value) => onDraftChange?.(column.id, value)}
+                      />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ) : null}
+            </TableBody>
           </Table>
         </div>
         <ScrollBar
