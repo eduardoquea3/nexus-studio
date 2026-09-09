@@ -136,6 +136,7 @@ describe("TableDataTab empty rows", () => {
 
     expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "Structure" })).not.toBeNull();
+    expect(screen.getByRole("tablist").className).toContain("h-8");
     expect(screen.getByRole("columnheader", { name: "#" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^name/ })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^active/ })).not.toBeNull();
@@ -149,7 +150,7 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("Showing 0")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
-    expect(screen.getByRole("table").className.includes("h-full")).toBe(true);
+    expect(screen.getByRole("table").className.includes("h-full")).toBe(false);
     expect(screen.getByRole("table").className.includes("w-full")).toBe(true);
     expect(
       document.querySelector('[data-slot="table-container"]')?.parentElement?.className.includes("h-full"),
@@ -242,6 +243,8 @@ describe("TableDataTab empty rows", () => {
       page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
+    expect(screen.getByRole("group", { name: "Table data view" }).className).toContain("h-8");
+    expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(refetchTable).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Table data JSON").textContent).toContain('"id": 1');

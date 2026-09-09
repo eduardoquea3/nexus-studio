@@ -62,7 +62,7 @@ export function DataTable<TData>({
     >
       <ScrollArea className="h-full [&_[data-orientation=vertical]]:hidden">
         <div className="h-full min-w-full w-max pb-3 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
-          <Table className="h-full min-w-max text-xs">
+          <Table className="min-w-max text-xs">
             <TableHeader className="sticky top-0 bg-muted/90 text-left">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
@@ -149,7 +149,7 @@ export function DataTable<TData>({
         </div>
         <ScrollBar
           orientation="horizontal"
-          className="absolute inset-x-0 bottom-0 z-20 border-t border-border/60 bg-background/95"
+          className="absolute inset-x-0 bottom-0 z-20 data-horizontal:h-1.5 border-t-transparent bg-transparent opacity-70 transition-opacity hover:opacity-100 [&_[data-slot=scroll-area-thumb]]:bg-border/60"
         />
       </ScrollArea>
     </div>
