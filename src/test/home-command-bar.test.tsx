@@ -33,7 +33,17 @@ mock.module("@/app/home/services/connection-service", () => ({
 }));
 
 mock.module("@/shared/lib/tauriApi", () => ({
+  getTableData: mock(async () => ({
+    columns: [],
+    rows: [],
+    total: 0,
+    page: 1,
+    page_size: 100,
+  })),
   getTableSchema: mock(async () => ({ columns: [], indexes: [] })),
+  getRoutineDefinition: mock(async () => ""),
+  listDatabases: mock(async () => []),
+  runQuery: mock(async () => ({ columns: [], rows: [], affected: 0, duration_ms: 0 })),
   testSavedConnection,
   listSchemaObjects,
 }));

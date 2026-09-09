@@ -1,11 +1,13 @@
 import "./setup";
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import type { CommandBarItem } from "@/app/command-bar/command-bar-utils";
 
 const { CommandBar } = await import("@/app/command-bar/command-bar");
-const { fireEvent, render, screen } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+
+afterEach(() => cleanup());
 
 const items: CommandBarItem[] = [
   {
