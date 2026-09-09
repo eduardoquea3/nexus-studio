@@ -251,6 +251,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const resultsPane = screen.getByRole("region", { name: "SQL query results" });
 
     expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+    expect(resultsPane.parentElement?.parentElement?.className ?? "").not.toContain("rounded-b-xl");
   });
 
   test("does not carry the previous query result into a newly created editor", async () => {
@@ -287,8 +288,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
+    expect(screen.getByRole("table").closest(".w-fit")).not.toBeNull();
+    const viewGroup = screen.getByRole("group", { name: "SQL result view" });
+    expect(viewGroup.className).toContain("h-8");
+    expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
+    expect(viewGroup.className).toContain("bg-muted/30");
+    expect(screen.getByRole("button", { name: "Table" }).className).toContain("bg-primary/15");
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"name": "Ada"');
+    expect(screen.getByRole("button", { name: "JSON" }).className).toContain("bg-primary/15");
     expect(runQuery).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
@@ -527,9 +535,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     const tabList = screen.getByRole("tablist");
     const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
+    const queryTab = screen.getByRole("tab", { name: /Query 1/ });
 
     expect(tabList.className).not.toContain("flex-1");
     expect(createTab.previousElementSibling).toBe(tabList);
+    expect(queryTab.className).toContain("w-36");
     expect(screen.getByRole("button", { name: "Close Query 1" })).not.toBeNull();
   });
 

@@ -779,7 +779,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                         <div key={tab.id} className="group flex h-9 items-center">
                           <TabsTrigger
                             value={tab.id}
-                            className="group/tab flex h-9 min-w-24 max-w-40 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
+                            className="group/tab flex h-9 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
                             onClick={() => {
                               setActiveTabId(tab.id);
                               if (tab.type === "sql") {
@@ -889,7 +889,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                     value={activeTabId}
                     className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
                   >
-                    <Group orientation="vertical" className="h-full min-h-0 overflow-hidden rounded-b-xl">
+                    <Group orientation="vertical" className="h-full min-h-0 overflow-hidden">
                       <Panel defaultSize="30%" minSize="15%" maxSize="80%" className="min-h-0 overflow-hidden">
                         <div className="sql-editor-font h-full overflow-hidden border-b border-border/70 bg-card/60">
                           <CodeMirror
@@ -1125,7 +1125,7 @@ function QueryResultView({ result, viewMode, onViewModeChange }: { result: Query
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col gap-0">
+    <div className="flex h-full min-w-0 w-full flex-col gap-0">
       <div
         aria-label="Query result statistics"
         className="flex shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 py-1.5 text-[0.65rem] text-muted-foreground"
@@ -1150,12 +1150,12 @@ function QueryResultView({ result, viewMode, onViewModeChange }: { result: Query
               </>
             }
           />
-        ) : <DataTable table={table} className="h-full w-full" withShell={false} />}
+        ) : <DataTable table={table} className="h-full w-fit" withShell={false} />}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-background/80 px-2 py-2">
-        <div className="flex items-center gap-1" role="group" aria-label="SQL result view">
-          <Button type="button" size="xs" variant={!isJson ? "secondary" : "ghost"} aria-pressed={!isJson} onClick={() => onViewModeChange("table")} onKeyDown={(event) => activateViewMode(event, "table")}>Table</Button>
-          <Button type="button" size="xs" variant={isJson ? "secondary" : "ghost"} aria-pressed={isJson} onClick={() => onViewModeChange("json")} onKeyDown={(event) => activateViewMode(event, "json")}>JSON</Button>
+        <div className="flex h-8 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5" role="group" aria-label="SQL result view">
+          <Button type="button" size="xs" variant="ghost" className={`h-7 text-xs ${!isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`} aria-pressed={!isJson} onClick={() => onViewModeChange("table")} onKeyDown={(event) => activateViewMode(event, "table")}>Table</Button>
+          <Button type="button" size="xs" variant="ghost" className={`h-7 text-xs ${isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`} aria-pressed={isJson} onClick={() => onViewModeChange("json")} onKeyDown={(event) => activateViewMode(event, "json")}>JSON</Button>
         </div>
       </div>
       <p aria-live="polite" className="sr-only">{feedback}</p>
