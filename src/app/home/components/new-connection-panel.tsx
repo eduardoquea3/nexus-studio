@@ -111,7 +111,10 @@ export function NewConnectionPanel() {
   const loadedProfileSessionKeyRef = useRef<string | null>(null);
   const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
   const isCurrentSession = sessionKeyRef.current === sessionKey;
-  const isUnsupportedLegacyProfile = isCurrentSession && unsupportedLegacyProfileId === editingId;
+  const isUnsupportedLegacyProfile =
+    isCurrentSession &&
+    editingId !== undefined &&
+    unsupportedLegacyProfileId === editingId;
   const displayedForm = isCurrentSession ? form : initialFormValues;
 
   const clearImportedFormValues = () => {
