@@ -1,20 +1,76 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionProfile, ConnectResult, DataPage, ObjectMeta, QueryResult, TableRules, TableSchema } from "../types/models";
+import { load } from "@tauri-apps/plugin-store";
+import type {
+  ConnectionProfile,
+  ConnectResult,
+  DataPage,
+  ObjectMeta,
+  QueryResult,
+  TableRules,
+  TableSchema,
+} from "../types/models";
+
+export interface ConnectionTestRequest {
+  dbType: "postgres" | "mysql" | "sqlite";
+  host?: string;
+  port?: number;
+  database?: string;
+  username?: string;
+  password?: string;
+  sqlitePath?: string;
+}
+
+export interface ListDatabasesRequest extends ConnectionTestRequest {}
 
 export async function listConnections(): Promise<ConnectionProfile[]> {
-  return invoke("list_connections");
+  const store = await load("connections.json");
+  return (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+}
+
+export async function testConnectionFields(request: ConnectionTestRequest): Promise<string> {
+  return invoke("test_connection", { request });
+}
+
+export async function createSqliteDatabase(path: string): Promise<void> {
+  return invoke("create_sqlite_database", { path });
+}
+
+export async function testSavedConnection(profile: ConnectionProfile): Promise<string> {
+  if (profile.connect_mode.type === "connection_string") {
+    if (profile.db_type !== "sqlite") {
+      throw new Error("Connection strings are only supported for SQLite connections.");
+    }
+
+    return testConnectionFields({
+      dbType: profile.db_type,
+      password: profile.password,
+      sqlitePath: profile.connect_mode.value,
+    });
+  }
+
+  return testConnectionFields({
+    dbType: profile.db_type,
+    host: profile.connect_mode.host,
+    port: profile.connect_mode.port,
+    database: profile.connect_mode.database,
+    username: profile.connect_mode.username,
+    password: profile.password,
+  });
+}
+
+export async function listDatabases(request: ListDatabasesRequest): Promise<string[]> {
+  return invoke("list_databases", { request });
 }
 
 export async function saveConnection(profile: ConnectionProfile): Promise<void> {
-  return invoke("save_connection", { profile });
-}
+  const store = await load("connections.json");
+  const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+  const nextProfiles = profiles.some((item) => item.id === profile.id)
+    ? profiles.map((item) => (item.id === profile.id ? profile : item))
+    : [...profiles, profile];
 
-export async function deleteConnection(id: string): Promise<void> {
-  return invoke("delete_connection", { id });
-}
-
-export async function testConnection(profile: ConnectionProfile): Promise<string> {
-  return invoke("test_connection", { profile });
+  await store.set("profiles", nextProfiles);
+  await store.save();
 }
 
 export async function connect(id: string): Promise<ConnectResult> {
@@ -23,10 +79,6 @@ export async function connect(id: string): Promise<ConnectResult> {
 
 export async function disconnect(id: string): Promise<void> {
   return invoke("disconnect", { id });
-}
-
-export async function listDatabases(id: string): Promise<string[]> {
-  return invoke("list_databases", { id });
 }
 
 export async function listTables(id: string): Promise<ObjectMeta[]> {
@@ -45,8 +97,77 @@ export async function listOtherObjects(id: string): Promise<ObjectMeta[]> {
   return invoke("list_other_objects", { id });
 }
 
-export async function getTableSchema(id: string, table: string): Promise<TableSchema> {
-  return invoke("get_table_schema", { id, table });
+export async function listSchemaObjects(
+  profile: ConnectionProfile,
+  database?: string,
+): Promise<ObjectMeta[]> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: database ?? profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("list_schema_objects", { request });
+}
+
+export async function getRoutineDefinition(
+  profile: ConnectionProfile,
+  routine: Pick<ObjectMeta, "name" | "object_type" | "signature">,
+): Promise<string> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_routine_definition", {
+    request: {
+      request,
+      routineName: routine.name,
+      routineType: routine.object_type,
+      signature: routine.signature ?? routine.name,
+    },
+  });
+}
+
+export async function getTableSchema(
+  profile: ConnectionProfile,
+  table: string,
+  schema?: string,
+): Promise<TableSchema> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? { dbType: profile.db_type, password: profile.password, sqlitePath: profile.connect_mode.value }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_table_schema", { request: { request, table, schema } });
 }
 
 export async function getTableRules(id: string, table: string): Promise<TableRules> {
@@ -54,20 +175,74 @@ export async function getTableRules(id: string, table: string): Promise<TableRul
 }
 
 export async function getTableData(
-  id: string,
+  profile: ConnectionProfile,
   table: string,
   page: number,
   pageSize: number,
   sort?: string,
   filter?: string,
+  schema?: string,
 ): Promise<DataPage> {
-  return invoke("get_table_data", { id, table, page, pageSize, sort, filter });
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("get_table_data", {
+    request: { request, table, schema, page, pageSize, sort, filter },
+  });
 }
 
-export async function runQuery(id: string, sql: string): Promise<QueryResult> {
-  return invoke("run_query", { id, sql });
+export async function runQuery(profile: ConnectionProfile, sql: string): Promise<QueryResult> {
+  const request: ConnectionTestRequest =
+    profile.connect_mode.type === "connection_string"
+      ? {
+          dbType: profile.db_type,
+          password: profile.password,
+          sqlitePath: profile.connect_mode.value,
+        }
+      : {
+          dbType: profile.db_type,
+          host: profile.connect_mode.host,
+          port: profile.connect_mode.port,
+          database: profile.connect_mode.database,
+          username: profile.connect_mode.username,
+          password: profile.password,
+        };
+
+  return invoke("run_query", { request: { request, sql } });
 }
 
 export async function listSshConfigAliases(): Promise<string[]> {
   return invoke("list_ssh_config_aliases");
+}
+
+type LocalFont = { family: string };
+type LocalFontWindow = Window & {
+  queryLocalFonts?: () => Promise<LocalFont[]>;
+};
+
+export async function listSystemFonts(): Promise<string[]> {
+  try {
+    return await invoke<string[]>("list_system_fonts");
+  } catch (error) {
+    const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts;
+    if (!queryLocalFonts) {
+      throw error;
+    }
+
+    const fonts = await queryLocalFonts();
+    return [...new Set(fonts.map((font) => font.family))].sort((a, b) => a.localeCompare(b));
+  }
 }

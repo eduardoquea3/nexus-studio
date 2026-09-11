@@ -1,2 +1,2 @@
 dev:
-    bun run dev
+    bun run tauri dev

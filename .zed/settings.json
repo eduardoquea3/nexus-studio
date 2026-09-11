@@ -22,7 +22,7 @@
   },
   "languages": {
     "JavaScript": {
-      "language_servers": ["ox", "!biome", "!eslint", "..."],
+      "language_servers": ["oxc", "!biome", "!eslint", "..."],
       "formatter": [
         {
           "language_server": {
@@ -41,11 +41,12 @@
     "TypeScript": {
       "language_servers": [
         "tsgo",
-        "ox",
+        "oxc",
         "!vtsls",
         "!typescript-language-server",
         "!biome",
-        "!eslint"
+        "!eslint",
+        "..."
       ],
       "formatter": [
         {
@@ -65,11 +66,12 @@
     "TSX": {
       "language_servers": [
         "tsgo",
-        "ox",
+        "oxc",
         "!vtsls",
         "!typescript-language-server",
         "!biome",
-        "!eslint"
+        "!eslint",
+        "..."
       ],
       "formatter": [
         {
@@ -87,7 +89,7 @@
       }
     },
     "JSON": {
-      "language_servers": ["ox", "!biome", "..."],
+      "language_servers": ["oxc", "!biome", "..."],
       "formatter": [
         {
           "language_server": {
@@ -101,7 +103,7 @@
       }
     },
     "JSONC": {
-      "language_servers": ["ox", "!biome", "..."],
+      "language_servers": ["oxc", "!biome", "..."],
       "formatter": [
         {
           "language_server": {
@@ -115,7 +117,7 @@
       }
     },
     "CSS": {
-      "language_servers": ["ox", "!biome", "..."],
+      "language_servers": ["oxc", "!biome", "..."],
       "formatter": [
         {
           "language_server": {

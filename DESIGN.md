@@ -1,139 +1,162 @@
 ---
-name: Heritage
-modes:
-  light:
-    colors:
-      primary: "#1A1C1E"
-      secondary: "#6C7278"
-      tertiary: "#B8422E"
-      neutral: "#F7F5F2"
-      background: "#F7F5F2"
-      surface: "#FFFFFF"
-      border: "#D8D3CC"
-      text: "#1A1C1E"
-      textMuted: "#6C7278"
-      accent: "#B8422E"
-      accentHover: "#A93B2A"
-    typography:
-      h1:
-        fontFamily: "Public Sans"
-        fontSize: "3rem"
-        fontWeight: 700
-        lineHeight: 1.02
-      body-md:
-        fontFamily: "Public Sans"
-        fontSize: "1rem"
-        fontWeight: 400
-        lineHeight: 1.6
-      label-caps:
-        fontFamily: "Space Grotesk"
-        fontSize: "0.75rem"
-        fontWeight: 600
-        letterSpacing: "0.08em"
-        textTransform: uppercase
-    rounded:
-      sm: "4px"
-      md: "8px"
-    spacing:
-      sm: "8px"
-      md: "16px"
-
-  dark:
-    colors:
-      primary: "#F3F4F6"
-      secondary: "#A0A7B0"
-      tertiary: "#D86A56"
-      neutral: "#111214"
-      background: "#111214"
-      surface: "#171A1D"
-      elevated: "#1D2126"
-      border: "#2A2F36"
-      text: "#F3F4F6"
-      textMuted: "#A0A7B0"
-      accent: "#D86A56"
-      accentHover: "#E27A65"
-    typography:
-      h1:
-        fontFamily: "Public Sans"
-        fontSize: "3rem"
-        fontWeight: 700
-        lineHeight: 1.02
-      body-md:
-        fontFamily: "Public Sans"
-        fontSize: "1rem"
-        fontWeight: 400
-        lineHeight: 1.6
-      label-caps:
-        fontFamily: "Space Grotesk"
-        fontSize: "0.75rem"
-        fontWeight: 600
-        letterSpacing: "0.08em"
-        textTransform: uppercase
-    rounded:
-      sm: "4px"
-      md: "8px"
-    spacing:
-      sm: "8px"
-      md: "16px"
+name: Kanso
+colors:
+  primary: "#090E13"
+  secondary: "#A4A7A4"
+  tertiary: "#7FB4CA"
+  neutral: "#C5C9C7"
+  details: darker
+typography:
+  h1:
+    fontFamily: Inter Variable
+    fontSize: 2rem
+  body-md:
+    fontFamily: Inter Variable
+    fontSize: 1rem
+  label-caps:
+    fontFamily: Space Grotesk
+    fontSize: 0.75rem
+rounded:
+  sm: 6px
+  md: 8px
+spacing:
+  sm: 8px
+  md: 16px
+terminal_colors:
+  normal:
+    black: "#0d0c0c"
+    red: "#c4746e"
+    green: "#8a9a7b"
+    yellow: "#c4b28a"
+    blue: "#8ba4b0"
+    magenta: "#a292a3"
+    cyan: "#8ea4a2"
+    white: "#C8C093"
+  bright:
+    black: "#A4A7A4"
+    red: "#E46876"
+    green: "#87a987"
+    yellow: "#E6C384"
+    blue: "#7FB4CA"
+    magenta: "#938AA9"
+    cyan: "#7AA89F"
+    white: "#C5C9C7"
 ---
 
 ## Overview
 
-Architectural minimalism meets journalistic gravitas. The UI evokes a premium matte finish, like a high-end broadsheet or a contemporary gallery.
+Nexus Studio is a focused tool for database developers managing saved environments.
+Kanso is the default visual language: quiet technical minimalism, near-black ink,
+mineral text, muted sage structure, and one restrained blue accent. The interface
+should feel precise and calm during long debugging sessions, with density that
+supports scanning instead of decoration.
 
-## Colors
+## Theme Architecture
 
-The palette is rooted in high-contrast neutrals and a single accent color.
+Themes are contracts, not component styles. `src/styles/global.css` exposes semantic
+variables and maps them to Tailwind v4 with `@theme inline`. Components consume
+tokens such as `bg-background`, `bg-surface`, `bg-control`, `text-foreground`,
+`text-muted-foreground`, `text-primary`, `text-success`, and `border-border`.
 
-### Light Mode
+The application currently supports the `light` and `dark` modes managed by
+`src/shared/store/theme-store.ts`. The store toggles the `.dark` class on the root
+element. Both modes must define the same semantic contract so changing mode does
+not change component markup or behavior.
 
-- **Primary (#1A1C1E):** Deep ink for headlines and core text.
-- **Secondary (#6C7278):** Slate for borders, captions, and metadata.
-- **Tertiary (#B8422E):** The sole interaction accent.
-- **Neutral (#F7F5F2):** Warm limestone foundation, softer than pure white.
-- **Surface (#FFFFFF):** Clean panel and card background.
-- **Border (#D8D3CC):** Quiet divider color.
-- **Text (#1A1C1E):** Main body and heading color.
-- **Text Muted (#6C7278):** Secondary copy, labels, captions.
+Kanso is one theme, not a permanent global assumption. A future user-defined theme
+can be applied with a class or data attribute on the root element and override the
+same variables:
 
-### Dark Mode
+```css
+[data-theme="ocean"] {
+  --background: ...;
+  --surface: ...;
+  --foreground: ...;
+  --primary: ...;
+  --success: ...;
+}
+```
 
-- **Background (#111214):** Deep charcoal foundation.
-- **Surface (#171A1D):** Main panel surface.
-- **Elevated (#1D2126):** Raised surface for dialogs and floating elements.
-- **Primary (#F3F4F6):** Main text and headings.
-- **Secondary (#A0A7B0):** Metadata, labels, supporting copy.
-- **Tertiary (#D86A56):** Interaction accent in dark mode.
-- **Border (#2A2F36):** Subtle separation between surfaces.
-- **Accent Hover (#E27A65):** Hover and active state for accent actions.
+Custom themes should keep the token names stable, define light and dark values when
+needed, and avoid selector rules that target individual components. A theme may add
+tokens, but existing application surfaces must continue to resolve through the
+shared contract.
 
-## Typography
+## Semantic Token Contract
 
-- `h1`: Public Sans, 3rem, high presence, tight leading.
-- `body-md`: Public Sans, 1rem, readable and restrained.
-- `label-caps`: Space Grotesk, 0.75rem, for labels and metadata.
+Every UI color must resolve through a semantic variable. Do not add hex, RGB, or
+arbitrary color literals to route or component class names.
 
-## Shape
+| Token | Role |
+|---|---|
+| `background` | Workspace canvas |
+| `surface` | Default cards and application surfaces |
+| `surface-raised` | Hovered cards, popovers, and raised layers |
+| `control` | Inset inputs and compact controls |
+| `foreground` | Primary readable copy |
+| `muted-foreground` | Metadata, labels, placeholders |
+| `primary` | Main action, focus, and restrained brand accent |
+| `border` | Quiet structural separation |
+| `success`, `warning`, `destructive` | Meaningful state communication |
 
-- Small radius for utility surfaces.
-- Medium radius for cards and panels.
-- No exaggerated rounding.
-- Borders should feel precise, not soft or bubbly.
+Surfaces progress from canvas to card to raised/control layers. Prefer border and
+subtle surface shifts over dramatic shadows. Accent colors communicate action or
+state; they are not decoration. All interactive controls need hover, disabled, and
+keyboard-visible focus states.
 
-## Spacing
+## Accessibility
 
-- `8px` and `16px` are the base rhythm.
-- Keep vertical spacing disciplined and grid-aligned.
-- Prefer clear separation over decorative padding.
+Themes must preserve readable contrast for body text, labels, controls, and status
+indicators. Do not communicate state with color alone: pair status color with text
+or an icon. Every icon-only control needs an accessible name. Search, sorting,
+refresh, dialogs, and cards must remain usable with keyboard navigation. Focus rings
+must remain visible against both the canvas and raised surfaces. Verify new themes
+against WCAG 2.2 AA contrast expectations before shipping them.
 
-## Usage Rules
+## Typography, Shape, And Layout
 
-- Use `primary` for text and structural contrast.
-- Use `secondary` for metadata, captions, and quiet UI.
-- Use `tertiary` only for actions, links, active states, and key emphasis.
-- Do not introduce extra accent colors.
-- Keep backgrounds neutral.
-- Avoid gradients unless a specific surface genuinely needs depth.
-- In dark mode, never invert colors literally; adjust by role and contrast.
-- In dark mode, always define both text and background colors explicitly.
-- The accent must remain the same semantic role in both modes.
+- Use Inter Variable for application copy, headings, forms, and data values.
+- Use Space Grotesk for compact labels, navigation metadata, and technical caps.
+- Use a monospace face for hosts, ports, paths, and other technical metadata.
+- Use 8px as the base spacing unit and 16px for section rhythm.
+- Use 6px for compact controls and 8px for cards, panels, and grouped surfaces.
+- Prefer centered max-width canvases, compact grids, thin dividers, and responsive
+  3/2/1 column connection layouts.
+- Keep connection cards scannable: engine mark, safe metadata, status, and edit or
+  delete actions. Never expose passwords or connection-string values.
+- Use semantic shadcn primitives and existing project components. Do not modify
+  shared primitives to encode one theme.
+
+## Terminal Colors
+
+The terminal palette below is intentionally retained for query output, logs, code,
+and embedded technical surfaces. It is Kanso-scoped, not a second application-wide
+color contract. If a user-defined theme provides terminal colors, those values may
+override this palette within terminal surfaces while the semantic UI tokens remain
+the source of truth elsewhere.
+
+### Normal
+
+| Color | Hex |
+|---|---|
+| Black | `#0d0c0c` |
+| Red | `#c4746e` |
+| Green | `#8a9a7b` |
+| Yellow | `#c4b28a` |
+| Blue | `#8ba4b0` |
+| Magenta | `#a292a3` |
+| Cyan | `#8ea4a2` |
+| White | `#C8C093` |
+
+### Bright
+
+| Color | Hex |
+|---|---|
+| Black | `#A4A7A4` |
+| Red | `#E46876` |
+| Green | `#87a987` |
+| Yellow | `#E6C384` |
+| Blue | `#7FB4CA` |
+| Magenta | `#938AA9` |
+| Cyan | `#7AA89F` |
+| White | `#C5C9C7` |

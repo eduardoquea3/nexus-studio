@@ -1,145 +1,191 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  RiAddLine,
-  RiDatabaseLine,
-  RiRefreshLine,
-  RiSearchLine,
-} from "@remixicon/react";
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { ConnectionCard, type ConnectionItem } from "@/shared/components/ConnectionCard";
 
-const CONNECTIONS: ConnectionItem[] = [
-  {
-    id: "prod-db",
-    name: "prod-db",
-    status: "connected",
-    engine: "postgresql",
-    endpointLabel: "HOST",
-    endpoint: "pg-primary.internal:5432",
-    database: "acme_prod",
-    user: "app_admin",
-  },
-  {
-    id: "analytics",
-    name: "analytics",
-    status: "connected",
-    engine: "mysql",
-    endpointLabel: "HOST",
-    endpoint: "db.analytics.io:3306",
-    database: "analytics_v2",
-    user: "analyst",
-  },
-  {
-    id: "staging-replica",
-    name: "staging-replica",
-    status: "disconnected",
-    engine: "postgresql",
-    endpointLabel: "HOST",
-    endpoint: "staging.internal:5433",
-    database: "staging_snapshot",
-    user: "deploy",
-  },
-  {
-    id: "dev-sandbox",
-    name: "dev-sandbox",
-    status: "connected",
-    engine: "sqlite",
-    endpointLabel: "FILE",
-    endpoint: "/data/dev.db",
-    database: "dev",
-    user: "—",
-  },
-  {
-    id: "legacy-app",
-    name: "legacy-app",
-    status: "disconnected",
-    engine: "mysql",
-    endpointLabel: "HOST",
-    endpoint: "10.0.1.50:3307",
-    database: "legacy_ecommerce",
-    user: "legacy_app",
-  },
-];
+import type { ConnectionProfile } from "@/shared/types/models";
 
-export const Route = createFileRoute("/")({
-  component: Index,
-});
+import { ConnectionGrid } from "@/app/home/components/connection-grid";
+import { HomeCommandBar } from "@/app/command-bar/home-command-bar";
+import { ConnectionToolbar, type ConnectionSort } from "@/app/home/components/connection-toolbar";
+import { DashboardHeader } from "@/app/home/components/dashboard-header";
+import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
+import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
+import { HomePanels } from "@/app/home/lib/home-panels";
+import { useConnections } from "@/app/home/hooks/use-connections";
+import {
+  createConnectionString,
+  redactConnectionString,
+} from "@/app/home/lib/connection-string-parser";
+import { deleteConnection, markConnectionOpened } from "@/app/home/services/connection-service";
+import { toast } from "@/components/ui/toast";
+import { type ConnectionItem } from "@/shared/components/connection-card";
+import { testSavedConnection } from "@/shared/lib/tauriApi";
+import { useModalStore } from "@/shared/store/modalStore";
+import { useWorkspaceStore } from "@/shared/store/workspace-store";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+export const Route = createFileRoute("/")({ component: Index });
 
 function Index() {
   const [query, setQuery] = useState("");
-
-  const filteredConnections = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-
-    if (!normalized) {
-      return CONNECTIONS;
+  const [sort, setSort] = useState<ConnectionSort>("recent");
+  const [isCommandBarVisible, setIsCommandBarVisible] = useState(false);
+  const openModal = useModalStore((state) => state.openModal);
+  const closeModal = useModalStore((state) => state.closeModal);
+  const isNewConnectionOpen = useModalStore((state) =>
+    state.modals.includes(HomePanels.NewConnection),
+  );
+  const removeWorkspaceConnection = useWorkspaceStore((state) => state.removeConnection);
+  const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
+  const { data: profiles = [], isFetching, refetch } = useConnections();
+  const toggleNewConnection = () => {
+    if (isNewConnectionOpen) {
+      closeModal(HomePanels.NewConnection);
+      return;
     }
 
-    return CONNECTIONS.filter((connection) => {
-      return [connection.name, connection.engine, connection.endpoint, connection.database, connection.user].some(
-        (value) => value.toLowerCase().includes(normalized),
+    openModal(HomePanels.NewConnection, { source: "dashboard" });
+  };
+  const connections = useMemo(() => profiles.map(toConnectionItem), [profiles]);
+  const filteredConnections = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return [...connections]
+      .filter((connection) =>
+        [
+          connection.name,
+          connection.engine,
+          ...connection.searchValues,
+          ...connection.metadata.map((item) => item.value),
+          ...(connection.sshEnabled ? ["ssh"] : []),
+          ...(connection.sslEnabled ? ["ssl"] : []),
+        ].some((value) => value.toLowerCase().includes(normalized)),
+      )
+      .sort((left, right) =>
+        sort === "name"
+          ? left.name.localeCompare(right.name)
+          : (right.lastOpenedAt ?? 0) - (left.lastOpenedAt ?? 0),
       );
+  }, [connections, query, sort]);
+
+  const handleDelete = async (connection: ConnectionItem) => {
+    if (!window.confirm(`Delete connection "${connection.name}"?`)) return;
+    try {
+      await deleteConnection(connection.id);
+      removeWorkspaceConnection(connection.id);
+      await refetch();
+      toast.add({ title: "Connection deleted", type: "success" });
+    } catch (error) {
+      toast.add({
+        title: "Could not delete connection",
+        type: "error",
+        description: String(error),
+      });
+    }
+  };
+
+  const handleOpen = async (connection: ConnectionItem) => {
+    const profile = profiles.find((item) => item.id === connection.id);
+    if (!profile) return false;
+    const toastId = toast.add({
+      title: "Checking connection...",
+      type: "loading",
+      description: `Testing ${profile.name}`,
+      timeout: 0,
     });
-  }, [query]);
+    try {
+      const message = await testSavedConnection(profile);
+      toast.update(toastId, {
+        title: "Connection successful",
+        type: "success",
+        description: message,
+        timeout: 5000,
+      });
+      await markConnectionOpened(profile.id);
+      return true;
+    } catch (error) {
+      toast.update(toastId, {
+        title: "Connection failed",
+        type: "error",
+        description: String(error),
+        timeout: 5000,
+      });
+      return false;
+    }
+  };
 
   return (
-    <div className="min-h-full bg-background px-3 py-3 text-foreground sm:px-4 lg:px-4 lg:py-4">
-      <div className="flex w-full flex-col gap-3">
-        <Card className="rounded-2xl border-border/80 bg-card/90 shadow-[0_1px_0_rgba(15,23,42,0.02)] backdrop-blur">
-          <CardHeader className="items-center gap-3 px-4 py-3 sm:flex-row sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/15">
-                <RiDatabaseLine size={18} />
-              </div>
-              <div>
-                <CardTitle className="text-sm tracking-[-0.02em]">DB Manager</CardTitle>
-                <CardDescription className="text-xs">Manage database connections from one place</CardDescription>
-              </div>
+    <ScrollArea className="h-full bg-background text-foreground">
+      <HomeKeymaps
+        onNewConnection={toggleNewConnection}
+        isCommandBarVisible={isCommandBarVisible}
+      />
+      <HomeCommandBar activeConnectionId={activeConnectionId} onOpenChange={setIsCommandBarVisible} />
+      <div className="min-h-full px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+        <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-7">
+          <DashboardHeader onNewConnection={toggleNewConnection} />
+          <section aria-labelledby="connections-heading">
+            <div className="mb-5 flex items-baseline gap-2">
+              <h1 id="connections-heading" className="text-2xl font-semibold tracking-[-0.035em]">
+                Connections
+              </h1>
+              <span
+                className="font-mono text-xs text-muted-foreground"
+                aria-label={`${filteredConnections.length} connections`}
+              >
+                {String(filteredConnections.length).padStart(2, "0")}
+              </span>
             </div>
-
-            <CardAction className="flex flex-wrap items-center gap-2 self-auto">
-              <Button className="h-9 rounded-xl px-3.5 text-xs">
-                <RiAddLine size={16} />
-                New Connection
-              </Button>
-
-              <div className="relative min-w-60 flex-1 sm:flex-none">
-                <RiSearchLine size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search connections..."
-                  className="h-9 rounded-xl bg-muted/40 pl-9 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
-                />
-              </div>
-
-              <Button variant="outline" className="h-9 rounded-xl px-3.5 text-xs">
-                <RiRefreshLine size={16} />
-                Refresh
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <Separator />
-        </Card>
-
-        <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-          {filteredConnections.map((connection) => {
-            return (
-              <ConnectionCard key={connection.id} connection={connection} />
-            );
-          })}
-        </section>
-
-        {filteredConnections.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card/70 px-6 py-10 text-center text-sm text-muted-foreground">
-            No connections match this search.
-          </div>
-        ) : null}
+            <div className="flex flex-col gap-4">
+              <ConnectionToolbar
+                query={query}
+                sort={sort}
+                isFetching={isFetching}
+                onQueryChange={setQuery}
+                onSortChange={setSort}
+                onRefresh={() => void refetch()}
+              />
+              <ConnectionGrid
+                connections={filteredConnections}
+                onOpen={handleOpen}
+                onEdit={(connection) => openModal("new-connection", { connectionId: connection.id })}
+                onDelete={(connection) => void handleDelete(connection)}
+              />
+            </div>
+          </section>
+        </main>
+        <NewConnectionPanel />
       </div>
-    </div>
+    </ScrollArea>
   );
+}
+
+function toConnectionItem(profile: ConnectionProfile): ConnectionItem {
+  const engine = profile.db_type === "postgres" ? "postgresql" : profile.db_type;
+  const fullConnectionString = createConnectionString(profile);
+  const connectionString = fullConnectionString
+    ? redactConnectionString(fullConnectionString)
+    : undefined;
+  const searchValues = profile.connect_mode.type === "fields"
+    ? [
+        profile.connect_mode.host,
+        String(profile.connect_mode.port),
+        profile.connect_mode.database,
+        profile.connect_mode.username,
+      ]
+    : connectionString
+      ? [connectionString]
+      : [];
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    engine,
+    sshEnabled: profile.ssh_tunnel !== null,
+    sslEnabled: false,
+    connectionString,
+    copyConnectionString: fullConnectionString,
+    connectionStringLabel: profile.db_type === "sqlite" ? "Database path" : "Connection string",
+    searchValues,
+    metadata: [],
+    lastOpenedAt: profile.last_opened_at,
+  };
 }

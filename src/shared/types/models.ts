@@ -4,13 +4,22 @@ export interface ConnectionProfile {
   id: string;
   name: string;
   db_type: DbType;
+  password?: string;
   connect_mode: ConnectMode;
   ssh_tunnel: SshTunnelConfig | null;
+  last_opened_at?: number;
 }
 
 export type ConnectMode =
   | { type: "connection_string"; value: string }
-  | { type: "fields"; host: string; port: number; database: string; username: string; password_ref: string | null };
+  | {
+      type: "fields";
+      host: string;
+      port: number;
+      database: string;
+      username: string;
+      password_ref: string | null;
+    };
 
 export interface SshTunnelConfig {
   source: SshSource;
@@ -29,12 +38,16 @@ export type SshAuth =
 
 export interface ObjectMeta {
   name: string;
-  object_type: "table" | "view" | "function" | "other";
+  object_type: "table" | "view" | "function" | "procedure" | "other";
+  schema?: string;
+  signature?: string;
+  definition?: string;
 }
 
 export interface ColumnInfo {
   name: string;
   data_type: string;
+  enum_values: string[];
   nullable: boolean;
   default: string | null;
   is_pk: boolean;
@@ -59,6 +72,25 @@ export interface DataPage {
   page: number;
   page_size: number;
 }
+
+export type ViewMode = "table" | "json";
+
+export type JsonIssue = {
+  path: string;
+  message: string;
+  representation: "string" | "null";
+};
+
+export type JsonPayload = {
+  text: string;
+  issues: JsonIssue[];
+  rowCount: number;
+  scope?: {
+    page: number;
+    pageSize: number;
+    loadedCount: number;
+  };
+};
 
 export interface QueryResult {
   columns: string[];
