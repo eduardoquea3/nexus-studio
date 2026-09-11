@@ -4,8 +4,8 @@
   "version": "0.2.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node api.js && vite",
+    "build": "node api.js && tsc && vite build",
     "format": "bunx --bun oxfmt --write '**/*.{ts,tsx}'",
     "preview": "vite preview",
     "tauri": "tauri",
