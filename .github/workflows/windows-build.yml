@@ -3,6 +3,12 @@ name: Desktop build
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -101,8 +107,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$GITHUB_REF_NAME"
+          tag="${{ inputs.tag || github.ref_name }}"
           mapfile -t assets < <(find release-assets -type f)
-          gh release create "$tag" "${assets[@]}" \
-            --title "nexus-studio $tag" \
-            --generate-notes
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --title "nexus-studio $tag" \
+              --generate-notes
+          fi
