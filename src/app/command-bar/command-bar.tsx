@@ -8,8 +8,10 @@ import {
 } from "@remixicon/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/shared/types/models";
+
+import { cn } from "@/lib/utils";
+
 import {
   filterCommandBarItems,
   moveSelection,
@@ -17,7 +19,7 @@ import {
   type CommandBarMode,
 } from "./command-bar-utils";
 
-type CommandBarGroup = "connections" | "tables" | "tabs";
+type CommandBarGroup = "connections" | "tables" | "commands" | "tabs";
 
 type CommandBarProps = {
   mode: CommandBarMode;
@@ -68,14 +70,24 @@ export function CommandBar({
   }, [isSwitcher]);
 
   useEffect(() => {
-    setSelectedIndex((index) => (filteredItems.length === 0 ? -1 : Math.min(index, filteredItems.length - 1)));
+    setSelectedIndex((index) =>
+      filteredItems.length === 0 ? -1 : Math.min(index, filteredItems.length - 1),
+    );
   }, [filteredItems.length]);
 
   useEffect(() => {
     if (cycleRequest) {
-      setSelectedIndex((index) => moveSelection(index, filteredItems.length, cycleRequest.direction));
+      setSelectedIndex((index) =>
+        moveSelection(index, filteredItems.length, cycleRequest.direction),
+      );
     }
   }, [cycleRequest, filteredItems.length]);
+
+  useEffect(() => {
+    const selectedElement =
+      switcherRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    selectedElement?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedIndex, filteredItems.length]);
 
   useEffect(() => {
     onHighlightChange?.(selectedItem);
@@ -150,24 +162,34 @@ export function CommandBar({
               onChange={(event) => setQuery(event.target.value)}
               aria-label="Search commands"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              placeholder="Search tables and connections..."
+              placeholder={
+                mode === "commands" ? "Search commands..." : "Search tables and connections..."
+              }
             />
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               Ctrl P
             </kbd>
           </div>
         ) : null}
-        <div className={cn(
-          "overflow-y-auto",
-          isSwitcher ? "max-h-[min(35vh,18rem)] p-1" : "max-h-[min(55vh,30rem)] p-2",
-        )}>
-          {isLoading ? <p className="px-3 py-8 text-center text-sm text-muted-foreground">Loading...</p> : null}
+        <div
+          className={cn(
+            "command-bar-scroll overflow-y-auto",
+            isSwitcher ? "max-h-[min(35vh,18rem)] p-1" : "max-h-[min(55vh,30rem)] p-2",
+          )}
+        >
+          {isLoading ? (
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">Loading...</p>
+          ) : null}
           {!isLoading && filteredItems.length === 0 && query.trim() ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">No matching items.</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              No matching items.
+            </p>
           ) : null}
           {!isLoading && isSwitcher && filteredItems.length > 0 ? (
             <ul aria-label="Open tabs" className="space-y-0.5">
-              {filteredItems.map((item, index) => renderItem(item, index, selectedIndex, true, setSelectedIndex, selectItem))}
+              {filteredItems.map((item, index) =>
+                renderItem(item, index, selectedIndex, true, setSelectedIndex, selectItem),
+              )}
             </ul>
           ) : null}
           {!isLoading && isSwitcher && filteredItems.length === 0 ? (
@@ -177,15 +199,29 @@ export function CommandBar({
             <div className="space-y-3" aria-label="Command results">
               {groupedItems.map(({ group, items: groupItems }) => (
                 <section key={group} aria-labelledby={`command-group-${group}`}>
-                  <h3 id={`command-group-${group}`} className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h3
+                    id={`command-group-${group}`}
+                    className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
                     {groupLabel(group)}
                   </h3>
                   {groupItems.length > 0 ? (
                     <ul className="space-y-1">
-                      {groupItems.map((item) => renderItem(item, filteredItems.indexOf(item), selectedIndex, isSwitcher, setSelectedIndex, selectItem))}
+                      {groupItems.map((item) =>
+                        renderItem(
+                          item,
+                          filteredItems.indexOf(item),
+                          selectedIndex,
+                          isSwitcher,
+                          setSelectedIndex,
+                          selectItem,
+                        ),
+                      )}
                     </ul>
                   ) : (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">{emptyGroupMessage(group)}</p>
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      {emptyGroupMessage(group)}
+                    </p>
                   )}
                 </section>
               ))}
@@ -193,19 +229,28 @@ export function CommandBar({
           ) : null}
           {!isLoading && !isSwitcher && query.trim() && filteredItems.length > 0 ? (
             <ul aria-label="Command results" className="space-y-1">
-              {filteredItems.map((item, index) => renderItem(item, index, selectedIndex, isSwitcher, setSelectedIndex, selectItem))}
+              {filteredItems.map((item, index) =>
+                renderItem(item, index, selectedIndex, isSwitcher, setSelectedIndex, selectItem),
+              )}
             </ul>
           ) : null}
         </div>
-        {!isSwitcher ? <footer className={cn(
-          "flex items-center gap-3 border-t border-border/70 text-[10px] text-muted-foreground",
-          isSwitcher ? "px-3 py-1.5" : "px-4 py-2",
-        )}>
-          <span><RiArrowDownSLine className="inline size-3" /><RiArrowUpSLine className="inline size-3" /> navigate</span>
-          <span>Enter select</span>
-          <span>Esc close</span>
-          {isSwitcher ? <span className="ml-auto">Release Ctrl to switch</span> : null}
-        </footer> : null}
+        {!isSwitcher ? (
+          <footer
+            className={cn(
+              "flex items-center gap-3 border-t border-border/70 text-[10px] text-muted-foreground",
+              isSwitcher ? "px-3 py-1.5" : "px-4 py-2",
+            )}
+          >
+            <span>
+              <RiArrowDownSLine className="inline size-3" />
+              <RiArrowUpSLine className="inline size-3" /> navigate
+            </span>
+            <span>Enter select</span>
+            <span>Esc close</span>
+            {isSwitcher ? <span className="ml-auto">Release Ctrl to switch</span> : null}
+          </footer>
+        ) : null}
       </section>
     </div>
   );
@@ -238,16 +283,26 @@ function renderItem(
           <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
         </span>
         {item.kind === "connection" && item.isActive ? (
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">Active</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+            Active
+          </span>
         ) : null}
-        {isSwitcher && index === selectedIndex ? <span className="text-[10px] text-muted-foreground">Enter</span> : null}
+        {isSwitcher && index === selectedIndex ? (
+          <span className="text-[10px] text-muted-foreground">Enter</span>
+        ) : null}
       </button>
     </li>
   );
 }
 
 function itemGroup(item: CommandBarItem): CommandBarGroup {
-  return item.kind === "connection" ? "connections" : item.kind === "table" ? "tables" : "tabs";
+  return item.kind === "connection"
+    ? "connections"
+    : item.kind === "table"
+      ? "tables"
+      : item.kind === "command"
+        ? "commands"
+        : "tabs";
 }
 
 function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
@@ -255,11 +310,23 @@ function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
 }
 
 function groupLabel(group: CommandBarGroup): string {
-  return group === "connections" ? "Connections" : group === "tables" ? "Tables" : "Open tabs";
+  return group === "connections"
+    ? "Connections"
+    : group === "tables"
+      ? "Tables"
+      : group === "commands"
+        ? "Commands"
+        : "Open tabs";
 }
 
 function emptyGroupMessage(group: CommandBarGroup): string {
-  return group === "connections" ? "No connections" : group === "tables" ? "No tables" : "No open tabs";
+  return group === "connections"
+    ? "No connections"
+    : group === "tables"
+      ? "No tables"
+      : group === "commands"
+        ? "No commands"
+        : "No open tabs";
 }
 
 function ItemIcon({ item }: { item: CommandBarItem }) {
@@ -268,6 +335,9 @@ function ItemIcon({ item }: { item: CommandBarItem }) {
   }
   if (item.kind === "table") {
     return <RiTableLine className="size-4 shrink-0 text-primary" />;
+  }
+  if (item.kind === "command") {
+    return <RiCodeBoxLine className="size-4 shrink-0 text-primary" />;
   }
   return item.tab.type === "datatable" ? (
     <RiTableLine className="size-4 shrink-0 text-primary" />

@@ -1,7 +1,7 @@
 import type { WorkspaceTab } from "@/shared/types/connection-workspace";
 import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 
-export type CommandBarMode = "palette" | "tab-switcher";
+export type CommandBarMode = "palette" | "commands" | "tab-switcher";
 
 export type CommandBarItem =
   | {
@@ -27,16 +27,29 @@ export type CommandBarItem =
       detail: string;
       isActive: boolean;
       tab: WorkspaceTab;
+    }
+  | {
+      id: string;
+      kind: "command";
+      label: string;
+      detail: string;
+      isActive: false;
+      command: "disconnect" | "new-connection";
     };
 
-export function filterCommandBarItems(items: readonly CommandBarItem[], query: string): CommandBarItem[] {
+export function filterCommandBarItems(
+  items: readonly CommandBarItem[],
+  query: string,
+): CommandBarItem[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
     return [...items];
   }
 
   return items.filter((item) =>
-    [item.label, item.detail, item.kind].some((value) => value.toLowerCase().includes(normalizedQuery)),
+    [item.label, item.detail, item.kind].some((value) =>
+      value.toLowerCase().includes(normalizedQuery),
+    ),
   );
 }
 
@@ -49,7 +62,11 @@ export function moveSelection(currentIndex: number, count: number, direction: -1
   return (normalizedIndex + direction + count) % count;
 }
 
-export function nextTabIndex(tabs: readonly WorkspaceTab[], activeTabId: string | null, direction: -1 | 1): number {
+export function nextTabIndex(
+  tabs: readonly WorkspaceTab[],
+  activeTabId: string | null,
+  direction: -1 | 1,
+): number {
   if (tabs.length === 0) {
     return -1;
   }

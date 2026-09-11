@@ -1,5 +1,4 @@
 import "./setup";
-
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import type { CommandBarItem } from "@/app/command-bar/command-bar-utils";
@@ -31,7 +30,9 @@ const items: CommandBarItem[] = [
 describe("CommandBar", () => {
   test("selects with ArrowDown and Enter", () => {
     const onSelect = mock((_item: CommandBarItem) => undefined);
-    render(<CommandBar mode="palette" items={items} onClose={() => undefined} onSelect={onSelect} />);
+    render(
+      <CommandBar mode="palette" items={items} onClose={() => undefined} onSelect={onSelect} />,
+    );
     const search = screen.getByRole("textbox", { name: "Search commands" });
 
     fireEvent.keyDown(search, { key: "ArrowDown" });
@@ -39,6 +40,41 @@ describe("CommandBar", () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0]?.[0]?.id).toBe("table:orders");
+  });
+
+  test("scrolls the keyboard-selected option into view", () => {
+    const scrollIntoView = mock(() => undefined);
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    render(
+      <CommandBar
+        mode="palette"
+        items={items}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search commands" }), {
+      key: "ArrowDown",
+    });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  });
+
+  test("uses the themed scrollbar on the results list", () => {
+    render(
+      <CommandBar
+        mode="palette"
+        items={items}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(document.querySelector(".command-bar-scroll")).not.toBeNull();
   });
 
   test("closes on Escape and restores no underlying interaction", () => {
@@ -52,21 +88,45 @@ describe("CommandBar", () => {
   });
 
   test("renders grouped results and distinguishes loading from no matches", () => {
-    render(<CommandBar mode="palette" items={items} onClose={() => undefined} onSelect={() => undefined} />);
+    render(
+      <CommandBar
+        mode="palette"
+        items={items}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
 
     expect(screen.getByText("Tables")).toBeTruthy();
-    fireEvent.change(screen.getByRole("textbox", { name: "Search commands" }), { target: { value: "missing" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search commands" }), {
+      target: { value: "missing" },
+    });
     expect(screen.getByText("No matching items.")).toBeTruthy();
   });
 
   test("shows a specific empty state for open tabs", () => {
-    render(<CommandBar mode="tab-switcher" items={[]} onClose={() => undefined} onSelect={() => undefined} />);
+    render(
+      <CommandBar
+        mode="tab-switcher"
+        items={[]}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
 
     expect(screen.getByText("No open tabs")).toBeTruthy();
   });
 
   test("shows loading instead of an empty result while data is loading", () => {
-    render(<CommandBar mode="palette" items={[]} isLoading onClose={() => undefined} onSelect={() => undefined} />);
+    render(
+      <CommandBar
+        mode="palette"
+        items={[]}
+        isLoading
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
 
     expect(screen.getByText("Loading...")).toBeTruthy();
     expect(screen.queryByText("No matching items.")).toBeNull();

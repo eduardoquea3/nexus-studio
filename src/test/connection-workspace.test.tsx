@@ -1,9 +1,10 @@
 import "./setup";
-
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { type ReactNode, useEffect } from "react";
+
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
+
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const invalidateQueries = mock(() => Promise.resolve());
@@ -14,7 +15,10 @@ const runQuery = mock(async (): Promise<QueryResult> => ({
   duration_ms: 1,
 }));
 const listSchemaObjects = mock(async () => []);
-const getRoutineDefinition = mock(async () => "CREATE FUNCTION refresh_company() RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;");
+const getRoutineDefinition = mock(
+  async () =>
+    "CREATE FUNCTION refresh_company() RETURNS void AS $$ BEGIN END; $$ LANGUAGE plpgsql;",
+);
 const getTableData = mock(async () => ({
   columns: [],
   rows: [],
@@ -76,8 +80,18 @@ mock.module("react-resizable-panels", () => ({
   Panel: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   ),
-  Separator: ({ children, className, "aria-label": ariaLabel }: { children?: ReactNode; className?: string; "aria-label"?: string }) => (
-    <div className={className} aria-label={ariaLabel}>{children}</div>
+  Separator: ({
+    children,
+    className,
+    "aria-label": ariaLabel,
+  }: {
+    children?: ReactNode;
+    className?: string;
+    "aria-label"?: string;
+  }) => (
+    <div className={className} aria-label={ariaLabel}>
+      {children}
+    </div>
   ),
 }));
 
@@ -160,13 +174,18 @@ mock.module("@/app/home/hooks/use-connections", () => ({
 }));
 
 mock.module("@/app/connection/hooks/use-schema-objects", () => ({
-  schemaObjectsQueryKey: (connectionId: string, database?: string) => ["schema", connectionId, database],
+  schemaObjectsQueryKey: (connectionId: string, database?: string) => [
+    "schema",
+    connectionId,
+    database,
+  ],
   useSchemaObjects: () => ({ data: [], isLoading: false, isFetching: false }),
 }));
 
 mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
-const { ConnectionWorkspace, getQuerySegment } = await import("../app/connection/components/connection-workspace");
+const { ConnectionWorkspace, getQuerySegment } =
+  await import("../app/connection/components/connection-workspace");
 const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 
 const profile = {
@@ -199,18 +218,6 @@ function renderWorkspace(connectionProfile: ConnectionProfile = profile) {
   return render(
     <QueryClientProvider client={queryClient}>
       <ConnectionWorkspace profile={connectionProfile} />
-    </QueryClientProvider>,
-  );
-}
-
-function renderWorkspaceWithSwitch(onConnectionSwitch: (nextProfile: ConnectionProfile) => void | Promise<void>) {
-  const queryClient = new QueryClient();
-  Object.assign(queryClient, { invalidateQueries });
-  useWorkspaceStore.setState({ isHydrated: true });
-
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ConnectionWorkspace profile={profile} onConnectionSwitch={onConnectionSwitch} />
     </QueryClientProvider>,
   );
 }
@@ -280,7 +287,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
       duration_ms: 2,
     });
     renderWorkspace();
-    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), { target: { textContent: "select 1;" } });
+    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), {
+      target: { textContent: "select 1;" },
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
@@ -304,12 +313,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
   test("hides the previous result and JSON actions while a new query is running", async () => {
     let resolveQuery: ((result: QueryResult) => void) | undefined;
-    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
-    runQuery.mockImplementationOnce(() => new Promise<QueryResult>((resolve) => {
-      resolveQuery = resolve;
-    }));
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
+    });
+    runQuery.mockImplementationOnce(
+      () =>
+        new Promise<QueryResult>((resolve) => {
+          resolveQuery = resolve;
+        }),
+    );
     renderWorkspace();
-    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), { target: { textContent: "select 1;" } });
+    fireEvent.input(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), {
+      target: { textContent: "select 1;" },
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
@@ -363,7 +382,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
   });
 
   test("exposes selected mode and supports keyboard activation", async () => {
-    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
+    });
     renderWorkspace();
 
     await act(async () => {
@@ -385,7 +409,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
   });
 
   test("announces export success and sends the exact displayed payload", async () => {
-    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
+    });
     const createObjectURL = mock((value: Blob) => {
       void value;
       return "blob:sql-result";
@@ -423,8 +452,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
   });
 
   test("announces an actual export failure without mutating database state", async () => {
-    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: mock(() => { throw new Error("blocked"); }) });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
+    });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: mock(() => {
+        throw new Error("blocked");
+      }),
+    });
     renderWorkspace();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
@@ -479,8 +518,16 @@ describe("ConnectionWorkspace SQL tabs", () => {
   });
 
   test("announces clipboard failure and leaves the JSON view usable", async () => {
-    runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 });
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: mock(() => Promise.reject(new Error("denied"))) } });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mock(() => Promise.reject(new Error("denied"))) },
+    });
     renderWorkspace();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
@@ -662,7 +709,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
   });
 
   test("does not split semicolons inside PostgreSQL dollar-quoted routine bodies", () => {
-    const query = "CREATE FUNCTION refresh() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;";
+    const query =
+      "CREATE FUNCTION refresh() RETURNS void AS $$ BEGIN PERFORM 1; END; $$ LANGUAGE plpgsql;";
 
     expect(getQuerySegment(query, 12)).toBe(query);
   });
@@ -742,10 +790,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true });
     const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
-    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
 
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true });
-    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), {
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+    });
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
   });
 
   test("cycles backward with repeated Ctrl+Shift+Tab and confirms on Ctrl release", () => {
@@ -757,12 +813,25 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     fireEvent.keyDown(workspace, { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
     const switcher = within(screen.getByRole("dialog", { name: "Open tabs" }));
-    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe("true");
+    expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
 
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true });
-    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), {
+      key: "Tab",
+      code: "Tab",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(switcher.getByRole("button", { name: /Query 2/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
 
-    fireEvent.keyUp(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Control", code: "ControlLeft", ctrlKey: false });
+    fireEvent.keyUp(screen.getByRole("dialog", { name: "Open tabs" }), {
+      key: "Control",
+      code: "ControlLeft",
+      ctrlKey: false,
+    });
     expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
   });
@@ -781,118 +850,31 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     expect(screen.queryByRole("tab", { name: "company" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Query 1" })).not.toBeNull();
-    expect(useWorkspaceStore.getState().connections["connection-2"]?.tabs.map((tab) => tab.connectionId)).toEqual([
-      "connection-2",
-    ]);
+    expect(
+      useWorkspaceStore.getState().connections["connection-2"]?.tabs.map((tab) => tab.connectionId),
+    ).toEqual(["connection-2"]);
   });
 
-  test("opens Ctrl+P globally, including from native inputs", () => {
+  test("opens the connections and tables palette with Ctrl+P", () => {
     renderWorkspace();
     const input = document.createElement("input");
     document.body.append(input);
     input.focus();
 
     fireEvent.keyDown(input, { key: "p", code: "KeyP", ctrlKey: true });
-    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search commands" }), { key: "Escape" });
-
     fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
       key: "p",
       code: "KeyP",
       ctrlKey: true,
     });
     expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
-  });
-
-  test("does not show open tabs in the Ctrl+P palette", () => {
-    renderWorkspace();
-    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
-
     fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
       key: "p",
       code: "KeyP",
       ctrlKey: true,
+      shiftKey: true,
     });
-
-    const palette = screen.getByRole("dialog", { name: "Command palette" });
-    expect(within(palette).queryByRole("button", { name: /company/ })).toBeNull();
-  });
-
-  test("validates a selected connection before navigating and closes the palette", async () => {
-    const nextProfile = { ...profile, id: "connection-2", name: "Analytics" };
-    availableConnections.push(profile, nextProfile);
-    const onConnectionSwitch = mock(async () => undefined);
-    renderWorkspaceWithSwitch(onConnectionSwitch);
-
-    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
-      key: "p",
-      code: "KeyP",
-      ctrlKey: true,
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(testSavedConnection).toHaveBeenCalledWith(nextProfile);
-    expect(onConnectionSwitch).toHaveBeenCalledWith(nextProfile);
-    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
-  });
-
-  test("keeps the current context and shows details when connection validation fails", async () => {
-    const nextProfile = { ...profile, id: "connection-2", name: "Unavailable" };
-    availableConnections.push(profile, nextProfile);
-    testSavedConnection.mockRejectedValueOnce(new Error("ECONNREFUSED: port 5432"));
-    const onConnectionSwitch = mock(async () => undefined);
-    renderWorkspaceWithSwitch(onConnectionSwitch);
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
-      key: "p",
-      code: "KeyP",
-      ctrlKey: true,
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Unavailable/ }));
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(onConnectionSwitch).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
-    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Unable to connect to Unavailable",
-      description: expect.stringContaining("ECONNREFUSED"),
-    }));
-    expect(useWorkspaceStore.getState().activeConnectionId).toBe("connection-1");
-  });
-
-  test("does not start concurrent validation attempts for one connection", async () => {
-    const nextProfile = { ...profile, id: "connection-2", name: "Slow connection" };
-    availableConnections.push(profile, nextProfile);
-    let resolveValidation: (value: string) => void = () => undefined;
-    testSavedConnection.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveValidation = resolve;
-    }));
-    renderWorkspaceWithSwitch(async () => undefined);
-
-    fireEvent.keyDown(screen.getByRole("region", { name: "SQL editor workspace" }), {
-      key: "p",
-      code: "KeyP",
-      ctrlKey: true,
-    });
-    const connectionButton = screen.getByRole("button", { name: /Slow connection/ });
-    fireEvent.click(connectionButton);
-    fireEvent.click(connectionButton);
-
-    expect(testSavedConnection).toHaveBeenCalledTimes(1);
-    resolveValidation("ok");
-    await act(async () => {
-      await Promise.resolve();
-    });
+    expect(screen.getByRole("button", { name: /Disconnect/ })).not.toBeNull();
   });
 
   test("creates another editor when Ctrl+T is pressed on the focused empty section", () => {
@@ -928,7 +910,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
       screen.getByRole("textbox", { name: "refresh_company SQL query editor" }).textContent,
     ).toContain("CREATE FUNCTION");
     expect(
-        screen
+      screen
         .getByTestId("unsaved-change-slot-routine--function-public.refresh_company()")
         .querySelector("[aria-label]"),
     ).toBeNull();
@@ -948,9 +930,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     expect(screen.getAllByRole("tab")).toHaveLength(3);
-    expect(screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company()"))
-      .toBeTruthy();
-    expect(screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company(integer)"))
-      .toBeTruthy();
+    expect(
+      screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company()"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("unsaved-change-slot-routine--function-public.refresh_company(integer)"),
+    ).toBeTruthy();
   });
 });

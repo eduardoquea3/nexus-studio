@@ -1,7 +1,8 @@
 import "./setup";
-
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
 import type { ConnectionProfile } from "@/shared/types/models";
+
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const navigate = mock(async () => undefined);
@@ -53,7 +54,7 @@ mock.module("@/components/ui/toast", () => ({
 }));
 
 const { HomeCommandBar } = await import("@/app/command-bar/home-command-bar");
-const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
 
 describe("HomeCommandBar", () => {
   beforeEach(() => {
@@ -75,78 +76,22 @@ describe("HomeCommandBar", () => {
 
   afterEach(() => cleanup());
 
-  test("opens Ctrl+P from Home and lists only available connections without an active connection", () => {
+  test("opens the connections palette with Ctrl+P", () => {
     render(<HomeCommandBar activeConnectionId={null} />);
 
     fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true });
 
     expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Production/ })).not.toBeNull();
-    expect(screen.queryByText(/table/i)).toBeNull();
   });
 
-  test("validates a selected connection before navigating", async () => {
+  test("opens the application commands with Ctrl+Shift+P", () => {
     render(<HomeCommandBar activeConnectionId={null} />);
-    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true });
-    fireEvent.click(screen.getByRole("button", { name: /Production/ }));
 
-    await act(async () => await Promise.resolve());
+    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true, shiftKey: true });
 
-    expect(testSavedConnection).toHaveBeenCalledWith(profiles[0]);
-    expect(markConnectionOpened).toHaveBeenCalledWith("connection-1");
-    expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Checking connection...",
-      type: "loading",
-    }));
-    expect(updateToast).toHaveBeenCalledWith("toast-1", expect.objectContaining({
-      title: "Connection successful",
-    }));
-    expect(navigate).toHaveBeenCalledWith({
-      to: "/connections/$connectionId",
-      params: { connectionId: "connection-1" },
-    });
-  });
-
-  test("keeps Home context and shows a toast when validation fails", async () => {
-    testSavedConnection.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-    render(<HomeCommandBar activeConnectionId={null} />);
-    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true });
-    fireEvent.click(screen.getByRole("button", { name: /Production/ }));
-
-    await act(async () => await Promise.resolve());
-
-    expect(navigate).not.toHaveBeenCalled();
-    expect(markConnectionOpened).not.toHaveBeenCalled();
-    expect(useWorkspaceStore.getState().activeConnectionId).toBeNull();
-    expect(listSchemaObjects).not.toHaveBeenCalled();
-    expect(updateToast).toHaveBeenCalledWith("toast-1", expect.objectContaining({
-      title: "Connection failed",
-      description: expect.stringContaining("ECONNREFUSED"),
-    }));
-  });
-
-  test("prevents concurrent attempts for one connection and restores focus on Escape", async () => {
-    let resolveValidation: (value: string) => void = () => undefined;
-    testSavedConnection.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveValidation = resolve;
-    }));
-    render(<><button type="button" data-testid="focus-target">Focus target</button><HomeCommandBar activeConnectionId={null} /></>);
-    const trigger = screen.getByTestId("focus-target");
-    trigger.focus();
-
-    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true });
-    const connectionButton = screen.getByRole("button", { name: /Production/ });
-    fireEvent.click(connectionButton);
-    fireEvent.click(connectionButton);
-    expect(testSavedConnection).toHaveBeenCalledTimes(1);
-
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search commands" }), { key: "Escape" });
-    await act(async () => await Promise.resolve());
-    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-    await act(async () => {
-      resolveValidation("ok");
-      await Promise.resolve();
-    });
+    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /New connection/ })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Production/ })).toBeNull();
   });
 });

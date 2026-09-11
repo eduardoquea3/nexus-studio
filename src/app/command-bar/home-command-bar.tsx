@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 
 import { CommandBar } from "@/app/command-bar/command-bar";
 import { describeConnection, type CommandBarItem } from "@/app/command-bar/command-bar-utils";
 import { useConnections } from "@/app/home/hooks/use-connections";
+import { HomePanels } from "@/app/home/lib/home-panels";
 import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { toast } from "@/components/ui/toast";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
+import { useModalStore } from "@/shared/store/modalStore";
 
 type HomeCommandBarProps = {
   activeConnectionId: string | null;
@@ -16,18 +18,34 @@ type HomeCommandBarProps = {
 export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommandBarProps) {
   const { data: connections = [], isLoading, isFetching } = useConnections();
   const navigate = useNavigate();
+  const openModal = useModalStore((state) => state.openModal);
   const [isOpen, setIsOpen] = useState(false);
-  const [switchingConnectionIds, setSwitchingConnectionIds] = useState<ReadonlySet<string>>(new Set());
+  const [switchingConnectionIds, setSwitchingConnectionIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const switchingConnectionIdsRef = useRef(new Set<string>());
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const commandBarItems: CommandBarItem[] = connections.map((connection) => ({
-    id: `connection:${connection.id}`,
-    kind: "connection",
-    label: connection.name,
-    detail: describeConnection(connection),
-    isActive: connection.id === activeConnectionId,
-    connection,
-  }));
+  const [mode, setMode] = useState<"palette" | "commands">("palette");
+  const commandBarItems: CommandBarItem[] =
+    mode === "commands"
+      ? [
+          {
+            id: "command:new-connection",
+            kind: "command",
+            label: "New connection",
+            detail: "Create a saved connection",
+            isActive: false,
+            command: "new-connection",
+          },
+        ]
+      : connections.map((connection) => ({
+          id: `connection:${connection.id}`,
+          kind: "connection" as const,
+          label: connection.name,
+          detail: describeConnection(connection),
+          isActive: connection.id === activeConnectionId,
+          connection,
+        }));
 
   const closeCommandBar = () => {
     setIsOpen(false);
@@ -36,11 +54,6 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
         restoreFocusRef.current.focus();
       }
     });
-  };
-
-  const openCommandBar = () => {
-    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setIsOpen(true);
   };
 
   const switchConnection = async (profile: (typeof connections)[number]) => {
@@ -91,29 +104,35 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey || event.altKey || event.key.toLowerCase() !== "p") {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "p")
         return;
-      }
+      event.preventDefault();
+      event.stopPropagation();
+      setMode(event.shiftKey ? "commands" : "palette");
       if (!isOpen) {
-        event.preventDefault();
-        event.stopPropagation();
-        openCommandBar();
+        restoreFocusRef.current =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setIsOpen(true);
       }
     };
-
     window.addEventListener("keydown", handleGlobalKeyDown, true);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
   }, [isOpen]);
 
   return isOpen ? (
     <CommandBar
-      mode="palette"
+      mode={mode}
       items={commandBarItems}
       onClose={closeCommandBar}
-      onSelect={() => undefined}
+      onSelect={(item) => {
+        if (item.kind === "command" && item.command === "new-connection") {
+          closeCommandBar();
+          openModal(HomePanels.NewConnection, { source: "command-bar" });
+        }
+      }}
       onConnectionSelect={(profile) => void switchConnection(profile)}
-      groups={["connections"]}
-      isLoading={switchingConnectionIds.size > 0 || isLoading || isFetching}
+      groups={mode === "commands" ? ["commands"] : ["connections"]}
+      isLoading={mode === "palette" && (switchingConnectionIds.size > 0 || isLoading || isFetching)}
     />
   ) : null;
 }
