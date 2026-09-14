@@ -138,7 +138,8 @@ SQLite expone actualmente tablas y vistas. Secuencias, índices, triggers, exten
 | Atajo | Acción |
 | --- | --- |
 | `Ctrl+B` | Alternar el sidebar |
-| `Ctrl/Cmd+Enter` | Ejecutar la consulta activa |
+| `Ctrl/Cmd+Enter` | Ejecutar todas las sentencias |
+| `Ctrl/Cmd+Shift+Enter` | Ejecutar la sentencia actual |
 | `Ctrl/Cmd+T` | Crear una pestaña SQL |
 | `Ctrl/Cmd+W` | Cerrar pestañas |
 | `Ctrl/Cmd+Tab` | Ir a la siguiente pestaña |
