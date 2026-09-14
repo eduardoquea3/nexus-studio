@@ -6,6 +6,7 @@ Object.assign(globalThis, {
   window,
   document: window.document,
   navigator: window.navigator,
+  Element: window.Element,
   HTMLElement: window.HTMLElement,
   HTMLTextAreaElement: window.HTMLTextAreaElement,
   Node: window.Node,

@@ -8,12 +8,13 @@ import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const invalidateQueries = mock(() => Promise.resolve());
-const runQuery = mock(async (): Promise<QueryResult> => ({
+const defaultRunQuery = async (): Promise<QueryResult> => ({
   columns: [],
   rows: [],
   affected: 0,
   duration_ms: 1,
-}));
+});
+const runQuery = mock(defaultRunQuery);
 const listSchemaObjects = mock(async () => []);
 const getRoutineDefinition = mock(
   async () =>
@@ -113,9 +114,19 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
       <button type="button" onClick={() => onDatabaseChange("development")}>
         Select development
       </button>
-      <button type="button" onClick={() => onTableSelect("company")}>
+      <span
+        role="button"
+        tabIndex={0}
+        onDoubleClick={() => onTableSelect("company")}
+        onKeyDown={(event) => {
+          if (event.key === " " || event.key === "Enter") {
+            if (event.key === " ") event.preventDefault();
+            onTableSelect("company");
+          }
+        }}
+      >
         Open company
-      </button>
+      </span>
       <button
         type="button"
         onDoubleClick={() =>
@@ -186,6 +197,7 @@ mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
 const { ConnectionWorkspace, getQuerySegment } =
   await import("../app/connection/components/connection-workspace");
+const { splitSqlStatements } = await import("../app/connection/components/connection-workspace-utils");
 const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 
 const profile = {
@@ -222,11 +234,24 @@ function renderWorkspace(connectionProfile: ConnectionProfile = profile) {
   );
 }
 
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function setEditorQuery(query = "select 1;") {
+  const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+  act(() => {
+    editor.textContent = query;
+    fireEvent.input(editor);
+  });
+}
+
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
-    runQuery.mockClear();
+    runQuery.mockReset();
+    runQuery.mockImplementation(defaultRunQuery);
     getRoutineDefinition.mockClear();
     addToast.mockClear();
     testSavedConnection.mockReset();
@@ -252,12 +277,138 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
 
+  test("keeps the run action out of the compact tab bar", () => {
+    renderWorkspace();
+
+    expect(within(screen.getByRole("tablist")).queryByText("Run all")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-8");
+    expect(screen.getByRole("region", { name: "SQL query results" }).firstElementChild?.className).toContain(
+      "justify-end",
+    );
+  });
+
+  test("exposes Run all and Run current in the results toolbar menu", async () => {
+    renderWorkspace();
+    setEditorQuery();
+
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Query run options" }));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("menuitem", { name: /^Run all/ })).not.toBeNull();
+    expect(await screen.findByRole("menuitem", { name: /^Run current/ })).not.toBeNull();
+    expect(screen.getByRole("menuitem", { name: /^Run all/ }).textContent).toContain(
+      "Ctrl + Enter",
+    );
+    expect(screen.getByRole("menuitem", { name: /^Run current/ }).textContent).toContain(
+      "Ctrl + Shift + Enter",
+    );
+  });
+
+  test("runs all statements with Ctrl+Enter and the current statement with Ctrl+Shift+Enter", async () => {
+    renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+    setEditorQuery("select 1; select 2;");
+
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+      await Promise.resolve();
+    });
+
+    expect(runQuery).toHaveBeenCalledTimes(2);
+    expect(runQuery).toHaveBeenNthCalledWith(1, expect.anything(), "select 1;");
+    expect(runQuery).toHaveBeenNthCalledWith(2, expect.anything(), "select 2;");
+
+    runQuery.mockClear();
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true, shiftKey: true });
+      await Promise.resolve();
+    });
+
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(runQuery).toHaveBeenCalledWith(expect.anything(), "select 2;");
+  });
+
+  test("Run all executes each active editor statement sequentially", async () => {
+    renderWorkspace();
+    setEditorQuery("select 1;\nselect 2;");
+
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Query run options" }));
+      await Promise.resolve();
+    });
+    const runAll = await screen.findByRole("menuitem", { name: /^Run all/ });
+    await act(async () => {
+      fireEvent.click(runAll);
+      await Promise.resolve();
+    });
+
+    expect(runQuery).toHaveBeenNthCalledWith(1, expect.anything(), "select 1;");
+    expect(runQuery).toHaveBeenNthCalledWith(2, expect.anything(), "select 2;");
+    expect(runQuery).toHaveBeenCalledTimes(2);
+  });
+
+  test("primary Run all action executes each active editor statement sequentially", async () => {
+    renderWorkspace();
+    setEditorQuery("select 1;\nselect 2;");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
+      await Promise.resolve();
+    });
+
+    expect(runQuery).toHaveBeenNthCalledWith(1, expect.anything(), "select 1;");
+    expect(runQuery).toHaveBeenNthCalledWith(2, expect.anything(), "select 2;");
+    expect(runQuery).toHaveBeenCalledTimes(2);
+  });
+
+  test("Run all keeps parser-safe SQL statements intact", async () => {
+    const query =
+      "select 'one;two'; -- comment;\nselect $$body;still body$$; /* block; comment */ select 3;";
+    expect(splitSqlStatements(query)).toEqual([
+      "select 'one;two';",
+      "-- comment;\nselect $$body;still body$$;",
+      "/* block; comment */ select 3;",
+    ]);
+  });
+
+  test("Run all stops after the first failed statement", async () => {
+    runQuery.mockResolvedValueOnce({ columns: [], rows: [], affected: 0, duration_ms: 1 });
+    runQuery.mockRejectedValueOnce(new Error("syntax error"));
+    const query = "select 1; select broken; select 3;";
+    renderWorkspace();
+    setEditorQuery(query);
+
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Query run options" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: /^Run all/ }));
+      await Promise.resolve();
+    });
+
+    expect(runQuery).toHaveBeenCalledTimes(2);
+    expect(runQuery).toHaveBeenNthCalledWith(2, expect.anything(), "select broken;");
+    expect(screen.getByText("syntax error")).not.toBeNull();
+  });
+
+  test("disables the primary Run all action for an empty query", () => {
+    renderWorkspace();
+
+    expect(screen.getByRole("button", { name: "Run all queries" }).getAttribute("disabled")).toBe("");
+  });
+
   test("keeps the SQL results pane visible even before running a query", () => {
     renderWorkspace();
 
     const resultsPane = screen.getByRole("region", { name: "SQL query results" });
 
-    expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Query run options" }).getAttribute("disabled")).toBe("");
+    expect(within(resultsPane).getByText(/ctrl\+enter to run all statements/i)).not.toBeNull();
     expect(resultsPane.parentElement?.parentElement?.className ?? "").not.toContain("rounded-b-xl");
   });
 
@@ -267,7 +418,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.input(editor, { target: { textContent: "select 1;" } });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -276,7 +427,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
 
     const resultsPane = screen.getByRole("region", { name: "SQL query results" });
-    expect(within(resultsPane).getByText(/press ctrl\+enter to run it/i)).not.toBeNull();
+    expect(within(resultsPane).getByText(/ctrl\+enter to run all statements/i)).not.toBeNull();
   });
 
   test("shows JSON only for tabular results and switches without rerunning", async () => {
@@ -292,7 +443,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -331,7 +482,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -339,7 +490,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 1');
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -357,8 +508,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
   test("does not expose JSON for a zero-row SELECT with columns", async () => {
     runQuery.mockResolvedValueOnce({ columns: ["id"], rows: [], affected: 0, duration_ms: 1 });
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -369,9 +521,10 @@ describe("ConnectionWorkspace SQL tabs", () => {
   test("does not expose JSON controls for SQL errors", async () => {
     runQuery.mockRejectedValueOnce(new Error("syntax error"));
     renderWorkspace();
+    setEditorQuery();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -389,9 +542,10 @@ describe("ConnectionWorkspace SQL tabs", () => {
       duration_ms: 1,
     });
     renderWorkspace();
+    setEditorQuery();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -431,8 +585,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
     }) as typeof document.createElement;
 
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -465,8 +620,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
       }),
     });
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -484,8 +640,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const rows = Array.from({ length: 10_001 }, (_, id) => ({ id }));
     runQuery.mockResolvedValueOnce({ columns: ["id"], rows, affected: 0, duration_ms: 1 });
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -499,16 +656,17 @@ describe("ConnectionWorkspace SQL tabs", () => {
       .mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 1 }], affected: 0, duration_ms: 1 })
       .mockResolvedValueOnce({ columns: ["id"], rows: [{ id: 2 }], affected: 0, duration_ms: 1 });
     renderWorkspace();
+    setEditorQuery();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
@@ -529,8 +687,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
       value: { writeText: mock(() => Promise.reject(new Error("denied"))) },
     });
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
@@ -546,8 +705,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
   test("does not expose JSON actions for non-tabular results", async () => {
     runQuery.mockResolvedValueOnce({ columns: [], rows: [], affected: 1, duration_ms: 2 });
     renderWorkspace();
+    setEditorQuery();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -652,7 +812,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.input(editor, { target: { textContent: "create table sample (id int);" } });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -667,7 +827,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.input(editor, { target: { textContent: "create database reporting;" } });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -682,7 +842,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select development" }));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Run query" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
       await Promise.resolve();
     });
 
@@ -742,16 +902,48 @@ describe("ConnectionWorkspace SQL tabs", () => {
     );
   });
 
-  test("focuses the previous workspace tab when closing with Ctrl+W", () => {
+  test("does not open a table on a single click", () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+
+    expect(screen.queryByRole("tab", { name: "company" })).toBeNull();
+  });
+
+  test("opens a table on double click and focuses the workspace after render", async () => {
+    renderWorkspace();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open company" }));
+    await act(waitForAnimationFrame);
+
+    expect(screen.getByRole("tab", { name: "company" })).not.toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("region", { name: "SQL editor workspace" }),
+    );
+  });
+
+  test("opens a table with Space from the focused table label", () => {
+    renderWorkspace();
+    const tableLabel = screen.getByRole("button", { name: "Open company" });
+
+    fireEvent.keyDown(tableLabel, { key: " " });
+
+    expect(screen.getByRole("tab", { name: "company" })).not.toBeNull();
+  });
+
+  test("focuses the previous workspace tab when closing with Ctrl+W", async () => {
     renderWorkspace();
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open company" }));
+    await act(waitForAnimationFrame);
 
     const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
     fireEvent.keyDown(workspace, { key: "w", code: "KeyW", ctrlKey: true });
+    await act(waitForAnimationFrame);
 
     expect(screen.getByRole("textbox", { name: "Query 2 SQL query editor" })).not.toBeNull();
     expect(screen.queryByRole("tab", { name: "company" })).toBeNull();
+    expect(document.activeElement).toBe(workspace);
 
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 2 SQL query editor" }), {
       key: "w",
@@ -839,7 +1031,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
   test("does not carry tabs into a connection with no stored workspace", () => {
     useWorkspaceStore.setState({ isHydrated: true });
     const view = renderWorkspace();
-    fireEvent.click(screen.getByRole("button", { name: "Open company" }));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open company" }));
     expect(screen.getByRole("tab", { name: "company" })).not.toBeNull();
 
     view.rerender(
@@ -889,6 +1081,30 @@ describe("ConnectionWorkspace SQL tabs", () => {
     fireEvent.keyDown(emptySection, { key: "t", code: "KeyT", ctrlKey: true });
 
     expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" })).not.toBeNull();
+  });
+
+  test("shows implemented keyboard shortcuts when no SQL tabs are open", () => {
+    renderWorkspace();
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), {
+      key: "w",
+      code: "KeyW",
+      ctrlKey: true,
+    });
+
+    const shortcutList = screen.getByRole("list", { name: "Implemented shortcuts" });
+    expect(shortcutList.textContent).toContain("Run all");
+    expect(shortcutList.textContent).toContain("Run current");
+    expect(shortcutList.textContent).toContain("Ctrl+Enter");
+    expect(shortcutList.textContent).toContain("Ctrl+Shift+Enter");
+    expect(shortcutList.textContent).toContain("New SQL tab");
+    expect(shortcutList.textContent).toContain("Close active tab");
+    expect(shortcutList.textContent).toContain("Next tab");
+    expect(shortcutList.textContent).toContain("Previous tab");
+    expect(shortcutList.textContent).toContain("Toggle sidebar");
+    expect(screen.queryByText("Press Ctrl+T to open a SQL editor.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Query run options" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run all queries" })).toBeNull();
   });
 
   test("opens and deduplicates a routine definition tab", async () => {

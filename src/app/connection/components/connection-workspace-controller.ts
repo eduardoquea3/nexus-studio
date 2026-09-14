@@ -32,7 +32,7 @@ import {
 import { useModalStore } from "@/shared/store/modalStore";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
-import { getQuerySegment } from "./connection-workspace-utils";
+import { getQuerySegment, splitSqlStatements } from "./connection-workspace-utils";
 
 export type SqlEditorTab = QueryTab;
 export type TableTab = DataTableTab;
@@ -68,6 +68,7 @@ export function useConnectionWorkspaceController({
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const [activeTabId, setActiveTabId] = useState("sql-1");
   const [isRunning, setIsRunning] = useState(false);
+  const isRunningRef = useRef(false);
   const [tableRefreshToken, setTableRefreshToken] = useState(0);
   const [commandBarMode, setCommandBarMode] = useState<CommandBarMode | null>(null);
   const [switcherCycle, setSwitcherCycle] = useState<{ sequence: number; direction: -1 | 1 }>();
@@ -88,6 +89,9 @@ export function useConnectionWorkspaceController({
   const switcherCycleRef = useRef(0);
   const selectedSwitcherTabIdRef = useRef<string | null>(null);
   const switchingConnectionIdsRef = useRef(new Set<string>());
+  const focusWorkspaceAfterRender = () => {
+    requestAnimationFrame(() => editorSectionRef.current?.focus());
+  };
   const {
     data: schemaObjects = [],
     isLoading: isLoadingSchema,
@@ -471,6 +475,7 @@ export function useConnectionWorkspaceController({
   const closeTableTab = (tabId: string, focusTabId?: string) => {
     setTableTabs((tabs) => tabs.filter((tab) => tab.id !== tabId));
     if (activeTabId === tabId) setActiveTabId(focusTabId ?? activeSqlTabId);
+    focusWorkspaceAfterRender();
   };
   const getPreviousWorkspaceTabId = (tabId: string) => {
     const index = workspaceTabs.findIndex((tab) => tab.id === tabId);
@@ -499,6 +504,7 @@ export function useConnectionWorkspaceController({
     const active = storedTab ?? nextTab;
     setTableTabs((tabs) => (tabs.some((tab) => tab.id === active.id) ? tabs : [...tabs, active]));
     setActiveTabId(active.id);
+    focusWorkspaceAfterRender();
   };
   const handleDatabaseChange = (database: string) => {
     setSelectedDatabase(database);
@@ -560,19 +566,20 @@ export function useConnectionWorkspaceController({
     sqlTabsRef.current = tabs;
     setSqlTabs(tabs);
   };
-  const executeActiveQuery = async () => {
-    if (!activeSqlTab || !editorViewRef.current || isRunning) return;
-    const query =
-      getQuerySegment(activeSqlTab.query, editorViewRef.current.state.selection.main.head) ||
-      DEFAULT_QUERY;
-    setIsRunning(true);
-    setSqlTabs((tabs) =>
-      tabs.map((tab) =>
-        tab.id === activeSqlTab.id
-          ? { ...tab, queryResult: null, queryError: null, viewMode: "table" }
-          : tab,
-      ),
-    );
+  const executeQuery = async (query: string, clearResult = true, managesRunning = true) => {
+    if (!activeSqlTab || (isRunningRef.current && managesRunning)) return false;
+    if (managesRunning) {
+      isRunningRef.current = true;
+      setIsRunning(true);
+    }
+    if (clearResult)
+      setSqlTabs((tabs) =>
+        tabs.map((tab) =>
+          tab.id === activeSqlTab.id
+            ? { ...tab, queryResult: null, queryError: null, viewMode: "table" }
+            : tab,
+        ),
+      );
     try {
       const result = await runQuery(withDatabase(profile, selectedDatabase), query);
       setSqlTabs((tabs) =>
@@ -582,6 +589,7 @@ export function useConnectionWorkspaceController({
         await queryClient.invalidateQueries({ queryKey: schemaObjectsQueryKey(profile.id) });
       if (/^create\s+database\b/i.test(query))
         await queryClient.invalidateQueries({ queryKey: databasesQueryKey(profile.id) });
+      return true;
     } catch (error) {
       setSqlTabs((tabs) =>
         tabs.map((tab) =>
@@ -594,15 +602,43 @@ export function useConnectionWorkspaceController({
             : tab,
         ),
       );
+      return false;
     } finally {
+      if (managesRunning) {
+        isRunningRef.current = false;
+        setIsRunning(false);
+      }
+    }
+  };
+  const executeActiveQuery = async () => {
+    if (!activeSqlTab || !editorViewRef.current || isRunningRef.current) return;
+    const query =
+      getQuerySegment(activeSqlTab.query, editorViewRef.current.state.selection.main.head) ||
+      DEFAULT_QUERY;
+    await executeQuery(query);
+  };
+  const executeAllQuery = async () => {
+    if (!activeSqlTab || isRunningRef.current || !activeSqlTab.query.trim()) return;
+    isRunningRef.current = true;
+    setIsRunning(true);
+    try {
+      const statements = splitSqlStatements(activeSqlTab.query);
+      for (const [index, statement] of statements.entries()) {
+        const succeeded = await executeQuery(statement, index === 0, false);
+        if (!succeeded) break;
+      }
+    } finally {
+      isRunningRef.current = false;
       setIsRunning(false);
     }
   };
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     if (event.key === "Enter" && activeSqlTab) {
       event.preventDefault();
-      void executeActiveQuery();
+      void (event.shiftKey ? executeActiveQuery() : executeAllQuery());
+    } else if (event.shiftKey) {
+      return;
     } else if (event.key.toLowerCase() === "t") {
       event.preventDefault();
       createEditorTab();
@@ -659,6 +695,7 @@ export function useConnectionWorkspaceController({
     closeTableTab,
     updateActiveQuery,
     executeActiveQuery,
+    executeAllQuery,
     handleWorkspaceKeyDown,
     activateWorkspaceTab,
     nextTabIndex,

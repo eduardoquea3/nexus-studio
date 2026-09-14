@@ -17,6 +17,22 @@ export function getQuerySegment(query: string, position: number): string {
   return query.slice(previousSeparator + 1, end).trim();
 }
 
+export function splitSqlStatements(query: string): string[] {
+  const separators = findStatementSeparators(query);
+  const statements: string[] = [];
+  let start = 0;
+
+  for (const separator of separators) {
+    const statement = query.slice(start, separator + 1).trim();
+    if (statement) statements.push(statement);
+    start = separator + 1;
+  }
+
+  const trailingStatement = query.slice(start).trim();
+  if (trailingStatement) statements.push(trailingStatement);
+  return statements;
+}
+
 function findStatementSeparators(query: string): number[] {
   const separators: number[] = [];
   let quote: "'" | '"' | "`" | null = null;
@@ -49,6 +65,8 @@ function findStatementSeparators(query: string): number[] {
       if (character === quote) {
         if (nextCharacter === quote) index += 1;
         else quote = null;
+      } else if (character === "\\") {
+        index += 1;
       }
       continue;
     }

@@ -1,4 +1,4 @@
-import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiPlayLine, RiTableLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiTableLine } from "@remixicon/react";
 
 import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,20 +10,18 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
   const {
     workspaceTabs,
     activeSqlTabId,
-    isRunning,
     createEditorTab,
     closeEditorTab,
     closeTableTab,
-    executeActiveQuery,
   } = controller;
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-2">
+    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-1">
       <TabsList className="min-w-0 overflow-hidden rounded-b-none bg-transparent p-0">
         {workspaceTabs.map((tab) => (
-          <div key={tab.id} className="group flex h-9 items-center">
+          <div key={tab.id} className="group flex h-8 items-center">
             <TabsTrigger
               value={tab.id}
-              className="group/tab flex h-9 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
+              className="group/tab flex h-8 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
               onClick={() => {
                 controller.setActiveTabId(tab.id);
                 if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
@@ -89,16 +87,6 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
       >
         <RiAddLine />
       </Button>
-      <div className="ml-auto flex items-center gap-2 px-2 pb-1">
-        <Button
-          size="sm"
-          disabled={!controller.activeSqlTab || isRunning}
-          onClick={() => void executeActiveQuery()}
-        >
-          <RiPlayLine data-icon="inline-start" />
-          {isRunning ? "Running..." : "Run query"}
-        </Button>
-      </div>
     </div>
   );
 }

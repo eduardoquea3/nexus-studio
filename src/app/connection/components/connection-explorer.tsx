@@ -203,11 +203,12 @@ export function ConnectionExplorer({
                                 role="button"
                                 tabIndex={0}
                                 className="min-w-0 flex-1 truncate cursor-default"
-                                onClick={() => onTableSelect(object.name, object.schema)}
                                 onDoubleClick={() => onTableSelect(object.name, object.schema)}
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter")
+                                  if (event.key === " " || event.key === "Enter") {
+                                    if (event.key === " ") event.preventDefault();
                                     onTableSelect(object.name, object.schema);
+                                  }
                                 }}
                               >
                                 {object.name}
