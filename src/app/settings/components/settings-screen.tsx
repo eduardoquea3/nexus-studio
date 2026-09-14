@@ -88,6 +88,18 @@ export function SettingsScreen() {
   return (
     <div className="relative flex h-full min-h-0 bg-background text-foreground">
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+        <div className="border-b border-border px-4 py-3">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={goBack}
+            aria-label="Back to app"
+          >
+            <RiArrowLeftLine aria-hidden="true" />
+            <span>Back to app</span>
+          </Button>
+        </div>
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-4">
             <nav aria-label="Settings sections" className="space-y-1">
@@ -127,27 +139,14 @@ export function SettingsScreen() {
       <ScrollArea className="min-w-0 flex-1">
         <div className="mx-auto min-h-full w-full max-w-4xl px-5 py-6 sm:px-8 sm:py-8">
           <header className="mb-8 flex items-start gap-4 border-b border-border pb-6">
-            <div className="flex items-start gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="mt-0.5 shrink-0"
-                onClick={goBack}
-                aria-label="Go back"
-                title="Go back"
-              >
-                <RiArrowLeftLine aria-hidden="true" />
-              </Button>
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center gap-2">
-                  <p className="font-label text-[0.65rem] font-medium uppercase tracking-[0.18em] text-primary">Control room</p>
-                </div>
-                <h1 className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">Settings</h1>
-                <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                  Tune the workspace around the way you inspect and shape your data.
-                </p>
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2">
+                <p className="font-label text-[0.65rem] font-medium uppercase tracking-[0.18em] text-primary">Control room</p>
               </div>
+              <h1 className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">Settings</h1>
+              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                Tune the workspace around the way you inspect and shape your data.
+              </p>
             </div>
           </header>
 
