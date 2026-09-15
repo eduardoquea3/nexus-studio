@@ -45,7 +45,7 @@ export function ConnectionSwitcherMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md border border-border/70 bg-card px-3 py-2 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex h-full w-full items-center gap-2 rounded-none border-0 bg-card px-3 py-1 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <RiDatabase2Line className="size-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{profile.name}</span>
