@@ -22,6 +22,7 @@ type DataTableProps<TData> = {
   draftRow?: Record<string, unknown> | null;
   draftColumns?: ColumnInfo[];
   onDraftChange?: (column: string, value: string) => void;
+  rowNumberOffset?: number;
   selectedRowId?: string | null;
   onRowClick?: (row: Row<TData>) => void;
 };
@@ -34,6 +35,7 @@ export function DataTable<TData>({
   draftRow = null,
   draftColumns = [],
   onDraftChange,
+  rowNumberOffset = 0,
   selectedRowId = null,
   onRowClick,
 }: DataTableProps<TData>) {
@@ -112,7 +114,7 @@ export function DataTable<TData>({
                   }}
                 >
                   <TableCell className="w-12 border-b border-r border-border/50 px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground">
-                    {row.index + 1}
+                    {row.index + rowNumberOffset + 1}
                   </TableCell>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
@@ -127,7 +129,7 @@ export function DataTable<TData>({
               {draftRow ? (
                 <TableRow className="bg-primary/5 hover:bg-primary/10">
                   <TableCell className="w-12 border-b border-r border-primary/20 px-3 py-1.5 text-right font-mono text-[0.65rem] text-primary/80">
-                    {table.getRowModel().rows.length + 1}
+                    {table.getRowModel().rows.length + rowNumberOffset + 1}
                   </TableCell>
                   {table.getVisibleLeafColumns().map((column) => (
                     <TableCell

@@ -1,4 +1,4 @@
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { RiArrowDownSLine, RiPlayLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { Group, Panel, Separator } from "react-resizable-panels";
@@ -94,21 +94,24 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               ...sqlLanguageExtensions,
               sqlCompletionIcons,
               sqlEditorTheme,
-              EditorView.domEventHandlers({
-                keydown: (event, view) => {
-                  if (
-                    event.key !== "Enter" ||
-                    !(event.ctrlKey || event.metaKey) ||
-                    event.altKey
-                  )
-                    return false;
-                  event.preventDefault();
-                  void (event.shiftKey
-                    ? executeActiveQuery(view.state.selection.main.head)
-                    : executeAllQuery());
-                  return true;
+              keymap.of([
+                {
+                  key: "Mod-Shift-Enter",
+                  preventDefault: true,
+                  run: (view) => {
+                    void executeActiveQuery(view.state.selection.main.head);
+                    return true;
+                  },
                 },
-              }),
+                {
+                  key: "Mod-Enter",
+                  preventDefault: true,
+                  run: () => {
+                    void executeAllQuery();
+                    return true;
+                  },
+                },
+              ]),
               EditorView.theme({
                 ".cm-content": { padding: "0.35rem 0" },
                 ".cm-line": { padding: "0 1rem 0 0.5rem", lineHeight: "1.5" },
@@ -153,7 +156,7 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
           aria-label="SQL query results"
           className="results-font flex h-full min-h-0 flex-col overflow-hidden bg-background/80 text-xs text-muted-foreground"
         >
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1">
+          <div className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1">
             {activeSqlTab.queryResult ? (
               <div
                 aria-label="Query result statistics"
@@ -206,11 +209,13 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               </DropdownMenu>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden p-2">
+          <div className="min-h-0 flex-1 overflow-hidden">
             {isRunning ? (
-              <p role="status">Running query...</p>
+              <p className="p-2" role="status">
+                Running query...
+              </p>
             ) : activeSqlTab.queryError ? (
-              <p className="text-destructive">{activeSqlTab.queryError}</p>
+              <p className="p-2 text-destructive">{activeSqlTab.queryError}</p>
             ) : activeSqlTab.queryResult ? (
               <QueryResultView
                 result={activeSqlTab.queryResult}
@@ -222,7 +227,10 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
                 }
               />
             ) : (
-              "Press Ctrl+Enter to run all statements, or Ctrl+Shift+Enter to run the current statement."
+              <p className="p-2">
+                Press Ctrl+Enter to run all statements, or Ctrl+Shift+Enter to run the current
+                statement.
+              </p>
             )}
           </div>
         </section>

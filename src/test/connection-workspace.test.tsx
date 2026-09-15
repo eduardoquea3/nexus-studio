@@ -197,7 +197,8 @@ mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
 const { ConnectionWorkspace, getQuerySegment } =
   await import("../app/connection/components/connection-workspace");
-const { splitSqlStatements } = await import("../app/connection/components/connection-workspace-utils");
+const { splitSqlStatements } =
+  await import("../app/connection/components/connection-workspace-utils");
 const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
 
 const profile = {
@@ -286,9 +287,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
     expect(screen.getByRole("tablist").className).toContain("rounded-none");
-    expect(screen.getByRole("region", { name: "SQL query results" }).firstElementChild?.className).toContain(
-      "justify-between",
-    );
+    const resultsToolbar = screen.getByRole("region", {
+      name: "SQL query results",
+    }).firstElementChild;
+    expect(resultsToolbar?.className).toContain("w-full");
+    expect(resultsToolbar?.className).toContain("items-center");
+    expect(resultsToolbar?.className).toContain("justify-between");
   });
 
   test("exposes Run all and Run current in the results toolbar menu", async () => {
@@ -401,7 +405,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
   test("disables the primary Run all action for an empty query", () => {
     renderWorkspace();
 
-    expect(screen.getByRole("button", { name: "Run all queries" }).getAttribute("disabled")).toBe("");
+    expect(screen.getByRole("button", { name: "Run all queries" }).getAttribute("disabled")).toBe(
+      "",
+    );
   });
 
   test("keeps the SQL results pane visible even before running a query", () => {
@@ -409,7 +415,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     const resultsPane = screen.getByRole("region", { name: "SQL query results" });
 
-    expect(screen.getByRole("button", { name: "Query run options" }).getAttribute("disabled")).toBe("");
+    expect(screen.getByRole("button", { name: "Query run options" }).getAttribute("disabled")).toBe(
+      "",
+    );
     expect(within(resultsPane).getByText(/ctrl\+enter to run all statements/i)).not.toBeNull();
     expect(resultsPane.parentElement?.parentElement?.className ?? "").not.toContain("rounded-b-xl");
   });
@@ -450,11 +458,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
-    expect(screen.getByLabelText("Query result statistics").textContent).toBe("1 rows2 columns2 ms");
-    expect(screen.getByRole("table").closest(".w-fit")).not.toBeNull();
+    expect(screen.getByLabelText("Query result statistics").textContent).toBe(
+      "1 rows2 columns2 ms",
+    );
+    expect(screen.getByRole("table").closest(".w-full")).not.toBeNull();
     const viewGroup = screen.getByRole("group", { name: "SQL result view" });
     expect(viewGroup.className).toContain("h-6");
-    expect(viewGroup.parentElement?.className).toContain("justify-items-start");
+    expect(viewGroup.className).toContain("justify-self-start");
+    expect(viewGroup.parentElement?.className).toContain("grid-cols-[1fr_auto]");
+    expect(viewGroup.parentElement?.className).toContain("w-full");
     expect(viewGroup.parentElement?.className).toContain("items-center");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     expect(viewGroup.className).toContain("bg-muted/30");
@@ -465,6 +477,42 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(runQuery).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+  });
+
+  test("paginates SQL results in pages of 100 rows", async () => {
+    const rows = Array.from({ length: 205 }, (_, id) => ({ id }));
+    runQuery.mockResolvedValueOnce({ columns: ["id"], rows, affected: 0, duration_ms: 2 });
+    renderWorkspace();
+    setEditorQuery();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
+      await Promise.resolve();
+    });
+
+    const table = screen.getByRole("table");
+    expect(screen.getByRole("navigation", { name: "SQL result pagination" })).not.toBeNull();
+    expect(screen.getByText("Rows 1-100 of 205")).not.toBeNull();
+    expect(screen.getByText("Page 1 of 3")).not.toBeNull();
+    expect(table.querySelectorAll("tbody tr").length).toBe(100);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
+    expect(screen.getByText("Rows 101-200 of 205")).not.toBeNull();
+    expect(screen.getByText("Page 2 of 3")).not.toBeNull();
+    expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(100);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
+    expect(screen.getByText("Rows 201-205 of 205")).not.toBeNull();
+    expect(screen.getByText("Page 3 of 3")).not.toBeNull();
+    expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(5);
+    expect(screen.getByRole("button", { name: "Next result page" }).getAttribute("disabled")).toBe(
+      "",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 200');
+    expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 204');
+    expect(screen.getByLabelText("SQL result JSON").textContent).not.toContain('"id": 199');
   });
 
   test("hides the previous result and JSON actions while a new query is running", async () => {
@@ -641,7 +689,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
-  test("warns when a large loaded SQL page is displayed without fetching more rows", async () => {
+  test("paginates large SQL results without rendering every row at once", async () => {
     const rows = Array.from({ length: 10_001 }, (_, id) => ({ id }));
     runQuery.mockResolvedValueOnce({ columns: ["id"], rows, affected: 0, duration_ms: 1 });
     renderWorkspace();
@@ -652,7 +700,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
 
-    expect(screen.getByText("Large result: showing only the loaded rows.")).not.toBeNull();
+    expect(screen.getByText("Rows 1-100 of 10001")).not.toBeNull();
+    expect(screen.getByText("Page 1 of 101")).not.toBeNull();
     expect(runQuery).toHaveBeenCalledTimes(1);
   });
 

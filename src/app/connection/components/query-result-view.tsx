@@ -1,7 +1,12 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { RiDownloadLine, RiFileCopyLine } from "@remixicon/react";
-import { type KeyboardEvent, useMemo, useState } from "react";
+import {
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiDownloadLine,
+  RiFileCopyLine,
+} from "@remixicon/react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 
 import type { QueryResult, ViewMode } from "@/shared/types/models";
 
@@ -10,7 +15,9 @@ import { DataTable } from "@/shared/components/data-table";
 import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import { useDataTable } from "@/shared/hooks/use-data-table";
 import { copyJsonToClipboard, exportJsonFile } from "@/shared/lib/json-actions";
-import { exceedsJsonRenderThreshold, serializeJson } from "@/shared/lib/json-serialization";
+import { serializeJson } from "@/shared/lib/json-serialization";
+
+const QUERY_RESULT_PAGE_SIZE = 100;
 
 export function QueryResultView({
   result,
@@ -22,9 +29,26 @@ export function QueryResultView({
   onViewModeChange: (viewMode: ViewMode) => void;
 }) {
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const pageCount = Math.ceil(result.rows.length / QUERY_RESULT_PAGE_SIZE);
+  const currentPageIndex = Math.min(pageIndex, Math.max(pageCount - 1, 0));
+  const pageRows = useMemo(
+    () =>
+      result.rows.slice(
+        currentPageIndex * QUERY_RESULT_PAGE_SIZE,
+        (currentPageIndex + 1) * QUERY_RESULT_PAGE_SIZE,
+      ),
+    [currentPageIndex, result.rows],
+  );
+  const hasPagination = pageCount > 1;
+  const firstVisibleRow = currentPageIndex * QUERY_RESULT_PAGE_SIZE + 1;
+  const lastVisibleRow = Math.min(firstVisibleRow + pageRows.length - 1, result.rows.length);
+  useEffect(() => {
+    setPageIndex(0);
+  }, [result.rows]);
   const payload = useMemo(
-    () => serializeJson(result.columns, result.rows),
-    [result.columns, result.rows],
+    () => serializeJson(result.columns, pageRows),
+    [pageRows, result.columns],
   );
   const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
     () =>
@@ -35,7 +59,7 @@ export function QueryResultView({
       })),
     [result.columns],
   );
-  const table = useDataTable({ columns, data: result.rows });
+  const table = useDataTable({ columns, data: pageRows });
   if (result.columns.length === 0)
     return (
       <span>
@@ -67,51 +91,57 @@ export function QueryResultView({
   };
   return (
     <div className="flex h-full min-w-0 w-full flex-col gap-0">
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        {isJson ? (
-          <JsonCodePanel
-            ariaLabel="SQL result JSON"
-            text={payload.text}
-            meta={`${result.rows.length} rows · ${result.duration_ms} ms`}
-            fontScope="results"
-            issues={payload.issues.length > 0}
-            largeMessage={
-              exceedsJsonRenderThreshold(payload.rowCount)
-                ? "Large result: showing only the loaded rows."
-                : undefined
-            }
-            actions={
-              <>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => void copyJson()}
-                  aria-label="Copy SQL result JSON"
-                >
-                  <RiFileCopyLine data-icon="inline-start" />
-                  Copy
-                </Button>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={exportJson}
-                  aria-label="Export SQL result JSON"
-                >
-                  <RiDownloadLine data-icon="inline-start" />
-                  Export
-                </Button>
-              </>
-            }
-          />
-        ) : (
-          <DataTable table={table} className="h-full w-fit" withShell={false} />
-        )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {isJson ? (
+            <JsonCodePanel
+              ariaLabel="SQL result JSON"
+              text={payload.text}
+              meta={
+                hasPagination
+                  ? `Rows ${firstVisibleRow}-${lastVisibleRow} of ${result.rows.length} · ${result.duration_ms} ms`
+                  : `${result.rows.length} rows · ${result.duration_ms} ms`
+              }
+              fontScope="results"
+              issues={payload.issues.length > 0}
+              actions={
+                <>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => void copyJson()}
+                    aria-label="Copy SQL result JSON"
+                  >
+                    <RiFileCopyLine data-icon="inline-start" />
+                    Copy
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    onClick={exportJson}
+                    aria-label="Export SQL result JSON"
+                  >
+                    <RiDownloadLine data-icon="inline-start" />
+                    Export
+                  </Button>
+                </>
+              }
+            />
+          ) : (
+            <DataTable
+              table={table}
+              className="h-full w-full"
+              withShell={false}
+              rowNumberOffset={currentPageIndex * QUERY_RESULT_PAGE_SIZE}
+            />
+          )}
+        </div>
       </div>
-      <div className="grid h-7 min-h-7 max-h-7 shrink-0 items-center justify-items-start border-t border-border/70 bg-background/80 px-2 py-0">
+      <div className="grid h-9 min-h-9 max-h-9 w-full shrink-0 grid-cols-[1fr_auto] items-center border-t border-border/70 bg-background/80 px-2 py-1">
         <div
-          className="flex h-6 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
+          className="flex h-6 items-center justify-self-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
           role="group"
           aria-label="SQL result view"
         >
@@ -138,6 +168,43 @@ export function QueryResultView({
             JSON
           </Button>
         </div>
+        {hasPagination ? (
+          <nav
+            aria-label="SQL result pagination"
+            className="flex h-7 items-center gap-1 text-[0.65rem] text-muted-foreground"
+          >
+            <span className="hidden sm:inline">
+              Rows {firstVisibleRow}-{lastVisibleRow} of {result.rows.length}
+            </span>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="h-5 px-1.5"
+              disabled={currentPageIndex === 0}
+              onClick={() => setPageIndex((index) => Math.max(index - 1, 0))}
+              aria-label="Previous result page"
+            >
+              <RiArrowLeftSLine />
+              <span className="hidden sm:inline">Previous</span>
+            </Button>
+            <span className="min-w-16 text-center">
+              Page {currentPageIndex + 1} of {pageCount}
+            </span>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="h-5 px-1.5"
+              disabled={currentPageIndex === pageCount - 1}
+              onClick={() => setPageIndex((index) => Math.min(index + 1, pageCount - 1))}
+              aria-label="Next result page"
+            >
+              <span className="hidden sm:inline">Next</span>
+              <RiArrowRightSLine />
+            </Button>
+          </nav>
+        ) : null}
       </div>
       <p aria-live="polite" className="sr-only">
         {feedback}
