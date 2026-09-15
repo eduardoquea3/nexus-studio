@@ -87,12 +87,12 @@ export function SettingsScreen() {
 
   return (
     <div className="relative flex h-full min-h-0 bg-background text-foreground">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
         <div className="border-b border-border px-4 py-3">
           <Button
             type="button"
             variant="ghost"
-            className="h-auto gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-auto gap-2 px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
             onClick={goBack}
             aria-label="Back to app"
           >
@@ -103,7 +103,7 @@ export function SettingsScreen() {
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-4">
             <nav aria-label="Settings sections" className="space-y-1">
-              <p className="mb-3 px-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="mb-3 px-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/60">
                 Configure
               </p>
               {sections.map((section, index) => {
@@ -115,15 +115,15 @@ export function SettingsScreen() {
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                       index === 0
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )}
                     aria-current={index === 0 ? "page" : undefined}
                   >
                     <Icon className="size-4 shrink-0" aria-hidden="true" />
                     <span className="min-w-0">
                       <span className="block text-xs font-medium">{section.label}</span>
-                      <span className="block truncate text-[0.65rem] text-muted-foreground">{section.description}</span>
+                      <span className="block truncate text-[0.65rem] text-sidebar-foreground/60">{section.description}</span>
                     </span>
                   </button>
                 );
@@ -132,7 +132,7 @@ export function SettingsScreen() {
           </div>
         </ScrollArea>
         <div className="border-t border-border p-4">
-          <p className="px-2 text-[0.65rem] text-muted-foreground">Nexus Studio 0.1</p>
+          <p className="px-2 text-[0.65rem] text-sidebar-foreground/60">Nexus Studio 0.1</p>
         </div>
       </aside>
 
@@ -177,7 +177,6 @@ export function SettingsScreen() {
               <div className="mt-3 grid gap-3 xl:grid-cols-3">
                 <FontSetting
                   title="SQL editor"
-                  description="Font used while writing and editing SQL queries."
                   defaultLabel="Editor default"
                   value={sqlEditorFontFamily}
                   options={systemFontOptions}
@@ -188,7 +187,6 @@ export function SettingsScreen() {
                 />
                 <FontSetting
                   title="Results"
-                  description="Font used for query result tables, JSON and status details."
                   defaultLabel="Interface default"
                   value={resultFontFamily}
                   options={systemFontOptions}
@@ -199,7 +197,6 @@ export function SettingsScreen() {
                 />
                 <FontSetting
                   title="Interface"
-                  description="Font used everywhere else, including table tabs and settings."
                   defaultLabel="Theme default"
                   value={interfaceFontFamily}
                   options={systemFontOptions}
@@ -230,7 +227,6 @@ type FontOption = {
 
 type FontSettingProps = {
   title: string;
-  description: string;
   defaultLabel: string;
   value: string | null;
   options: FontOption[];
@@ -242,7 +238,6 @@ type FontSettingProps = {
 
 function FontSetting({
   title,
-  description,
   defaultLabel,
   value,
   options,
@@ -276,7 +271,6 @@ function FontSetting({
         <RiFontFamily className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0">
           <p className="text-sm font-medium">{title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
       </div>
       <div className="p-4">
@@ -396,7 +390,7 @@ function ThemeOption({ icon: Icon, label, value, selected, onSelect, disabled }:
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "flex min-h-20 items-center gap-3 rounded-md border border-border bg-control px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex min-h-20 items-center gap-3 rounded-md border border-border bg-muted px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         selected ? "border-primary/70 bg-accent text-accent-foreground" : "hover:bg-muted",
         disabled && "cursor-not-allowed opacity-45",
       )}
