@@ -610,10 +610,13 @@ export function useConnectionWorkspaceController({
       }
     }
   };
-  const executeActiveQuery = async () => {
+  const executeActiveQuery = async (cursorPosition?: number) => {
     if (!activeSqlTab || !editorViewRef.current || isRunningRef.current) return;
     const query =
-      getQuerySegment(activeSqlTab.query, editorViewRef.current.state.selection.main.head) ||
+      getQuerySegment(
+        activeSqlTab.query,
+        cursorPosition ?? editorViewRef.current.state.selection.main.head,
+      ) ||
       DEFAULT_QUERY;
     await executeQuery(query);
   };
@@ -635,6 +638,11 @@ export function useConnectionWorkspaceController({
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     if (event.key === "Enter" && activeSqlTab) {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest(".cm-editor, .cm-content")
+      )
+        return;
       event.preventDefault();
       void (event.shiftKey ? executeActiveQuery() : executeAllQuery());
     } else if (event.shiftKey) {

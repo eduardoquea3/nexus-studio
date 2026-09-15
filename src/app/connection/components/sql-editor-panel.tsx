@@ -94,6 +94,21 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               ...sqlLanguageExtensions,
               sqlCompletionIcons,
               sqlEditorTheme,
+              EditorView.domEventHandlers({
+                keydown: (event, view) => {
+                  if (
+                    event.key !== "Enter" ||
+                    !(event.ctrlKey || event.metaKey) ||
+                    event.altKey
+                  )
+                    return false;
+                  event.preventDefault();
+                  void (event.shiftKey
+                    ? executeActiveQuery(view.state.selection.main.head)
+                    : executeAllQuery());
+                  return true;
+                },
+              }),
               EditorView.theme({
                 ".cm-content": { padding: "0.35rem 0" },
                 ".cm-line": { padding: "0 1rem 0 0.5rem", lineHeight: "1.5" },
