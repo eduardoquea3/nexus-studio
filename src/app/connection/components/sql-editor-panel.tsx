@@ -153,44 +153,58 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
           aria-label="SQL query results"
           className="results-font flex h-full min-h-0 flex-col overflow-hidden bg-background/80 text-xs text-muted-foreground"
         >
-          <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border/70 bg-background/80 px-2 py-1.5">
-            <Button
-              type="button"
-              size="sm"
-              disabled={isRunning || !hasQuery}
-              onClick={() => void executeAllQuery()}
-              aria-label="Run all queries"
-            >
-              <RiPlayLine data-icon="inline-start" />
-              {isRunning ? "Running..." : "Run all"}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="outline"
-                  disabled={isRunning || !hasQuery}
-                  aria-label="Query run options"
-                >
-                  <RiArrowDownSLine />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => void executeAllQuery()}>
-                  Run all
-                  <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-                    Ctrl + Enter
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void executeActiveQuery()}>
-                  Run current
-                  <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-                    Ctrl + Shift + Enter
-                  </DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1">
+            {activeSqlTab.queryResult ? (
+              <div
+                aria-label="Query result statistics"
+                className="flex items-center gap-3 text-[0.65rem] text-muted-foreground"
+              >
+                <span>{activeSqlTab.queryResult.rows.length} rows</span>
+                <span>{activeSqlTab.queryResult.columns.length} columns</span>
+                <span>{activeSqlTab.queryResult.duration_ms} ms</span>
+              </div>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                disabled={isRunning || !hasQuery}
+                onClick={() => void executeAllQuery()}
+                aria-label="Run all queries"
+              >
+                <RiPlayLine data-icon="inline-start" />
+                {isRunning ? "Running..." : "Run all"}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    disabled={isRunning || !hasQuery}
+                    aria-label="Query run options"
+                  >
+                    <RiArrowDownSLine />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void executeAllQuery()}>
+                    Run all
+                    <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+                      Ctrl + Enter
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void executeActiveQuery()}>
+                    Run current
+                    <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+                      Ctrl + Shift + Enter
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden p-2">
             {isRunning ? (

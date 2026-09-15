@@ -67,14 +67,6 @@ export function QueryResultView({
   };
   return (
     <div className="flex h-full min-w-0 w-full flex-col gap-0">
-      <div
-        aria-label="Query result statistics"
-        className="flex shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 py-1.5 text-[0.65rem] text-muted-foreground"
-      >
-        <span>{result.rows.length} rows</span>
-        <span>{result.columns.length} columns</span>
-        <span>{result.duration_ms} ms</span>
-      </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {isJson ? (
           <JsonCodePanel
@@ -117,9 +109,9 @@ export function QueryResultView({
           <DataTable table={table} className="h-full w-fit" withShell={false} />
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/70 bg-background/80 px-2 py-2">
+      <div className="grid h-7 min-h-7 max-h-7 shrink-0 items-center justify-items-start border-t border-border/70 bg-background/80 px-2 py-0">
         <div
-          className="flex h-8 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
+          className="flex h-6 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
           role="group"
           aria-label="SQL result view"
         >
@@ -127,7 +119,7 @@ export function QueryResultView({
             type="button"
             size="xs"
             variant="ghost"
-            className={`h-7 text-xs ${!isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
+            className={`h-5 text-xs ${!isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
             aria-pressed={!isJson}
             onClick={() => onViewModeChange("table")}
             onKeyDown={(event) => activateViewMode(event, "table")}
@@ -138,7 +130,7 @@ export function QueryResultView({
             type="button"
             size="xs"
             variant="ghost"
-            className={`h-7 text-xs ${isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
+            className={`h-5 text-xs ${isJson ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
             aria-pressed={isJson}
             onClick={() => onViewModeChange("json")}
             onKeyDown={(event) => activateViewMode(event, "json")}

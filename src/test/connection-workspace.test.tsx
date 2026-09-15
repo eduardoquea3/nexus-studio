@@ -283,9 +283,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(within(screen.getByRole("tablist")).queryByText("Run all")).toBeNull();
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-8");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
+    expect(screen.getByRole("tablist").className).toContain("rounded-none");
     expect(screen.getByRole("region", { name: "SQL query results" }).firstElementChild?.className).toContain(
-      "justify-end",
+      "justify-between",
     );
   });
 
@@ -448,9 +450,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
 
     expect(screen.getByRole("button", { name: "JSON" })).not.toBeNull();
+    expect(screen.getByLabelText("Query result statistics").textContent).toBe("1 rows2 columns2 ms");
     expect(screen.getByRole("table").closest(".w-fit")).not.toBeNull();
     const viewGroup = screen.getByRole("group", { name: "SQL result view" });
-    expect(viewGroup.className).toContain("h-8");
+    expect(viewGroup.className).toContain("h-6");
+    expect(viewGroup.parentElement?.className).toContain("justify-items-start");
+    expect(viewGroup.parentElement?.className).toContain("items-center");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     expect(viewGroup.className).toContain("bg-muted/30");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("bg-primary/15");

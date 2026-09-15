@@ -15,13 +15,13 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
     closeTableTab,
   } = controller;
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-1">
-      <TabsList className="min-w-0 overflow-hidden rounded-b-none bg-transparent p-0">
+    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-0.5">
+      <TabsList className="h-7 min-w-0 overflow-hidden rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
         {workspaceTabs.map((tab) => (
-          <div key={tab.id} className="group flex h-8 items-center">
+          <div key={tab.id} className="group flex h-7 items-center">
             <TabsTrigger
               value={tab.id}
-              className="group/tab flex h-8 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-t-md px-3 text-xs data-[state=active]:text-foreground"
+              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-none px-3 text-xs data-[state=active]:text-foreground"
               onClick={() => {
                 controller.setActiveTabId(tab.id);
                 if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
