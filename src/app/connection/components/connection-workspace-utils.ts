@@ -1,20 +1,32 @@
 export function getQuerySegment(query: string, position: number): string {
-  const separators = findStatementSeparators(query);
-  const lastSeparator = separators[separators.length - 1];
+  const range = getQueryRange(query, position);
+  return query.slice(range.from, range.to);
+}
 
-  if (lastSeparator !== undefined && position > lastSeparator) {
-    const trailingText = query.slice(lastSeparator + 1);
-    if (trailingText.trim().length === 0) {
-      const previousSeparator = separators[separators.length - 2] ?? -1;
-      return query.slice(previousSeparator + 1, query.length).trim();
-    }
+export function getQueryRange(query: string, position: number): { from: number; to: number } {
+  const separators = findStatementSeparators(query);
+  const previousSeparators = separators.filter((separator) => separator < position);
+  const previousSeparator = previousSeparators[previousSeparators.length - 1];
+
+  // A cursor immediately after a delimiter still belongs to the statement it closes.
+  if (
+    previousSeparator !== undefined &&
+    query.slice(previousSeparator + 1, position).trim().length === 0
+  ) {
+    const statementStart = previousSeparators[previousSeparators.length - 2] ?? -1;
+    return trimRange(query, statementStart + 1, previousSeparator + 1);
   }
 
-  const previousSeparators = separators.filter((separator) => separator < position);
-  const previousSeparator = previousSeparators[previousSeparators.length - 1] ?? -1;
+  const statementStart = previousSeparator ?? -1;
   const nextSeparator = separators.find((separator) => separator >= position) ?? query.length;
   const end = nextSeparator < query.length ? nextSeparator + 1 : query.length;
-  return query.slice(previousSeparator + 1, end).trim();
+  return trimRange(query, statementStart + 1, end);
+}
+
+function trimRange(query: string, from: number, to: number): { from: number; to: number } {
+  while (from < to && /\s/.test(query[from] ?? "")) from += 1;
+  while (to > from && /\s/.test(query[to - 1] ?? "")) to -= 1;
+  return { from, to };
 }
 
 export function splitSqlStatements(query: string): string[] {

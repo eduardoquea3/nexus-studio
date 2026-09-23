@@ -915,6 +915,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(getQuerySegment(query, query.indexOf("company"))).toBe("select * from company;");
   });
 
+  test("selects a multiline statement until its delimiter", () => {
+    const query =
+      "select name,description,document_code\nfrom document_type;\n\nselect * from operation_util;";
+
+    expect(getQuerySegment(query, query.indexOf("document_type") + "document_type;".length)).toBe(
+      "select name,description,document_code\nfrom document_type;",
+    );
+  });
+
   test("does not split semicolons inside SQL strings or comments", () => {
     const query = "select 'tenant;company' as name; -- next;\nselect 2;";
 
