@@ -1,4 +1,4 @@
-import { EditorView, keymap } from "@codemirror/view";
+import { Decoration, EditorView, keymap, ViewPlugin } from "@codemirror/view";
 import { RiArrowDownSLine, RiPlayLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { Group, Panel, Separator } from "react-resizable-panels";
@@ -18,6 +18,7 @@ import { sqlCompletionIcons } from "@/shared/lib/sql-completion-icons";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 
 import type { WorkspaceController } from "./connection-workspace-controller";
+import { getQueryRange } from "./connection-workspace-utils";
 
 import { QueryResultView } from "./query-result-view";
 
@@ -30,6 +31,29 @@ const EMPTY_STATE_SHORTCUTS = [
   ["Previous tab", ["Ctrl", "Shift", "Tab"]],
   ["Toggle sidebar", ["Ctrl", "B"]],
 ] as const;
+
+const activeQueryDecoration = Decoration.mark({ class: "cm-active-query" });
+const activeQueryHighlight = ViewPlugin.fromClass(
+  class {
+    decorations = Decoration.none;
+
+    constructor(view: EditorView) {
+      this.decorations = this.buildDecorations(view);
+    }
+
+    update(update: { docChanged: boolean; selectionSet: boolean; view: EditorView }) {
+      if (update.docChanged || update.selectionSet)
+        this.decorations = this.buildDecorations(update.view);
+    }
+
+    buildDecorations(view: EditorView) {
+      const doc = view.state.doc.toString();
+      const { from, to } = getQueryRange(doc, view.state.selection.main.head);
+      return from < to ? Decoration.set([activeQueryDecoration.range(from, to)]) : Decoration.none;
+    }
+  },
+  { decorations: (value) => value.decorations },
+);
 
 export function SqlEditorPanel({ controller }: { controller: WorkspaceController }) {
   const {
@@ -94,6 +118,7 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               ...sqlLanguageExtensions,
               sqlCompletionIcons,
               sqlEditorTheme,
+              activeQueryHighlight,
               keymap.of([
                 {
                   key: "Mod-Shift-Enter",

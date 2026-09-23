@@ -36,6 +36,9 @@ export const sqlEditorTheme = [
       color: "var(--foreground)",
       backgroundColor: "color-mix(in srgb, var(--primary) 10%, transparent)",
     },
+    ".cm-active-query": {
+      fontWeight: "700",
+    },
     ".cm-selectionBackground, .cm-content::selection, .cm-content ::selection": {
       backgroundColor: "var(--editor-selection)",
       color: "var(--editor-selection-foreground)",
