@@ -225,7 +225,7 @@ export async function runQuery(profile: ConnectionProfile, sql: string): Promise
 }
 
 export async function listSshConfigAliases(): Promise<string[]> {
-  return invoke("list_ssh_config_aliases");
+  return invoke<string[]>("list_ssh_config_aliases");
 }
 
 type LocalFont = { family: string };

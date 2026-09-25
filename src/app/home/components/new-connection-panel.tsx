@@ -1,4 +1,5 @@
 import {
+  RiArrowLeftLine,
   RiDatabase2Fill,
   RiDatabase2Line,
   RiEyeLine,
@@ -43,10 +44,12 @@ import {
   saveConnection,
   createSqliteDatabase,
   testConnectionFields,
+  listSshConfigAliases,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
 import { useConnectionStore } from "@/shared/store/connectionStore";
 import { useModalStore } from "@/shared/store/modalStore";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { HomePanels } from "../lib/home-panels";
 
@@ -78,6 +81,17 @@ type ConnectionFormValues = {
   sqlitePath: string;
 };
 
+type ConnectionTab = "normal" | "ssh";
+type SshSource = "manual" | { type: "config"; alias: string };
+
+type ManualSshValues = {
+  host: string;
+  port: string;
+  user: string;
+  keyFile: string;
+  password: string;
+};
+
 const initialFormValues: ConnectionFormValues = {
   dbType: "postgresql",
   name: "",
@@ -87,6 +101,14 @@ const initialFormValues: ConnectionFormValues = {
   username: "postgres",
   password: "",
   sqlitePath: "",
+};
+
+const initialManualSshValues: ManualSshValues = {
+  host: "",
+  port: "22",
+  user: "",
+  keyFile: "",
+  password: "",
 };
 
 export function NewConnectionPanel() {
@@ -102,6 +124,10 @@ export function NewConnectionPanel() {
   const [form, setForm] = useState(initialFormValues);
   const [connectionString, setConnectionString] = useState("");
   const [sshAuthType, setSshAuthType] = useState("key-file");
+  const [connectionTab, setConnectionTab] = useState<ConnectionTab>("normal");
+  const [sshAliases, setSshAliases] = useState<string[]>([]);
+  const [sshSource, setSshSource] = useState<SshSource | null>(null);
+  const [manualSshValues, setManualSshValues] = useState(initialManualSshValues);
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingSqlite, setIsCreatingSqlite] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -146,6 +172,9 @@ export function NewConnectionPanel() {
       setForm(initialFormValues);
       setConnectionString("");
       setSshAuthType("key-file");
+      setConnectionTab("normal");
+      setSshSource(null);
+      setManualSshValues(initialManualSshValues);
       setUnsupportedLegacyProfileId(undefined);
       loadedProfileSessionKeyRef.current = null;
       importedFieldsRef.current = [];
@@ -173,6 +202,30 @@ export function NewConnectionPanel() {
             isUnsupportedLegacyConnection(profile) ? profile.id : undefined,
           );
           setForm(profileToFormValues(profile));
+          const tunnel = profile.ssh_tunnel;
+          if (tunnel) {
+            setConnectionTab("ssh");
+            const source = tunnel.source;
+            const auth = tunnel.auth;
+            if (source.type === "from_ssh_config") {
+              setSshSource({ type: "config", alias: source.alias });
+            } else {
+              setSshSource("manual");
+              setManualSshValues((current) => ({
+                ...current,
+                host: source.host,
+                port: String(source.port),
+                user: source.user,
+              }));
+            }
+            setSshAuthType(auth.type === "password" ? "password" : "key-file");
+            if (auth.type === "key_file") {
+              setManualSshValues((current) => ({
+                ...current,
+                keyFile: auth.path,
+              }));
+            }
+          }
         }
       })
       .finally(() => {
@@ -185,6 +238,21 @@ export function NewConnectionPanel() {
       cancelled = true;
     };
   }, [editingId, isOpen, sessionKey]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void listSshConfigAliases()
+      .then((aliases) => {
+        if (!cancelled) setSshAliases(aliases);
+      })
+      .catch(() => {
+        if (!cancelled) setSshAliases([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const updateField = <K extends keyof ConnectionFormValues>(
     field: K,
@@ -282,6 +350,14 @@ export function NewConnectionPanel() {
   };
 
   const handleConnect = async () => {
+    if (connectionTab === "ssh" && sshSource === null) {
+      toast.add({
+        title: "Choose an SSH destination",
+        type: "error",
+        description: "Select an SSH config host or choose Manual before connecting.",
+      });
+      return;
+    }
     if (isUnsupportedLegacyProfile) {
       toast.add({
         title: "Connection cannot be edited",
@@ -294,7 +370,12 @@ export function NewConnectionPanel() {
     setIsTesting(true);
     try {
       await testConnectionFields(getTestRequest());
-      const profile = createConnectionProfile(form, editingId);
+      const profile = createConnectionProfile(form, editingId, {
+        enabled: connectionTab === "ssh",
+        source: sshSource ?? "manual",
+        authType: sshAuthType,
+        manual: manualSshValues,
+      });
       await saveConnection(profile);
       if (editingId) {
         updateProfile(profile);
@@ -343,7 +424,11 @@ export function NewConnectionPanel() {
               variant="outline"
               onClick={() => void handleTest()}
               disabled={
-                isTesting || isCreatingSqlite || isLoadingProfile || isUnsupportedLegacyProfile
+                isTesting ||
+                isCreatingSqlite ||
+                isLoadingProfile ||
+                isUnsupportedLegacyProfile ||
+                (connectionTab === "ssh" && sshSource === null)
               }
             >
               Test
@@ -351,7 +436,12 @@ export function NewConnectionPanel() {
             {!isUnsupportedLegacyProfile && (
               <Button
                 onClick={() => void handleConnect()}
-                disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+                disabled={
+                  isTesting ||
+                  isCreatingSqlite ||
+                  isLoadingProfile ||
+                  (connectionTab === "ssh" && sshSource === null)
+                }
               >
                 {editingId ? "Save changes" : "Connect"}
               </Button>
@@ -372,67 +462,113 @@ export function NewConnectionPanel() {
               options={connectionTypes}
               valueKey="value"
               value={connectionTypes.find((item) => item.value === displayedForm.dbType)}
-              onValueChange={(value) =>
-                value && updateField("dbType", value.value as ConnectionFormValues["dbType"])
-              }
+              onValueChange={(value) => {
+                if (!value) return;
+                updateField("dbType", value.value as ConnectionFormValues["dbType"]);
+                if (value.value === "sqlite") setConnectionTab("normal");
+              }}
               render={(option) => <ConnectionTypeOption type={option} />}
               placeholder="Select type"
             />
           </Field>
 
-          {displayedForm.dbType === "sqlite" ? (
-            <div className="grid gap-2">
-              <FileField
-                label="File path"
-                placeholder="Select a SQLite database"
-                value={displayedForm.sqlitePath}
-                onPathChange={(path) => updateField("sqlitePath", path)}
-              />
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => void handleCreateSqliteDatabase()}
-                disabled={isCreatingSqlite || isTesting || isLoadingProfile}
-              >
-                {isCreatingSqlite ? "Creating database..." : "Create new SQLite database"}
-              </Button>
-            </div>
-          ) : (
-            <DatabaseConnectionFields
-              values={displayedForm}
-              onChange={updateField}
-              sshAuthType={sshAuthType}
-              onSshAuthTypeChange={(value) => value && setSshAuthType(value)}
-            />
-          )}
+          <Tabs
+            value={connectionTab}
+            onValueChange={(value) => setConnectionTab(value as ConnectionTab)}
+            className="gap-4"
+          >
+            <TabsList variant="line" className="w-full">
+              <TabsTrigger value="normal" className="flex-1">
+                Normal connection
+              </TabsTrigger>
+              <TabsTrigger value="ssh" disabled={displayedForm.dbType === "sqlite"} className="flex-1">
+                <RiTerminalBoxLine data-icon="inline-start" aria-hidden="true" />
+                SSH tunnel
+              </TabsTrigger>
+            </TabsList>
 
-          <Field label="Connection name">
-            <Input
-              iconLeft={RiDatabase2Line}
-              placeholder="Production database"
-              value={displayedForm.name}
-              onChange={(event) => updateField("name", event.target.value)}
-            />
-          </Field>
-
-          <div className="border-t border-border/70 pt-4">
-            <Field label="Import connection string">
-              <div className="flex gap-2">
-                <PasswordInput
-                  value={connectionString}
-                  onChange={(event) => setConnectionString(event.target.value)}
-                  placeholder="postgresql://user:password@host/database"
+            <TabsContent value="normal" className="grid gap-4">
+              {displayedForm.dbType === "sqlite" ? (
+                <SqliteConnectionFields
+                  path={displayedForm.sqlitePath}
+                  onPathChange={(path) => updateField("sqlitePath", path)}
+                  onCreate={handleCreateSqliteDatabase}
+                  isCreating={isCreatingSqlite}
+                  disabled={isTesting || isLoadingProfile}
                 />
-                <Button
-                  variant="outline"
-                  onClick={handleImportConnectionString}
-                  disabled={isTesting || isCreatingSqlite || isLoadingProfile}
-                >
-                  Import
-                </Button>
+              ) : (
+                <DatabaseConnectionFields values={displayedForm} onChange={updateField} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="ssh" className="grid gap-4">
+              {sshSource === null ? (
+                <SshDestinationPicker aliases={sshAliases} onSourceChange={setSshSource} />
+              ) : null}
+              {sshSource !== null ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit px-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSshSource(null)}
+                  >
+                    <RiArrowLeftLine data-icon="inline-start" />
+                    Back to SSH destinations
+                  </Button>
+                  {sshSource === "manual" ? (
+                    <ManualSshFields
+                      values={manualSshValues}
+                      authType={sshAuthType}
+                      onAuthTypeChange={(value) => value && setSshAuthType(value)}
+                      onChange={(field, value) =>
+                        setManualSshValues((current) => ({ ...current, [field]: value }))
+                      }
+                    />
+                  ) : null}
+                  <DatabaseConnectionFields
+                    values={displayedForm}
+                    onChange={updateField}
+                    showHost={sshSource === "manual"}
+                    showSsl={sshSource === "manual"}
+                  />
+                </>
+              ) : null}
+            </TabsContent>
+          </Tabs>
+
+          {connectionTab !== "ssh" || sshSource !== null ? (
+            <>
+              <Field label="Connection name">
+                <Input
+                  iconLeft={RiDatabase2Line}
+                  placeholder="Production database"
+                  value={displayedForm.name}
+                  onChange={(event) => updateField("name", event.target.value)}
+                />
+              </Field>
+
+              <div className="border-t border-border/70 pt-4">
+                <Field label="Import connection string">
+                  <div className="flex gap-2">
+                    <PasswordInput
+                      value={connectionString}
+                      onChange={(event) => setConnectionString(event.target.value)}
+                      placeholder="postgresql://user:password@host/database"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={handleImportConnectionString}
+                      disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+                    >
+                      Import
+                    </Button>
+                  </div>
+                </Field>
               </div>
-            </Field>
-          </div>
+            </>
+          ) : null}
         </div>
       )}
 
@@ -454,7 +590,16 @@ function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
   );
 }
 
-function createConnectionProfile(values: ConnectionFormValues, id?: string): ConnectionProfile {
+function createConnectionProfile(
+  values: ConnectionFormValues,
+  id: string | undefined,
+  ssh: {
+    enabled: boolean;
+    source: SshSource;
+    authType: string;
+    manual: ManualSshValues;
+  },
+): ConnectionProfile {
   const dbType: DbType = values.dbType === "postgresql" ? "postgres" : values.dbType;
 
   return {
@@ -473,7 +618,25 @@ function createConnectionProfile(values: ConnectionFormValues, id?: string): Con
             username: values.username,
             password_ref: null,
           },
-    ssh_tunnel: null,
+    ssh_tunnel: ssh.enabled
+      ? {
+          source:
+            ssh.source === "manual"
+              ? {
+                  type: "manual",
+                  host: ssh.manual.host,
+                  port: Number(ssh.manual.port),
+                  user: ssh.manual.user,
+                }
+              : { type: "from_ssh_config", alias: ssh.source.alias },
+          auth:
+            ssh.authType === "password"
+              ? { type: "password" }
+              : { type: "key_file", path: ssh.manual.keyFile, passphrase_ref: null },
+          remote_bind_host: values.host,
+          remote_bind_port: Number(values.port),
+        }
+      : null,
   };
 }
 
@@ -503,31 +666,195 @@ function profileToFormValues(profile: ConnectionProfile): ConnectionFormValues {
   };
 }
 
+function SqliteConnectionFields({
+  path,
+  onPathChange,
+  onCreate,
+  isCreating,
+  disabled,
+}: {
+  path: string;
+  onPathChange: (path: string) => void;
+  onCreate: () => Promise<void>;
+  isCreating: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid gap-2">
+      <FileField
+        label="File path"
+        placeholder="Select a SQLite database"
+        value={path}
+        onPathChange={onPathChange}
+      />
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => void onCreate()}
+        disabled={isCreating || disabled}
+      >
+        {isCreating ? "Creating database..." : "Create new SQLite database"}
+      </Button>
+    </div>
+  );
+}
+
+function SshDestinationPicker({
+  aliases,
+  onSourceChange,
+}: {
+  aliases: string[];
+  onSourceChange: (source: SshSource) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <div>
+        <p className="text-sm font-medium text-foreground">SSH destination</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Choose a host from your SSH config or enter its details manually.
+        </p>
+      </div>
+          <div className="grid gap-2">
+        {aliases.map((alias) => {
+          return (
+            <button
+              key={alias}
+              type="button"
+              aria-pressed="false"
+              onClick={() => onSourceChange({ type: "config", alias })}
+              className="rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/5"
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <RiTerminalBoxLine className="size-4 text-primary" aria-hidden="true" />
+                {alias}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">SSH config host</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          aria-pressed="false"
+          onClick={() => onSourceChange("manual")}
+          className="rounded-lg border border-border border-dashed p-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/5"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <RiServerLine className="size-4 text-primary" aria-hidden="true" />
+            Manual
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">Enter SSH details</span>
+        </button>
+      </div>
+      {aliases.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No SSH hosts were found in `~/.ssh/config`. Manual setup is available.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ManualSshFields({
+  values,
+  authType,
+  onAuthTypeChange,
+  onChange,
+}: {
+  values: ManualSshValues;
+  authType: string;
+  onAuthTypeChange: (value: string | null) => void;
+  onChange: <K extends keyof ManualSshValues>(field: K, value: ManualSshValues[K]) => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+        <Field label="SSH host">
+          <Input
+            iconLeft={RiServerLine}
+            value={values.host}
+            onChange={(event) => onChange("host", event.target.value)}
+            placeholder="ssh.example.com"
+          />
+        </Field>
+        <Field label="Port">
+          <Input
+            iconLeft={RiGlobalLine}
+            value={values.port}
+            onChange={(event) => onChange("port", event.target.value)}
+            placeholder="22"
+            inputMode="numeric"
+          />
+        </Field>
+      </div>
+
+      <Field label="SSH user">
+        <Input
+          iconLeft={RiUserLine}
+          value={values.user}
+          onChange={(event) => onChange("user", event.target.value)}
+          placeholder="SSH username"
+        />
+      </Field>
+
+      <Field label="Authentication">
+        <Select
+          options={sshAuthTypes}
+          valueKey="value"
+          value={sshAuthTypes.find((option) => option.value === authType)}
+          onValueChange={(option) => onAuthTypeChange(option?.value ?? null)}
+          placeholder="Select authentication"
+          className="h-10"
+        />
+      </Field>
+
+      {authType === "key-file" ? (
+        <FileField
+          label="SSH key file"
+          placeholder="Select SSH key"
+          value={values.keyFile}
+          onPathChange={(path) => onChange("keyFile", path)}
+        />
+      ) : (
+        <Field label="SSH password">
+          <PasswordInput
+            iconLeft={RiLockPasswordLine}
+            value={values.password}
+            onChange={(event) => onChange("password", event.target.value)}
+            placeholder="SSH password"
+          />
+        </Field>
+      )}
+    </div>
+  );
+}
+
 function DatabaseConnectionFields({
   values,
   onChange,
-  sshAuthType,
-  onSshAuthTypeChange,
+  showHost = true,
+  showSsl = true,
 }: {
   values: ConnectionFormValues;
   onChange: <K extends keyof ConnectionFormValues>(
     field: K,
     value: ConnectionFormValues[K],
   ) => void;
-  sshAuthType: string;
-  onSshAuthTypeChange: (value: string | null) => void;
+  showHost?: boolean;
+  showSsl?: boolean;
 }) {
   return (
     <>
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
-        <Field label="Host">
-          <Input
-            iconLeft={RiServerLine}
-            value={values.host}
-            onChange={(event) => onChange("host", event.target.value)}
-            placeholder="localhost"
-          />
-        </Field>
+      <div className={showHost ? "grid grid-cols-[minmax(0,1fr)_7rem] gap-3" : "grid gap-3"}>
+        {showHost ? (
+          <Field label="Host">
+            <Input
+              iconLeft={RiServerLine}
+              value={values.host}
+              onChange={(event) => onChange("host", event.target.value)}
+              placeholder="localhost"
+            />
+          </Field>
+        ) : null}
         <Field label="Port">
           <Input
             iconLeft={RiGlobalLine}
@@ -539,21 +866,23 @@ function DatabaseConnectionFields({
         </Field>
       </div>
 
-      <Accordion type="single" collapsible>
-        <AccordionItem value="ssl" className="border-0">
-          <AccordionTrigger className="flex h-10 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline">
-            <RiShieldKeyholeLine className="size-4 text-muted-foreground" aria-hidden="true" />
-            SSL
-          </AccordionTrigger>
-          <AccordionContent className="pt-3">
-            <div className="grid gap-3">
-              <FileField label="CA certificate" placeholder="Select CA certificate" />
-              <FileField label="Certificate" placeholder="Select certificate" />
-              <FileField label="Key file" placeholder="Select private key" />
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+      {showSsl ? (
+        <Accordion type="single" collapsible>
+          <AccordionItem value="ssl" className="border-0">
+            <AccordionTrigger className="flex h-10 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline">
+              <RiShieldKeyholeLine className="size-4 text-muted-foreground" aria-hidden="true" />
+              SSL
+            </AccordionTrigger>
+            <AccordionContent className="pt-3">
+              <div className="grid gap-3">
+                <FileField label="CA certificate" placeholder="Select CA certificate" />
+                <FileField label="Certificate" placeholder="Select certificate" />
+                <FileField label="Key file" placeholder="Select private key" />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="User">
@@ -583,50 +912,6 @@ function DatabaseConnectionFields({
         />
       </Field>
 
-      <Accordion type="single" collapsible>
-        <AccordionItem value="ssh" className="border-0">
-          <AccordionTrigger className="flex h-10 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 py-0 hover:no-underline">
-            <RiTerminalBoxLine className="size-4 text-muted-foreground" aria-hidden="true" />
-            SSH tunnel
-          </AccordionTrigger>
-          <AccordionContent className="pt-3">
-            <div className="grid gap-3">
-              <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
-                <Field label="Host">
-                  <Input iconLeft={RiServerLine} placeholder="ssh.example.com" />
-                </Field>
-                <Field label="Port">
-                  <Input iconLeft={RiGlobalLine} placeholder="22" inputMode="numeric" />
-                </Field>
-              </div>
-
-              <Field label="Authentication">
-                <Select
-                  options={sshAuthTypes}
-                  valueKey="value"
-                  value={sshAuthTypes.find((option) => option.value === sshAuthType)}
-                  onValueChange={(option) => onSshAuthTypeChange(option?.value ?? null)}
-                  placeholder="Select authentication"
-                  className="h-10"
-                />
-              </Field>
-
-              {sshAuthType === "key-file" ? (
-                <FileField label="SSH key file" placeholder="Select SSH key" />
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="SSH user">
-                    <Input iconLeft={RiUserLine} placeholder="SSH username" />
-                  </Field>
-                  <Field label="SSH password">
-                    <PasswordInput iconLeft={RiLockPasswordLine} placeholder="SSH password" />
-                  </Field>
-                </div>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
     </>
   );
 }
