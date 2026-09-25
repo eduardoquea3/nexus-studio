@@ -16,11 +16,21 @@ type PanelProps = {
   description?: string;
   icon?: ReactNode;
   className?: string;
+  contentClassName?: string;
   footer?: ReactNode;
   children: ReactNode | ((payload: Record<string, unknown> | undefined) => ReactNode);
 };
 
-export function Panel({ panelId, title, description, icon, className, footer, children }: PanelProps) {
+export function Panel({
+  panelId,
+  title,
+  description,
+  icon,
+  className,
+  contentClassName,
+  footer,
+  children,
+}: PanelProps) {
   const isOpen = useModalStore((state) => state.modals.includes(panelId));
   const closePanel = useModalStore((state) => state.closeModal);
   const payload = useModalStore(
@@ -44,7 +54,7 @@ export function Panel({ panelId, title, description, icon, className, footer, ch
           </SheetHeader>
 
           <ScrollArea className="min-h-0 flex-1">
-            <div className="px-6 py-5">
+            <div className={cn("px-6 py-5", contentClassName)}>
               {typeof children === "function" ? children(payload) : children}
             </div>
           </ScrollArea>

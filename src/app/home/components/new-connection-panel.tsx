@@ -92,6 +92,12 @@ type ManualSshValues = {
   password: string;
 };
 
+type ConnectionFeedback = {
+  type: "success" | "error";
+  title: string;
+  description: string;
+};
+
 const initialFormValues: ConnectionFormValues = {
   dbType: "postgresql",
   name: "",
@@ -131,6 +137,7 @@ export function NewConnectionPanel() {
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingSqlite, setIsCreatingSqlite] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [feedback, setFeedback] = useState<ConnectionFeedback | null>(null);
   const [unsupportedLegacyProfileId, setUnsupportedLegacyProfileId] = useState<string>();
   const sessionKey = getConnectionSessionKey(isOpen, editingId);
   const sessionKeyRef = useRef<string | null>(null);
@@ -175,6 +182,7 @@ export function NewConnectionPanel() {
       setConnectionTab("normal");
       setSshSource(null);
       setManualSshValues(initialManualSshValues);
+      setFeedback(null);
       setUnsupportedLegacyProfileId(undefined);
       loadedProfileSessionKeyRef.current = null;
       importedFieldsRef.current = [];
@@ -258,7 +266,16 @@ export function NewConnectionPanel() {
     field: K,
     value: ConnectionFormValues[K],
   ) => {
+    setFeedback(null);
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateManualSshField = <K extends keyof ManualSshValues>(
+    field: K,
+    value: ManualSshValues[K],
+  ) => {
+    setFeedback(null);
+    setManualSshValues((current) => ({ ...current, [field]: value }));
   };
 
   const getTestRequest = () =>
@@ -278,9 +295,9 @@ export function NewConnectionPanel() {
       const request = getTestRequest();
       console.info("[connection-test] target", formatConnectionTarget(request));
       const message = await testConnectionFields(request);
-      toast.add({ title: "Connection successful", type: "success", description: message });
+      setFeedback({ type: "success", title: "Connection successful", description: message });
     } catch (error) {
-      toast.add({ title: "Connection failed", type: "error", description: String(error) });
+      setFeedback({ type: "error", title: "Connection failed", description: String(error) });
     } finally {
       setIsTesting(false);
     }
@@ -350,18 +367,26 @@ export function NewConnectionPanel() {
   };
 
   const handleConnect = async () => {
-    if (connectionTab === "ssh" && sshSource === null) {
-      toast.add({
-        title: "Choose an SSH destination",
+    if (!form.name.trim()) {
+      setFeedback({
         type: "error",
+        title: "Connection name is required",
+        description: "Enter a name before saving the connection.",
+      });
+      return;
+    }
+    if (connectionTab === "ssh" && sshSource === null) {
+      setFeedback({
+        type: "error",
+        title: "Choose an SSH destination",
         description: "Select an SSH config host or choose Manual before connecting.",
       });
       return;
     }
     if (isUnsupportedLegacyProfile) {
-      toast.add({
-        title: "Connection cannot be edited",
+      setFeedback({
         type: "error",
+        title: "Connection cannot be edited",
         description: "This legacy connection format is preserved and cannot be safely edited here.",
       });
       return;
@@ -383,14 +408,17 @@ export function NewConnectionPanel() {
         addProfile(profile);
       }
       await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-      toast.add({
-        title: editingId ? "Connection updated" : "Connection saved",
+      setFeedback({
         type: "success",
+        title: editingId ? "Connection updated" : "Connection saved",
         description: "The connection profile and its credentials were saved locally.",
       });
-      closeModal(HomePanels.NewConnection);
     } catch (error) {
-      toast.add({ title: "Could not save connection", type: "error", description: String(error) });
+      setFeedback({
+        type: "error",
+        title: "Could not save connection",
+        description: String(error),
+      });
     } finally {
       setIsTesting(false);
     }
@@ -407,33 +435,35 @@ export function NewConnectionPanel() {
       }
       icon={<RiDatabase2Fill size={19} />}
       className="w-140"
+      contentClassName="h-full"
       footer={
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-popover px-6 py-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setConnectionString("");
-              clearImportedFormValues();
-              closeModal(HomePanels.NewConnection);
-            }}
-          >
-            Cancel
-          </Button>
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-popover px-6 py-4">
+          <div className="flex items-center justify-between gap-3">
             <Button
               variant="outline"
-              onClick={() => void handleTest()}
-              disabled={
-                isTesting ||
-                isCreatingSqlite ||
-                isLoadingProfile ||
-                isUnsupportedLegacyProfile ||
-                (connectionTab === "ssh" && sshSource === null)
-              }
+              onClick={() => {
+                setConnectionString("");
+                clearImportedFormValues();
+                closeModal(HomePanels.NewConnection);
+              }}
             >
-              Test
+              Cancel
             </Button>
-            {!isUnsupportedLegacyProfile && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void handleTest()}
+                disabled={
+                  isTesting ||
+                  isCreatingSqlite ||
+                  isLoadingProfile ||
+                  isUnsupportedLegacyProfile ||
+                  (connectionTab === "ssh" && sshSource === null)
+                }
+              >
+                Test
+              </Button>
+              {!isUnsupportedLegacyProfile && (
               <Button
                 onClick={() => void handleConnect()}
                 disabled={
@@ -445,134 +475,179 @@ export function NewConnectionPanel() {
               >
                 {editingId ? "Save changes" : "Connect"}
               </Button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       }
     >
-      {isUnsupportedLegacyProfile ? (
-        <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          This legacy connection format cannot be safely edited here. Its saved connection data is
-          preserved; create a new profile to use structured connection fields.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4 text-sm">
-          <Field label="Connection Type">
-            <Select
-              options={connectionTypes}
-              valueKey="value"
-              value={connectionTypes.find((item) => item.value === displayedForm.dbType)}
+      <div className="flex min-h-full flex-col">
+        {isUnsupportedLegacyProfile ? (
+          <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+            This legacy connection format cannot be safely edited here. Its saved connection data is
+            preserved; create a new profile to use structured connection fields.
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col gap-4 text-sm">
+            <Field label="Connection Type">
+              <Select
+                options={connectionTypes}
+                valueKey="value"
+                value={connectionTypes.find((item) => item.value === displayedForm.dbType)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setFeedback(null);
+                  updateField("dbType", value.value as ConnectionFormValues["dbType"]);
+                  if (value.value === "sqlite") setConnectionTab("normal");
+                }}
+                render={(option) => <ConnectionTypeOption type={option} />}
+                placeholder="Select type"
+              />
+            </Field>
+
+            <Tabs
+              value={connectionTab}
               onValueChange={(value) => {
-                if (!value) return;
-                updateField("dbType", value.value as ConnectionFormValues["dbType"]);
-                if (value.value === "sqlite") setConnectionTab("normal");
+                setFeedback(null);
+                setConnectionTab(value as ConnectionTab);
               }}
-              render={(option) => <ConnectionTypeOption type={option} />}
-              placeholder="Select type"
-            />
-          </Field>
+              className="gap-4"
+            >
+              <TabsList variant="line" className="w-full">
+                <TabsTrigger value="normal" className="flex-1">
+                  Normal connection
+                </TabsTrigger>
+                <TabsTrigger
+                  value="ssh"
+                  disabled={displayedForm.dbType === "sqlite"}
+                  className="flex-1"
+                >
+                  <RiTerminalBoxLine data-icon="inline-start" aria-hidden="true" />
+                  SSH tunnel
+                </TabsTrigger>
+              </TabsList>
 
-          <Tabs
-            value={connectionTab}
-            onValueChange={(value) => setConnectionTab(value as ConnectionTab)}
-            className="gap-4"
-          >
-            <TabsList variant="line" className="w-full">
-              <TabsTrigger value="normal" className="flex-1">
-                Normal connection
-              </TabsTrigger>
-              <TabsTrigger value="ssh" disabled={displayedForm.dbType === "sqlite"} className="flex-1">
-                <RiTerminalBoxLine data-icon="inline-start" aria-hidden="true" />
-                SSH tunnel
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="normal" className="grid gap-4">
-              {displayedForm.dbType === "sqlite" ? (
-                <SqliteConnectionFields
-                  path={displayedForm.sqlitePath}
-                  onPathChange={(path) => updateField("sqlitePath", path)}
-                  onCreate={handleCreateSqliteDatabase}
-                  isCreating={isCreatingSqlite}
-                  disabled={isTesting || isLoadingProfile}
-                />
-              ) : (
-                <DatabaseConnectionFields values={displayedForm} onChange={updateField} />
-              )}
-            </TabsContent>
-
-            <TabsContent value="ssh" className="grid gap-4">
-              {sshSource === null ? (
-                <SshDestinationPicker aliases={sshAliases} onSourceChange={setSshSource} />
-              ) : null}
-              {sshSource !== null ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="w-fit px-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => setSshSource(null)}
-                  >
-                    <RiArrowLeftLine data-icon="inline-start" />
-                    Back to SSH destinations
-                  </Button>
-                  {sshSource === "manual" ? (
-                    <ManualSshFields
-                      values={manualSshValues}
-                      authType={sshAuthType}
-                      onAuthTypeChange={(value) => value && setSshAuthType(value)}
-                      onChange={(field, value) =>
-                        setManualSshValues((current) => ({ ...current, [field]: value }))
-                      }
-                    />
-                  ) : null}
-                  <DatabaseConnectionFields
-                    values={displayedForm}
-                    onChange={updateField}
-                    showHost={sshSource === "manual"}
-                    showSsl={sshSource === "manual"}
+              <TabsContent value="normal" className="grid gap-4">
+                {displayedForm.dbType === "sqlite" ? (
+                  <SqliteConnectionFields
+                    path={displayedForm.sqlitePath}
+                    onPathChange={(path) => updateField("sqlitePath", path)}
+                    onCreate={handleCreateSqliteDatabase}
+                    isCreating={isCreatingSqlite}
+                    disabled={isTesting || isLoadingProfile}
                   />
-                </>
-              ) : null}
-            </TabsContent>
-          </Tabs>
+                ) : (
+                  <DatabaseConnectionFields values={displayedForm} onChange={updateField} />
+                )}
+              </TabsContent>
 
-          {connectionTab !== "ssh" || sshSource !== null ? (
-            <>
-              <Field label="Connection name">
-                <Input
-                  iconLeft={RiDatabase2Line}
-                  placeholder="Production database"
-                  value={displayedForm.name}
-                  onChange={(event) => updateField("name", event.target.value)}
-                />
-              </Field>
-
-              <div className="border-t border-border/70 pt-4">
-                <Field label="Import connection string">
-                  <div className="flex gap-2">
-                    <PasswordInput
-                      value={connectionString}
-                      onChange={(event) => setConnectionString(event.target.value)}
-                      placeholder="postgresql://user:password@host/database"
-                    />
+              <TabsContent value="ssh" className="grid gap-4">
+                {sshSource === null ? (
+                  <SshDestinationPicker
+                    aliases={sshAliases}
+                    onSourceChange={(source) => {
+                      setFeedback(null);
+                      setSshSource(source);
+                    }}
+                  />
+                ) : null}
+                {sshSource !== null ? (
+                  <>
                     <Button
-                      variant="outline"
-                      onClick={handleImportConnectionString}
-                      disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-fit px-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setFeedback(null);
+                        setSshSource(null);
+                      }}
                     >
-                      Import
+                      <RiArrowLeftLine data-icon="inline-start" />
+                      Back to SSH destinations
                     </Button>
-                  </div>
+                    {sshSource === "manual" ? (
+                      <ManualSshFields
+                        values={manualSshValues}
+                        authType={sshAuthType}
+                        onAuthTypeChange={(value) => {
+                          if (!value) return;
+                          setFeedback(null);
+                          setSshAuthType(value);
+                        }}
+                        onChange={updateManualSshField}
+                      />
+                    ) : null}
+                    <DatabaseConnectionFields
+                      values={displayedForm}
+                      onChange={updateField}
+                      showHost={sshSource === "manual"}
+                      showSsl={sshSource === "manual"}
+                    />
+                  </>
+                ) : null}
+              </TabsContent>
+            </Tabs>
+
+            {connectionTab !== "ssh" || sshSource !== null ? (
+              <>
+                <Field label="Connection name *">
+                  <Input
+                    iconLeft={RiDatabase2Line}
+                    placeholder="Production database"
+                    value={displayedForm.name}
+                    required
+                    aria-required="true"
+                    onChange={(event) => updateField("name", event.target.value)}
+                  />
                 </Field>
-              </div>
-            </>
-          ) : null}
-        </div>
-      )}
+
+                <div className="border-t border-border/70 pt-4">
+                  <Field label="Import connection string">
+                    <div className="flex gap-2">
+                      <PasswordInput
+                        value={connectionString}
+                        onChange={(event) => setConnectionString(event.target.value)}
+                        placeholder="postgresql://user:password@host/database"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={handleImportConnectionString}
+                        disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+                      >
+                        Import
+                      </Button>
+                    </div>
+                  </Field>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        <ConnectionFeedbackMessage feedback={feedback} />
+      </div>
 
     </Panel>
+  );
+}
+
+function ConnectionFeedbackMessage({ feedback }: { feedback: ConnectionFeedback | null }) {
+  if (!feedback) return null;
+
+  return (
+    <div
+      role={feedback.type === "error" ? "alert" : "status"}
+      aria-live="polite"
+      className={
+        feedback.type === "error"
+          ? "mt-auto mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          : "mt-auto mb-4 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"
+      }
+    >
+      <p className="font-semibold">{feedback.title}</p>
+      <p className="mt-1 break-words opacity-90">{feedback.description}</p>
+    </div>
   );
 }
 
