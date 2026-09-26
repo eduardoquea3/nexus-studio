@@ -7,9 +7,7 @@ import {
   RiArrowDownSLine,
   RiCheckLine,
   RiFontFamily,
-  RiMoonLine,
   RiSubtractLine,
-  RiSunLine,
 } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,10 +20,36 @@ import {
   THEME_VARIANTS,
   useThemeStore,
 } from "@/shared/store/theme-store";
+import type { ThemeMode, ThemeVariant } from "@/shared/types/theme";
 
 const sections = [
   { label: "Appearance", description: "Theme and interface", icon: RiContrast2Line },
 ] as const;
+
+const THEME_COLOR_KEYS = ["--primary", "--accent", "--background", "--card", "--destructive"] as const;
+
+type ThemeFamily = {
+  id: string;
+  name: string;
+  variants: Partial<Record<ThemeMode, ThemeVariant>>;
+};
+
+const THEME_FAMILIES = Array.from(
+  THEME_VARIANTS.reduce((families, variant) => {
+    const familyId = variant.fileName.replace(/\.css$/, "");
+    const family = families.get(familyId) ?? {
+      id: familyId,
+      name: familyId
+        .split(/[-_]/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" "),
+      variants: {},
+    };
+    family.variants[variant.mode] = variant;
+    families.set(familyId, family);
+    return families;
+  }, new Map<string, ThemeFamily>()).values(),
+).sort((a, b) => a.name.localeCompare(b.name));
 
 export function SettingsScreen() {
   const router = useRouter();
@@ -159,19 +183,16 @@ export function SettingsScreen() {
               <div className="rounded-lg border border-border bg-card">
                 <div className="border-b border-border px-4 py-4 sm:px-5">
                   <p className="text-sm font-medium">Theme</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Choose a complete visual system. Light and dark variants are independent.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose a visual system. Use the title bar toggle to switch between light and dark.
+                  </p>
                 </div>
-                <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
-                  {THEME_VARIANTS.map((variant) => (
-                    <ThemeOption
-                      key={variant.id}
-                      icon={variant.mode === "dark" ? RiMoonLine : RiSunLine}
-                      label={variant.name}
-                      value={variant.id}
-                      selected={theme.id === variant.id}
-                      onSelect={() => void setTheme(variant.id)}
-                    />
-                  ))}
+                <div className="p-4 sm:p-5">
+                  <ThemeSelector
+                    theme={theme}
+                    families={THEME_FAMILIES}
+                    onSelect={(themeId) => void setTheme(themeId)}
+                  />
                 </div>
               </div>
               <div className="mt-3 grid gap-3 xl:grid-cols-3">
@@ -373,33 +394,98 @@ function FontSetting({
   );
 }
 
-type ThemeOptionProps = {
-  icon: typeof RiMoonLine;
-  label: string;
-  value: string;
-  selected: boolean;
-  onSelect: () => void;
-  disabled?: boolean;
+type ThemeSelectorProps = {
+  theme: ThemeVariant;
+  families: ThemeFamily[];
+  onSelect: (themeId: string) => void;
 };
 
-function ThemeOption({ icon: Icon, label, value, selected, onSelect, disabled }: ThemeOptionProps) {
+function ThemeSelector({ theme, families, onSelect }: ThemeSelectorProps) {
+  const selectedFamily = families.find((family) => family.variants[theme.mode]?.fileName === theme.fileName) ?? families[0];
+  const [filter, setFilter] = useState(selectedFamily?.name ?? "");
+  const filteredFamilies = families.filter((family) => family.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const activeVariant = selectedFamily?.variants[theme.mode];
+
+  useEffect(() => {
+    setFilter(selectedFamily?.name ?? "");
+  }, [selectedFamily?.id]);
+
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        "flex min-h-20 items-center gap-3 rounded-md border border-border bg-muted px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        selected ? "border-primary/70 bg-accent text-accent-foreground" : "hover:bg-muted",
-        disabled && "cursor-not-allowed opacity-45",
-      )}
+    <Combobox.Root
+      items={families}
+      value={selectedFamily}
+      inputValue={filter}
+      filteredItems={filteredFamilies}
+      autoHighlight
+      openOnInputClick
+      itemToStringLabel={(family: ThemeFamily | null) => family?.name ?? ""}
+      onInputValueChange={setFilter}
+      onValueChange={(family) => {
+        if (!family) return;
+        setFilter(family.name);
+        const variant = family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
+        if (variant) onSelect(variant.id);
+      }}
     >
-      <Icon className={cn("size-4", selected ? "text-primary" : "text-muted-foreground")} aria-hidden="true" />
-      <span>
-        <span className="block text-xs font-medium">{label}</span>
-        <span className="mt-0.5 block font-mono text-[0.6rem] uppercase tracking-wider text-muted-foreground">{value}</span>
-      </span>
-    </button>
+      <div className="relative">
+        <ThemeSwatches variant={activeVariant} className="absolute inset-y-0 left-3" />
+        <Combobox.Input
+          aria-label="Theme"
+          className="h-10 w-full rounded-md border border-border/70 bg-background/80 px-3 pl-24 pr-9 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-background/90 focus:border-ring focus:ring-2 focus:ring-ring/30"
+          placeholder="Search themes"
+        />
+        <Combobox.Trigger
+          aria-label="Toggle themes"
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+        >
+          <RiArrowDownSLine aria-hidden="true" />
+        </Combobox.Trigger>
+      </div>
+      <Combobox.Portal>
+        <Combobox.Positioner align="start" sideOffset={4} className="z-50">
+          <Combobox.Popup className="w-(--anchor-width) overflow-hidden rounded-lg border border-border/70 bg-popover/95 text-popover-foreground shadow-lg ring-1 ring-border/50">
+            {filteredFamilies.length === 0 ? (
+              <Combobox.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
+                No themes found.
+              </Combobox.Empty>
+            ) : null}
+            <Combobox.List className="max-h-64 overflow-y-auto">
+              {(family: ThemeFamily) => {
+                const variant = family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
+                return (
+                  <Combobox.Item
+                    key={family.id}
+                    value={family}
+                    className="flex min-h-12 w-full cursor-default items-center gap-3 px-3 py-2 text-xs outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                  >
+                    <ThemeSwatches variant={variant} />
+                    <span className="min-w-0 flex-1 truncate font-medium">{family.name}</span>
+                    <Combobox.ItemIndicator>
+                      <RiCheckLine aria-hidden="true" />
+                    </Combobox.ItemIndicator>
+                  </Combobox.Item>
+                );
+              }}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
+}
+
+function ThemeSwatches({ variant, className }: { variant?: ThemeVariant; className?: string }) {
+  if (!variant) return null;
+
+  return (
+    <span className={cn("flex items-center -space-x-1", className)} aria-hidden="true">
+      {THEME_COLOR_KEYS.map((key) => (
+        <span
+          key={key}
+          className="size-4 rounded-full border-2 border-popover shadow-sm"
+          style={{ backgroundColor: variant.variables[key] ?? "transparent" }}
+        />
+      ))}
+    </span>
   );
 }
