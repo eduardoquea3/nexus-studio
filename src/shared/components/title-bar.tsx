@@ -25,7 +25,7 @@ export function TitleBar() {
 
   return (
     <header
-      className="flex h-10 select-none items-center justify-between border-b border-border bg-background px-3"
+      className="flex h-10 select-none items-center justify-between border-b border-border bg-background pl-3"
     >
       <span data-tauri-drag-region className="flex h-full flex-1 items-center text-sm font-medium text-muted-foreground">
         Nexus Studio
@@ -54,23 +54,13 @@ export function TitleBar() {
           <RiSettings3Line size={16} />
         </button>
 
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            onClick={handleClose}
-            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
-            aria-label="Close"
-          >
-            <RiCloseLine size={11} />
-          </Button>
+        <div className="flex h-10 items-stretch gap-0">
           <Button
             type="button"
             size="icon-sm"
             variant="ghost"
             onClick={handleMinimize}
-            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="h-10 w-12 rounded-none bg-transparent p-0 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Minimize"
           >
             <RiSubtractLine size={11} />
@@ -80,10 +70,20 @@ export function TitleBar() {
             size="icon-sm"
             variant="ghost"
             onClick={handleMaximize}
-            className="rounded-md bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="h-10 w-12 rounded-none bg-transparent p-0 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Maximize"
           >
             <RiCloseLine size={11} className="rotate-45" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={handleClose}
+            className="h-10 w-12 rounded-none bg-transparent p-0 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+            aria-label="Close"
+          >
+            <RiCloseLine size={11} />
           </Button>
         </div>
       </div>
