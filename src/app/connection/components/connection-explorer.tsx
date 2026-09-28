@@ -128,10 +128,9 @@ export function ConnectionExplorer({
         </Button>
       </div>
       <div className="relative px-2 pb-2">
-        <RiSearchLine
-          className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
+        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+          <RiSearchLine className="size-3.5 text-muted-foreground" aria-hidden="true" />
+        </span>
         <Input
           aria-label="Filter explorer"
           value={filterText}

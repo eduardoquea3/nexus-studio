@@ -1,3 +1,4 @@
+use super::connection::{connection_target, prepare_ssh_tunnel, SshTunnelManager};
 use crate::models::{QueryRequest, QueryResult};
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlConnection},
@@ -5,9 +6,13 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection},
     Column, Connection, Row,
 };
+use tauri::State;
 
 #[tauri::command]
-pub async fn run_query(request: QueryRequest) -> Result<QueryResult, String> {
+pub async fn run_query(
+    request: QueryRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<QueryResult, String> {
     let sql = request.sql.trim();
     if sql.is_empty() {
         return Err("The query is empty".to_string());
@@ -15,18 +20,22 @@ pub async fn run_query(request: QueryRequest) -> Result<QueryResult, String> {
 
     let started = std::time::Instant::now();
     let read_query = is_read_query(sql);
+    let (_temporary_tunnel, local_port) =
+        prepare_ssh_tunnel(&tunnel_manager, &request.request).await?;
+    let default_port = if request.request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) =
+        connection_target(&request.request, local_port, default_port)?;
 
     match request.request.db_type.as_str() {
         "postgres" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = PgConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(5432))
+                .host(connection_host)
+                .port(connection_port)
                 .database(
                     connection_request
                         .database
@@ -84,15 +93,10 @@ pub async fn run_query(request: QueryRequest) -> Result<QueryResult, String> {
             }
         }
         "mysql" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = MySqlConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(3306))
+                .host(connection_host)
+                .port(connection_port)
                 .database(connection_request.database.as_deref().unwrap_or("mysql"))
                 .username(connection_request.username.as_deref().unwrap_or("root"))
                 .password(connection_request.password.as_deref().unwrap_or(""));

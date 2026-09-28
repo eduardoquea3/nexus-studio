@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionTestRequest {
     pub db_type: String,
@@ -11,6 +11,40 @@ pub struct ConnectionTestRequest {
     pub username: Option<String>,
     pub password: Option<String>,
     pub sqlite_path: Option<String>,
+    pub ssh: Option<SshTunnelRequest>,
+    pub connection_id: Option<String>,
+    #[serde(default)]
+    pub persist_ssh_tunnel: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SshTunnelRequest {
+    pub source: SshTunnelSource,
+    pub auth: SshTunnelAuth,
+    pub remote_bind_host: String,
+    pub remote_bind_port: u16,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum SshTunnelSource {
+    #[serde(rename = "from_ssh_config")]
+    FromSshConfig { alias: String },
+    #[serde(rename = "manual")]
+    Manual {
+        host: String,
+        port: u16,
+        user: String,
+    },
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum SshTunnelAuth {
+    #[serde(rename = "password")]
+    Password,
+    #[serde(rename = "key_file")]
+    KeyFile { path: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -92,4 +126,19 @@ pub struct ColumnInfo {
 pub struct TableSchemaResult {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConnectionTestRequest;
+
+    #[test]
+    fn test_requests_default_to_temporary_tunnels() {
+        let request: ConnectionTestRequest =
+            serde_json::from_str(r#"{"dbType":"sqlite","sqlitePath":"database.sqlite"}"#)
+                .expect("connection test request should deserialize");
+
+        assert!(!request.persist_ssh_tunnel);
+        assert!(request.connection_id.is_none());
+    }
 }

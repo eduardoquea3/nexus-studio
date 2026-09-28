@@ -1,3 +1,4 @@
+use super::connection::{connection_target, prepare_ssh_tunnel, SshTunnelManager};
 use crate::models::{
     ColumnInfo, ConnectionTestRequest, ObjectMeta, RoutineDefinitionRequest, TableDataPage,
     TableDataRequest, TableSchemaRequest, TableSchemaResult,
@@ -8,16 +9,26 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection},
     Column, Connection, Row,
 };
+use tauri::State;
 
 #[tauri::command]
 pub async fn list_schema_objects(
     request: ConnectionTestRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
 ) -> Result<Vec<ObjectMeta>, String> {
+    let (_temporary_tunnel, local_port) = prepare_ssh_tunnel(&tunnel_manager, &request).await?;
+    let default_port = if request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) = connection_target(&request, local_port, default_port)?;
+
     match request.db_type.as_str() {
         "postgres" => {
             let options = PgConnectOptions::new()
-                .host(request.host.as_deref().ok_or("Host is required")?)
-                .port(request.port.unwrap_or(5432))
+                .host(connection_host)
+                .port(connection_port)
                 .database(request.database.as_deref().ok_or("Database is required")?)
                 .username(request.username.as_deref().unwrap_or("postgres"))
                 .password(request.password.as_deref().unwrap_or(""));
@@ -77,8 +88,8 @@ pub async fn list_schema_objects(
         }
         "mysql" => {
             let options = MySqlConnectOptions::new()
-                .host(request.host.as_deref().ok_or("Host is required")?)
-                .port(request.port.unwrap_or(3306))
+                .host(connection_host)
+                .port(connection_port)
                 .database(request.database.as_deref().unwrap_or("mysql"))
                 .username(request.username.as_deref().unwrap_or("root"))
                 .password(request.password.as_deref().unwrap_or(""));
@@ -173,7 +184,20 @@ pub async fn list_schema_objects(
 }
 
 #[tauri::command]
-pub async fn get_routine_definition(request: RoutineDefinitionRequest) -> Result<String, String> {
+pub async fn get_routine_definition(
+    request: RoutineDefinitionRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<String, String> {
+    let (_temporary_tunnel, local_port) =
+        prepare_ssh_tunnel(&tunnel_manager, &request.request).await?;
+    let default_port = if request.request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) =
+        connection_target(&request.request, local_port, default_port)?;
+
     match request.request.db_type.as_str() {
         "postgres" => {
             let routine_type = match request.routine_type.as_str() {
@@ -185,15 +209,10 @@ pub async fn get_routine_definition(request: RoutineDefinitionRequest) -> Result
                     ))
                 }
             };
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = PgConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(5432))
+                .host(connection_host)
+                .port(connection_port)
                 .database(
                     connection_request
                         .database
@@ -235,15 +254,10 @@ pub async fn get_routine_definition(request: RoutineDefinitionRequest) -> Result
                     return Err(format!("Unsupported MySQL routine type: {routine_type}"))
                 }
             };
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = MySqlConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(3306))
+                .host(connection_host)
+                .port(connection_port)
                 .database(connection_request.database.as_deref().unwrap_or("mysql"))
                 .username(connection_request.username.as_deref().unwrap_or("root"))
                 .password(connection_request.password.as_deref().unwrap_or(""));
@@ -351,24 +365,38 @@ pub(crate) fn sqlite_value(row: &sqlx::sqlite::SqliteRow, index: usize) -> serde
 }
 
 #[tauri::command]
-pub async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, String> {
+pub async fn get_table_data(
+    request: TableDataRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<TableDataPage, String> {
+    get_table_data_with_manager(request, &tunnel_manager).await
+}
+
+async fn get_table_data_with_manager(
+    request: TableDataRequest,
+    tunnel_manager: &SshTunnelManager,
+) -> Result<TableDataPage, String> {
     validate_table_name(&request.table)?;
     validate_schema_name(request.schema.as_deref())?;
     let page = request.page.max(1);
     let page_size = request.page_size.clamp(1, 100);
     let offset = (page - 1) * page_size;
+    let (_temporary_tunnel, local_port) =
+        prepare_ssh_tunnel(&tunnel_manager, &request.request).await?;
+    let default_port = if request.request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) =
+        connection_target(&request.request, local_port, default_port)?;
 
     match request.request.db_type.as_str() {
         "postgres" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = PgConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(5432))
+                .host(connection_host)
+                .port(connection_port)
                 .database(
                     connection_request
                         .database
@@ -433,15 +461,10 @@ pub async fn get_table_data(request: TableDataRequest) -> Result<TableDataPage, 
             })
         }
         "mysql" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = MySqlConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(3306))
+                .host(connection_host)
+                .port(connection_port)
                 .database(connection_request.database.as_deref().unwrap_or("mysql"))
                 .username(connection_request.username.as_deref().unwrap_or("root"))
                 .password(connection_request.password.as_deref().unwrap_or(""));
@@ -580,21 +603,27 @@ mod tests {
                 .expect("test rows should be inserted");
                 drop(connection);
 
-                get_table_data(TableDataRequest {
-                    request: ConnectionTestRequest {
-                        db_type: "sqlite".to_string(),
-                        host: None,
-                        port: None,
-                        database: None,
-                        username: None,
-                        password: None,
-                        sqlite_path: Some(database_path.clone()),
+                get_table_data_with_manager(
+                    TableDataRequest {
+                        request: ConnectionTestRequest {
+                            db_type: "sqlite".to_string(),
+                            host: None,
+                            port: None,
+                            database: None,
+                            username: None,
+                            password: None,
+                            sqlite_path: Some(database_path.clone()),
+                            ssh: None,
+                            connection_id: None,
+                            persist_ssh_tunnel: false,
+                        },
+                        table: "entries".to_string(),
+                        schema: None,
+                        page: 2,
+                        page_size: 2,
                     },
-                    table: "entries".to_string(),
-                    schema: None,
-                    page: 2,
-                    page_size: 2,
-                })
+                    &SshTunnelManager::default(),
+                )
                 .await
             }
             .await;
@@ -610,21 +639,28 @@ mod tests {
     }
 }
 #[tauri::command]
-pub async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchemaResult, String> {
+pub async fn get_table_schema(
+    request: TableSchemaRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<TableSchemaResult, String> {
     validate_table_name(&request.table)?;
     validate_schema_name(request.schema.as_deref())?;
+    let (_temporary_tunnel, local_port) =
+        prepare_ssh_tunnel(&tunnel_manager, &request.request).await?;
+    let default_port = if request.request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) =
+        connection_target(&request.request, local_port, default_port)?;
 
     match request.request.db_type.as_str() {
         "postgres" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = PgConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(5432))
+                .host(connection_host)
+                .port(connection_port)
                 .database(
                     connection_request
                         .database
@@ -669,15 +705,10 @@ pub async fn get_table_schema(request: TableSchemaRequest) -> Result<TableSchema
             })
         }
         "mysql" => {
-            let connection_request = request.request;
+            let connection_request = request.request.clone();
             let options = MySqlConnectOptions::new()
-                .host(
-                    connection_request
-                        .host
-                        .as_deref()
-                        .ok_or("Host is required")?,
-                )
-                .port(connection_request.port.unwrap_or(3306))
+                .host(connection_host)
+                .port(connection_port)
                 .database(connection_request.database.as_deref().unwrap_or("mysql"))
                 .username(connection_request.username.as_deref().unwrap_or("root"))
                 .password(connection_request.password.as_deref().unwrap_or(""));

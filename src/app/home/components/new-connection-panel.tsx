@@ -16,7 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { save } from "@tauri-apps/plugin-dialog";
 import { SVGProps, useEffect, useRef, useState } from "react";
 
-import type { ConnectionProfile, DbType } from "@/shared/types/models";
+import type { ConnectionProfile, DbType, SshTunnelConfig } from "@/shared/types/models";
 
 import { connectionsQueryKey } from "@/app/home/hooks/use-connections";
 import {
@@ -44,7 +44,8 @@ import {
   saveConnection,
   createSqliteDatabase,
   testConnectionFields,
-  listSshConfigAliases,
+  listSshConfigHosts,
+  type SshConfigHost,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
 import { useConnectionStore } from "@/shared/store/connectionStore";
@@ -131,7 +132,7 @@ export function NewConnectionPanel() {
   const [connectionString, setConnectionString] = useState("");
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [connectionTab, setConnectionTab] = useState<ConnectionTab>("normal");
-  const [sshAliases, setSshAliases] = useState<string[]>([]);
+  const [sshHosts, setSshHosts] = useState<SshConfigHost[]>([]);
   const [sshSource, setSshSource] = useState<SshSource | null>(null);
   const [manualSshValues, setManualSshValues] = useState(initialManualSshValues);
   const [isTesting, setIsTesting] = useState(false);
@@ -250,12 +251,12 @@ export function NewConnectionPanel() {
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    void listSshConfigAliases()
-      .then((aliases) => {
-        if (!cancelled) setSshAliases(aliases);
+    void listSshConfigHosts()
+      .then((hosts) => {
+        if (!cancelled) setSshHosts(hosts);
       })
       .catch(() => {
-        if (!cancelled) setSshAliases([]);
+        if (!cancelled) setSshHosts([]);
       });
     return () => {
       cancelled = true;
@@ -278,6 +279,28 @@ export function NewConnectionPanel() {
     setManualSshValues((current) => ({ ...current, [field]: value }));
   };
 
+  const getSshTunnelConfig = (): SshTunnelConfig | undefined => {
+    if (connectionTab !== "ssh" || sshSource === null) return undefined;
+
+    return {
+      source:
+        sshSource === "manual"
+          ? {
+              type: "manual",
+              host: manualSshValues.host,
+              port: Number(manualSshValues.port),
+              user: manualSshValues.user,
+            }
+          : { type: "from_ssh_config", alias: sshSource.alias },
+      auth:
+        sshAuthType === "password"
+          ? { type: "password" }
+          : { type: "key_file", path: manualSshValues.keyFile, passphrase_ref: null },
+      remote_bind_host: form.host,
+      remote_bind_port: Number(form.port),
+    };
+  };
+
   const getTestRequest = () =>
     ({
       dbType: form.dbType === "postgresql" ? "postgres" : form.dbType,
@@ -287,6 +310,7 @@ export function NewConnectionPanel() {
       username: form.username,
       password: form.password,
       sqlitePath: form.sqlitePath,
+      ssh: getSshTunnelConfig(),
     }) as const;
 
   const handleTest = async () => {
@@ -544,7 +568,7 @@ export function NewConnectionPanel() {
               <TabsContent value="ssh" className="grid gap-4">
                 {sshSource === null ? (
                   <SshDestinationPicker
-                    aliases={sshAliases}
+                    hosts={sshHosts}
                     onSourceChange={(source) => {
                       setFeedback(null);
                       setSshSource(source);
@@ -775,10 +799,10 @@ function SqliteConnectionFields({
 }
 
 function SshDestinationPicker({
-  aliases,
+  hosts,
   onSourceChange,
 }: {
-  aliases: string[];
+  hosts: SshConfigHost[];
   onSourceChange: (source: SshSource) => void;
 }) {
   return (
@@ -790,20 +814,20 @@ function SshDestinationPicker({
         </p>
       </div>
           <div className="grid gap-2">
-        {aliases.map((alias) => {
+        {hosts.map((host) => {
           return (
             <button
-              key={alias}
+              key={host.alias}
               type="button"
               aria-pressed="false"
-              onClick={() => onSourceChange({ type: "config", alias })}
+              onClick={() => onSourceChange({ type: "config", alias: host.alias })}
               className="rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/60 hover:bg-primary/5"
             >
               <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <RiTerminalBoxLine className="size-4 text-primary" aria-hidden="true" />
-                {alias}
+                {host.alias}
               </span>
-              <span className="mt-1 block text-xs text-muted-foreground">SSH config host</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{host.hostname}</span>
             </button>
           );
         })}
@@ -820,7 +844,7 @@ function SshDestinationPicker({
           <span className="mt-1 block text-xs text-muted-foreground">Enter SSH details</span>
         </button>
       </div>
-      {aliases.length === 0 ? (
+      {hosts.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           No SSH hosts were found in `~/.ssh/config`. Manual setup is available.
         </p>
