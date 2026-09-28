@@ -158,6 +158,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 mock.module("@/shared/lib/tauriApi", () => ({
   connect: mock(async () => ({ connected: true })),
   disconnect: mock(async () => undefined),
+  getErDiagram: mock(async () => ({ tables: [], relationships: [] })),
   getTableData,
   getTableRules: mock(async () => ({
     primary_key: null,
@@ -1130,6 +1131,25 @@ describe("ConnectionWorkspace SQL tabs", () => {
       shiftKey: true,
     });
     expect(screen.getByRole("button", { name: /Disconnect/ })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Generate ER diagram/ })).not.toBeNull();
+  });
+
+  test("opens the ER diagram tab from the Ctrl+Shift+P command", () => {
+    renderWorkspace(fieldsProfile);
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Generate ER diagram/ }));
+
+    expect(screen.getByRole("tab", { name: "ER diagram tab" })).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "ER diagram tab" }).getAttribute("data-state")).toBe(
+      "active",
+    );
   });
 
   test("creates another editor when Ctrl+T is pressed on the focused empty section", () => {

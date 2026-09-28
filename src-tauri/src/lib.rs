@@ -17,6 +17,7 @@ pub fn run() {
             commands::connection::create_sqlite_database,
             commands::connection::list_databases,
             commands::schema::list_schema_objects,
+            commands::schema::get_er_diagram,
             commands::schema::get_routine_definition,
             commands::schema::get_table_data,
             commands::schema::get_table_schema,

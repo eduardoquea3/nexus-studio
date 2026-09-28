@@ -1,3 +1,5 @@
+import { lazy, Suspense } from "react";
+
 import type { ConnectionProfile } from "@/shared/types/models";
 
 import { TableDataTab } from "@/app/connection/components/table-data-tab";
@@ -8,6 +10,10 @@ import type { WorkspaceController } from "./connection-workspace-controller";
 import { ConnectionWorkspaceTabs } from "./connection-workspace-tabs";
 import { withDatabase } from "./connection-workspace-view-utils";
 import { SqlEditorPanel } from "./sql-editor-panel";
+
+const ErDiagramView = lazy(() =>
+  import("./er-diagram-view").then((module) => ({ default: module.ErDiagramView })),
+);
 
 export function ConnectionWorkspaceContent({
   profile,
@@ -23,6 +29,8 @@ export function ConnectionWorkspaceContent({
     setActiveSqlTabId,
     workspaceTabs,
     tableRefreshToken,
+    selectedDatabase,
+    isErDiagramOpen,
   } = controller;
   return (
     <Tabs
@@ -34,7 +42,22 @@ export function ConnectionWorkspaceContent({
       className="flex min-h-0 flex-1 flex-col gap-0"
     >
       <ConnectionWorkspaceTabs controller={controller} />
-      {activeTableTab ? (
+      {isErDiagramOpen && activeTabId === "er-diagram" ? (
+        <TabsContent
+          value="er-diagram"
+          className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"
+        >
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                Loading ER diagram tools…
+              </div>
+            }
+          >
+            <ErDiagramView profile={profile} database={selectedDatabase} />
+          </Suspense>
+        </TabsContent>
+      ) : activeTableTab ? (
         <TabsContent
           value={activeTabId}
           className="min-h-0 flex-1 overflow-hidden bg-muted/10 text-xs"

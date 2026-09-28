@@ -28,6 +28,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
     setActiveTabId,
     setActiveSqlTabId,
     openTableTab,
+    openErDiagram,
     switchConnection,
     switchingConnectionIds,
     isLoadingConnections,
@@ -69,6 +70,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                 controller.openModal("new-connection", { source: "command-bar" });
                 void controller.navigate({ to: "/" });
               }
+              if (item.command === "generate-er-diagram") openErDiagram();
               closeCommandBar(true);
             } else if (item.kind === "tab") {
               activateWorkspaceTab(profile.id, item.tab.id);

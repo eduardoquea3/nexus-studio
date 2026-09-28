@@ -1,4 +1,4 @@
-import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiTableLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiFlowChart, RiTableLine } from "@remixicon/react";
 
 import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,10 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
     createEditorTab,
     closeEditorTab,
     closeTableTab,
+    isErDiagramOpen,
+    activeTabId,
+    openErDiagram,
+    closeErDiagram,
   } = controller;
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-0.5">
@@ -77,6 +81,48 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
             </TabsTrigger>
           </div>
         ))}
+        {isErDiagramOpen ? (
+          <div className="group flex h-7 items-center">
+            <TabsTrigger
+              value="er-diagram"
+              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-none px-3 text-xs data-[state=active]:text-foreground"
+              onClick={openErDiagram}
+              aria-label="ER diagram tab"
+            >
+              <RiFlowChart
+                className={cn(
+                  "size-3.5",
+                  activeTabId === "er-diagram" ? "text-primary" : "text-muted-foreground",
+                )}
+                aria-hidden="true"
+              />
+              <span className="truncate">ER Diagram</span>
+              <span
+                role="button"
+                tabIndex={0}
+                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeErDiagram();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeErDiagram();
+                }}
+                aria-label="Close ER diagram"
+              >
+                <RiCloseLine className="size-3" aria-hidden="true" />
+              </span>
+            </TabsTrigger>
+          </div>
+        ) : null}
       </TabsList>
       <Button
         variant="ghost"

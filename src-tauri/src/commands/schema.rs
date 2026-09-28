@@ -1,14 +1,17 @@
 use super::connection::{connection_target, prepare_ssh_tunnel, SshTunnelManager};
 use crate::models::{
-    ColumnInfo, ConnectionTestRequest, ObjectMeta, RoutineDefinitionRequest, TableDataPage,
-    TableDataRequest, TableSchemaRequest, TableSchemaResult,
+    ColumnInfo, ConnectionTestRequest, ErDiagramColumn, ErDiagramRelationship, ErDiagramSchema,
+    ErDiagramTable, ObjectMeta, RoutineDefinitionRequest, TableDataPage, TableDataRequest,
+    TableSchemaRequest, TableSchemaResult,
 };
+use futures_util::TryStreamExt;
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlConnection},
     postgres::{PgConnectOptions, PgConnection},
     sqlite::{SqliteConnectOptions, SqliteConnection},
     Column, Connection, Row,
 };
+use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 #[tauri::command]
@@ -180,6 +183,337 @@ pub async fn list_schema_objects(
                 .collect())
         }
         database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
+#[tauri::command]
+pub async fn get_er_diagram(
+    request: ConnectionTestRequest,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<ErDiagramSchema, String> {
+    get_er_diagram_with_manager(request, &tunnel_manager).await
+}
+
+async fn get_er_diagram_with_manager(
+    request: ConnectionTestRequest,
+    tunnel_manager: &SshTunnelManager,
+) -> Result<ErDiagramSchema, String> {
+    let (_temporary_tunnel, local_port) = prepare_ssh_tunnel(tunnel_manager, &request).await?;
+    let default_port = if request.db_type == "mysql" {
+        3306
+    } else {
+        5432
+    };
+    let (connection_host, connection_port) = connection_target(&request, local_port, default_port)?;
+
+    match request.db_type.as_str() {
+        "postgres" => {
+            let options = PgConnectOptions::new()
+                .host(connection_host)
+                .port(connection_port)
+                .database(request.database.as_deref().ok_or("Database is required")?)
+                .username(request.username.as_deref().unwrap_or("postgres"))
+                .password(request.password.as_deref().unwrap_or(""));
+            let mut connection = PgConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
+            let rows = sqlx::query(
+                "SELECT source_ns.nspname AS source_schema, source_table.relname AS source_table, source_column.attname AS source_column, target_ns.nspname AS target_schema, target_table.relname AS target_table, target_column.attname AS target_column FROM pg_constraint constraint_row JOIN pg_class source_table ON source_table.oid = constraint_row.conrelid JOIN pg_namespace source_ns ON source_ns.oid = source_table.relnamespace JOIN pg_class target_table ON target_table.oid = constraint_row.confrelid JOIN pg_namespace target_ns ON target_ns.oid = target_table.relnamespace JOIN LATERAL unnest(constraint_row.conkey) WITH ORDINALITY AS source_key(attnum, position) ON true JOIN LATERAL unnest(constraint_row.confkey) WITH ORDINALITY AS target_key(attnum, position) ON target_key.position = source_key.position JOIN pg_attribute source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = source_key.attnum JOIN pg_attribute target_column ON target_column.attrelid = target_table.oid AND target_column.attnum = target_key.attnum WHERE constraint_row.contype = 'f' AND source_ns.nspname NOT IN ('pg_catalog', 'information_schema') ORDER BY source_ns.nspname, source_table.relname, constraint_row.conname, source_key.position",
+            )
+            .fetch_all(&mut connection)
+            .await
+            .map_err(|error| format!("Could not load PostgreSQL foreign keys: {error}"))?;
+            let relationships: Vec<ErDiagramRelationship> = rows
+                .into_iter()
+                .map(|row| ErDiagramRelationship {
+                    source_schema: Some(row.get("source_schema")),
+                    source_table: row.get("source_table"),
+                    source_column: row.get("source_column"),
+                    target_schema: Some(row.get("target_schema")),
+                    target_table: row.get("target_table"),
+                    target_column: row.get("target_column"),
+                })
+                .collect();
+            let relationship_columns = relationship_columns(&relationships);
+            let mut rows = sqlx::query(
+                "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, pk.column_name IS NOT NULL AS is_primary_key FROM information_schema.columns c JOIN information_schema.tables tab ON tab.table_catalog = c.table_catalog AND tab.table_schema = c.table_schema AND tab.table_name = c.table_name AND tab.table_type = 'BASE TABLE' LEFT JOIN information_schema.table_constraints tc ON tc.table_catalog = c.table_catalog AND tc.table_schema = c.table_schema AND tc.table_name = c.table_name AND tc.constraint_type = 'PRIMARY KEY' LEFT JOIN information_schema.key_column_usage pk ON pk.constraint_catalog = tc.constraint_catalog AND pk.constraint_schema = tc.constraint_schema AND pk.constraint_name = tc.constraint_name AND pk.table_name = tc.table_name AND pk.column_name = c.column_name WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+            )
+            .fetch(&mut connection);
+            let mut table_builder = ErDiagramTableBuilder::default();
+            while let Some(row) = rows
+                .try_next()
+                .await
+                .map_err(|error| format!("Could not stream PostgreSQL table columns: {error}"))?
+            {
+                let schema: String = row.get("table_schema");
+                table_builder.push(
+                    Some(schema),
+                    row.get("table_name"),
+                    ErDiagramColumn {
+                        name: row.get("column_name"),
+                        data_type: row.get("data_type"),
+                        nullable: row.get::<String, _>("is_nullable") == "YES",
+                        is_primary_key: row.get("is_primary_key"),
+                    },
+                    &relationship_columns,
+                );
+            }
+            let tables = table_builder.finish();
+            Ok(ErDiagramSchema {
+                tables,
+                relationships,
+            })
+        }
+        "mysql" => {
+            let options = MySqlConnectOptions::new()
+                .host(connection_host)
+                .port(connection_port)
+                .database(request.database.as_deref().unwrap_or("mysql"))
+                .username(request.username.as_deref().unwrap_or("root"))
+                .password(request.password.as_deref().unwrap_or(""));
+            let mut connection = MySqlConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("MySQL connection failed: {error}"))?;
+            let rows = sqlx::query(
+                "SELECT kcu.table_schema AS source_schema, kcu.table_name AS source_table, kcu.column_name AS source_column, kcu.referenced_table_schema AS target_schema, kcu.referenced_table_name AS target_table, kcu.referenced_column_name AS target_column FROM information_schema.key_column_usage kcu WHERE kcu.table_schema = DATABASE() AND kcu.referenced_table_name IS NOT NULL ORDER BY kcu.table_name, kcu.constraint_name, kcu.ordinal_position",
+            )
+            .fetch_all(&mut connection)
+            .await
+            .map_err(|error| format!("Could not load MySQL foreign keys: {error}"))?;
+            let relationships: Vec<ErDiagramRelationship> = rows
+                .into_iter()
+                .map(|row| ErDiagramRelationship {
+                    source_schema: Some(row.get("source_schema")),
+                    source_table: row.get("source_table"),
+                    source_column: row.get("source_column"),
+                    target_schema: Some(row.get("target_schema")),
+                    target_table: row.get("target_table"),
+                    target_column: row.get("target_column"),
+                })
+                .collect();
+            let relationship_columns = relationship_columns(&relationships);
+            let mut rows = sqlx::query(
+                "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, pk.column_name IS NOT NULL AS is_primary_key FROM information_schema.columns c JOIN information_schema.tables tab ON tab.table_schema = c.table_schema AND tab.table_name = c.table_name AND tab.table_type = 'BASE TABLE' LEFT JOIN information_schema.table_constraints tc ON tc.constraint_schema = c.table_schema AND tc.table_name = c.table_name AND tc.constraint_type = 'PRIMARY KEY' LEFT JOIN information_schema.key_column_usage pk ON pk.constraint_schema = tc.constraint_schema AND pk.constraint_name = tc.constraint_name AND pk.table_name = tc.table_name AND pk.column_name = c.column_name WHERE c.table_schema = DATABASE() ORDER BY c.table_name, c.ordinal_position",
+            )
+            .fetch(&mut connection);
+            let mut table_builder = ErDiagramTableBuilder::default();
+            while let Some(row) = rows
+                .try_next()
+                .await
+                .map_err(|error| format!("Could not stream MySQL table columns: {error}"))?
+            {
+                let schema: String = row.get("table_schema");
+                table_builder.push(
+                    Some(schema),
+                    row.get("table_name"),
+                    ErDiagramColumn {
+                        name: row.get("column_name"),
+                        data_type: row.get("data_type"),
+                        nullable: row.get::<String, _>("is_nullable") == "YES",
+                        is_primary_key: row.get("is_primary_key"),
+                    },
+                    &relationship_columns,
+                );
+            }
+            let tables = table_builder.finish();
+            Ok(ErDiagramSchema {
+                tables,
+                relationships,
+            })
+        }
+        "sqlite" => {
+            let path = request
+                .sqlite_path
+                .as_deref()
+                .ok_or("SQLite database path is required")?;
+            let options = SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(false);
+            let mut connection = SqliteConnection::connect_with(&options)
+                .await
+                .map_err(|error| format!("SQLite connection failed: {error}"))?;
+            let rows = sqlx::query(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .fetch_all(&mut connection)
+            .await
+            .map_err(|error| format!("Could not load SQLite tables: {error}"))?;
+            let table_names: Vec<String> = rows.into_iter().map(|row| row.get("name")).collect();
+            let mut relationships = Vec::new();
+            let mut unresolved_relationships = Vec::new();
+            for name in &table_names {
+                let foreign_key_rows = sqlx::query(
+                    "SELECT id, seq, \"table\" AS target_table, \"from\" AS source_column, \"to\" AS target_column FROM pragma_foreign_key_list(?) ORDER BY id, seq",
+                )
+                .bind(name)
+                .fetch_all(&mut connection)
+                .await
+                .map_err(|error| format!("Could not load foreign keys for SQLite table {name}: {error}"))?;
+                for foreign_key in foreign_key_rows {
+                    let target_table: String = foreign_key.get("target_table");
+                    let source_column: String = foreign_key.get("source_column");
+                    let sequence: i64 = foreign_key.get("seq");
+                    let target_column: Option<String> = foreign_key.try_get("target_column").ok();
+                    let target_column = target_column.filter(|column| !column.is_empty());
+                    if let Some(target_column) = target_column {
+                        relationships.push(ErDiagramRelationship {
+                            source_schema: None,
+                            source_table: name.clone(),
+                            source_column,
+                            target_schema: None,
+                            target_table,
+                            target_column,
+                        });
+                    } else {
+                        unresolved_relationships.push((
+                            name.clone(),
+                            source_column,
+                            target_table,
+                            sequence as usize,
+                        ));
+                    }
+                }
+            }
+
+            let mut relation_columns = relationship_columns(&relationships);
+            for (source_table, source_column, _, _) in &unresolved_relationships {
+                relation_columns
+                    .entry((None, source_table.clone()))
+                    .or_default()
+                    .insert(source_column.clone());
+            }
+            let mut table_builder = ErDiagramTableBuilder::default();
+            for name in &table_names {
+                let mut column_rows = sqlx::query(
+                    "SELECT name, type, \"notnull\" AS is_not_null, pk FROM pragma_table_info(?) ORDER BY cid",
+                )
+                .bind(name)
+                .fetch(&mut connection);
+                while let Some(row) = column_rows.try_next().await.map_err(|error| {
+                    format!("Could not stream columns for SQLite table {name}: {error}")
+                })? {
+                    let is_primary_key = row.get::<i64, _>("pk") > 0;
+                    table_builder.push(
+                        None,
+                        name.clone(),
+                        ErDiagramColumn {
+                            name: row.get("name"),
+                            data_type: row.get::<String, _>("type"),
+                            nullable: row.get::<i64, _>("is_not_null") == 0 && !is_primary_key,
+                            is_primary_key,
+                        },
+                        &relation_columns,
+                    );
+                }
+            }
+            let tables = table_builder.finish();
+            for (source_table, source_column, target_table, sequence) in unresolved_relationships {
+                if let Some(target_column) = tables
+                    .iter()
+                    .find(|table| table.name == target_table)
+                    .and_then(|table| {
+                        table
+                            .columns
+                            .iter()
+                            .filter(|column| column.is_primary_key)
+                            .nth(sequence)
+                    })
+                    .map(|column| column.name.clone())
+                {
+                    relationships.push(ErDiagramRelationship {
+                        source_schema: None,
+                        source_table,
+                        source_column,
+                        target_schema: None,
+                        target_table,
+                        target_column,
+                    });
+                }
+            }
+            Ok(ErDiagramSchema {
+                tables,
+                relationships,
+            })
+        }
+        database => Err(format!("Unsupported database type: {database}")),
+    }
+}
+
+fn relationship_columns(
+    relationships: &[ErDiagramRelationship],
+) -> HashMap<(Option<String>, String), HashSet<String>> {
+    let mut relationship_columns: HashMap<(Option<String>, String), HashSet<String>> =
+        HashMap::new();
+    for relationship in relationships {
+        relationship_columns
+            .entry((
+                relationship.source_schema.clone(),
+                relationship.source_table.clone(),
+            ))
+            .or_default()
+            .insert(relationship.source_column.clone());
+        relationship_columns
+            .entry((
+                relationship.target_schema.clone(),
+                relationship.target_table.clone(),
+            ))
+            .or_default()
+            .insert(relationship.target_column.clone());
+    }
+    relationship_columns
+}
+
+#[derive(Default)]
+struct ErDiagramTableBuilder {
+    tables: Vec<ErDiagramTable>,
+    table_indices: HashMap<(Option<String>, String), usize>,
+    key_column_counts: HashMap<(Option<String>, String), usize>,
+    regular_column_counts: HashMap<(Option<String>, String), usize>,
+}
+
+impl ErDiagramTableBuilder {
+    fn push(
+        &mut self,
+        schema: Option<String>,
+        table_name: String,
+        column: ErDiagramColumn,
+        relationship_columns: &HashMap<(Option<String>, String), HashSet<String>>,
+    ) {
+        const MAX_KEY_COLUMNS: usize = 24;
+        const MAX_REGULAR_COLUMNS: usize = 8;
+        let key = (schema.clone(), table_name.clone());
+        let index = *self.table_indices.entry(key.clone()).or_insert_with(|| {
+            self.tables.push(ErDiagramTable {
+                name: table_name,
+                schema,
+                column_count: 0,
+                columns: Vec::new(),
+            });
+            self.tables.len() - 1
+        });
+        let table = &mut self.tables[index];
+        table.column_count += 1;
+        let is_key_column = column.is_primary_key
+            || relationship_columns
+                .get(&key)
+                .is_some_and(|columns| columns.contains(&column.name));
+        if is_key_column {
+            let count = self.key_column_counts.entry(key).or_default();
+            if *count < MAX_KEY_COLUMNS {
+                table.columns.push(column);
+                *count += 1;
+            }
+        } else {
+            let count = self.regular_column_counts.entry(key).or_default();
+            if *count < MAX_REGULAR_COLUMNS {
+                table.columns.push(column);
+                *count += 1;
+            }
+        }
+    }
+
+    fn finish(self) -> Vec<ErDiagramTable> {
+        self.tables
     }
 }
 
@@ -635,6 +969,85 @@ mod tests {
             assert_eq!(page.total, 3);
             assert_eq!(page.page, 2);
             assert_eq!(page.page_size, 2);
+        });
+    }
+
+    #[test]
+    fn get_er_diagram_includes_unrelated_tables_and_foreign_keys() {
+        tauri::async_runtime::block_on(async {
+            let database_path = std::env::temp_dir().join(format!(
+                "nexus-studio-er-diagram-{}-{}.sqlite",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock should be after the Unix epoch")
+                    .as_nanos()
+            ));
+            let database_path = database_path.to_string_lossy().into_owned();
+            let options = SqliteConnectOptions::new()
+                .filename(&database_path)
+                .create_if_missing(true);
+            let mut connection = SqliteConnection::connect_with(&options)
+                .await
+                .expect("test database should open");
+            sqlx::query("CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+                .execute(&mut connection)
+                .await
+                .expect("parent table should be created");
+            sqlx::query("CREATE TABLE employees (id INTEGER PRIMARY KEY, department_id INTEGER REFERENCES departments)")
+                .execute(&mut connection)
+                .await
+                .expect("child table should be created");
+            sqlx::query("CREATE TABLE audit_log (id INTEGER PRIMARY KEY, message TEXT)")
+                .execute(&mut connection)
+                .await
+                .expect("unrelated table should be created");
+            let wide_columns = (0..100)
+                .map(|index| format!("column_{index} TEXT"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            sqlx::query(&format!(
+                "CREATE TABLE wide_table (id INTEGER PRIMARY KEY, {wide_columns})"
+            ))
+            .execute(&mut connection)
+            .await
+            .expect("wide table should be created");
+            drop(connection);
+
+            let diagram = get_er_diagram_with_manager(
+                ConnectionTestRequest {
+                    db_type: "sqlite".to_string(),
+                    host: None,
+                    port: None,
+                    database: None,
+                    username: None,
+                    password: None,
+                    sqlite_path: Some(database_path.clone()),
+                    ssh: None,
+                    connection_id: None,
+                    persist_ssh_tunnel: false,
+                },
+                &SshTunnelManager::default(),
+            )
+            .await
+            .expect("ER diagram metadata should load");
+            let _ = std::fs::remove_file(&database_path);
+
+            assert_eq!(diagram.tables.len(), 4);
+            assert!(diagram.tables.iter().any(|table| table.name == "audit_log"));
+            let wide_table = diagram
+                .tables
+                .iter()
+                .find(|table| table.name == "wide_table")
+                .expect("wide table should be included in the diagram");
+            assert_eq!(wide_table.column_count, 101);
+            assert!(wide_table.columns.len() <= 32);
+            assert!(wide_table.columns.iter().any(|column| column.name == "id"));
+            assert_eq!(diagram.relationships.len(), 1);
+            assert_eq!(diagram.relationships[0].source_table, "employees");
+            assert_eq!(diagram.relationships[0].source_column, "department_id");
+            assert_eq!(diagram.relationships[0].target_table, "departments");
+            assert_eq!(diagram.relationships[0].target_column, "id");
         });
     }
 }

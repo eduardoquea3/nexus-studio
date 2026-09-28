@@ -60,6 +60,34 @@ export interface TableSchema {
   indexes: string[];
 }
 
+export interface ErDiagramColumn {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+}
+
+export interface ErDiagramTable {
+  name: string;
+  schema?: string;
+  columnCount: number;
+  columns: ErDiagramColumn[];
+}
+
+export interface ErDiagramRelationship {
+  sourceTable: string;
+  sourceSchema?: string;
+  sourceColumn: string;
+  targetTable: string;
+  targetSchema?: string;
+  targetColumn: string;
+}
+
+export interface ErDiagramSchema {
+  tables: ErDiagramTable[];
+  relationships: ErDiagramRelationship[];
+}
+
 export interface TableRules {
   constraints: string[];
   triggers: string[];
