@@ -171,7 +171,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
   listFunctions: mock(async () => []),
   listOtherObjects: mock(async () => []),
   listSchemaObjects,
-  listSshConfigAliases: mock(async () => []),
+  listSshConfigHosts: mock(async () => []),
   listTables: mock(async () => []),
   listViews: mock(async () => []),
   runQuery,
