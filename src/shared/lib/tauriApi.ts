@@ -6,6 +6,7 @@ import type {
   DataPage,
   ObjectMeta,
   QueryResult,
+  SshTunnelConfig,
   TableRules,
   TableSchema,
 } from "../types/models";
@@ -18,6 +19,9 @@ export interface ConnectionTestRequest {
   username?: string;
   password?: string;
   sqlitePath?: string;
+  ssh?: SshTunnelConfig;
+  connectionId?: string;
+  persistSshTunnel?: boolean;
 }
 
 export interface ListDatabasesRequest extends ConnectionTestRequest {}
@@ -35,27 +39,37 @@ export async function createSqliteDatabase(path: string): Promise<void> {
   return invoke("create_sqlite_database", { path });
 }
 
-export async function testSavedConnection(profile: ConnectionProfile): Promise<string> {
+function connectionRequestForProfile(
+  profile: ConnectionProfile,
+  database?: string,
+): ConnectionTestRequest {
   if (profile.connect_mode.type === "connection_string") {
-    if (profile.db_type !== "sqlite") {
-      throw new Error("Connection strings are only supported for SQLite connections.");
-    }
-
-    return testConnectionFields({
+    return {
       dbType: profile.db_type,
       password: profile.password,
       sqlitePath: profile.connect_mode.value,
-    });
+    };
   }
 
-  return testConnectionFields({
+  return {
     dbType: profile.db_type,
     host: profile.connect_mode.host,
     port: profile.connect_mode.port,
-    database: profile.connect_mode.database,
+    database: database ?? profile.connect_mode.database,
     username: profile.connect_mode.username,
     password: profile.password,
-  });
+    ssh: profile.ssh_tunnel ?? undefined,
+    connectionId: profile.id,
+    persistSshTunnel: true,
+  };
+}
+
+export async function testSavedConnection(profile: ConnectionProfile): Promise<string> {
+  if (profile.connect_mode.type === "connection_string" && profile.db_type !== "sqlite") {
+    throw new Error("Connection strings are only supported for SQLite connections.");
+  }
+
+  return testConnectionFields(connectionRequestForProfile(profile));
 }
 
 export async function listDatabases(request: ListDatabasesRequest): Promise<string[]> {
@@ -81,6 +95,10 @@ export async function disconnect(id: string): Promise<void> {
   return invoke("disconnect", { id });
 }
 
+export async function closeSshTunnel(connectionId: string): Promise<void> {
+  return invoke("close_ssh_tunnel", { connectionId });
+}
+
 export async function listTables(id: string): Promise<ObjectMeta[]> {
   return invoke("list_tables", { id });
 }
@@ -101,21 +119,7 @@ export async function listSchemaObjects(
   profile: ConnectionProfile,
   database?: string,
 ): Promise<ObjectMeta[]> {
-  const request: ConnectionTestRequest =
-    profile.connect_mode.type === "connection_string"
-      ? {
-          dbType: profile.db_type,
-          password: profile.password,
-          sqlitePath: profile.connect_mode.value,
-        }
-      : {
-          dbType: profile.db_type,
-          host: profile.connect_mode.host,
-          port: profile.connect_mode.port,
-          database: database ?? profile.connect_mode.database,
-          username: profile.connect_mode.username,
-          password: profile.password,
-        };
+  const request = connectionRequestForProfile(profile, database);
 
   return invoke("list_schema_objects", { request });
 }
@@ -124,21 +128,7 @@ export async function getRoutineDefinition(
   profile: ConnectionProfile,
   routine: Pick<ObjectMeta, "name" | "object_type" | "signature">,
 ): Promise<string> {
-  const request: ConnectionTestRequest =
-    profile.connect_mode.type === "connection_string"
-      ? {
-          dbType: profile.db_type,
-          password: profile.password,
-          sqlitePath: profile.connect_mode.value,
-        }
-      : {
-          dbType: profile.db_type,
-          host: profile.connect_mode.host,
-          port: profile.connect_mode.port,
-          database: profile.connect_mode.database,
-          username: profile.connect_mode.username,
-          password: profile.password,
-        };
+  const request = connectionRequestForProfile(profile);
 
   return invoke("get_routine_definition", {
     request: {
@@ -155,17 +145,7 @@ export async function getTableSchema(
   table: string,
   schema?: string,
 ): Promise<TableSchema> {
-  const request: ConnectionTestRequest =
-    profile.connect_mode.type === "connection_string"
-      ? { dbType: profile.db_type, password: profile.password, sqlitePath: profile.connect_mode.value }
-      : {
-          dbType: profile.db_type,
-          host: profile.connect_mode.host,
-          port: profile.connect_mode.port,
-          database: profile.connect_mode.database,
-          username: profile.connect_mode.username,
-          password: profile.password,
-        };
+  const request = connectionRequestForProfile(profile);
 
   return invoke("get_table_schema", { request: { request, table, schema } });
 }
@@ -183,21 +163,7 @@ export async function getTableData(
   filter?: string,
   schema?: string,
 ): Promise<DataPage> {
-  const request: ConnectionTestRequest =
-    profile.connect_mode.type === "connection_string"
-      ? {
-          dbType: profile.db_type,
-          password: profile.password,
-          sqlitePath: profile.connect_mode.value,
-        }
-      : {
-          dbType: profile.db_type,
-          host: profile.connect_mode.host,
-          port: profile.connect_mode.port,
-          database: profile.connect_mode.database,
-          username: profile.connect_mode.username,
-          password: profile.password,
-        };
+  const request = connectionRequestForProfile(profile);
 
   return invoke("get_table_data", {
     request: { request, table, schema, page, pageSize, sort, filter },
@@ -205,27 +171,18 @@ export async function getTableData(
 }
 
 export async function runQuery(profile: ConnectionProfile, sql: string): Promise<QueryResult> {
-  const request: ConnectionTestRequest =
-    profile.connect_mode.type === "connection_string"
-      ? {
-          dbType: profile.db_type,
-          password: profile.password,
-          sqlitePath: profile.connect_mode.value,
-        }
-      : {
-          dbType: profile.db_type,
-          host: profile.connect_mode.host,
-          port: profile.connect_mode.port,
-          database: profile.connect_mode.database,
-          username: profile.connect_mode.username,
-          password: profile.password,
-        };
+  const request = connectionRequestForProfile(profile);
 
   return invoke("run_query", { request: { request, sql } });
 }
 
-export async function listSshConfigAliases(): Promise<string[]> {
-  return invoke<string[]>("list_ssh_config_aliases");
+export type SshConfigHost = {
+  alias: string;
+  hostname: string;
+};
+
+export async function listSshConfigHosts(): Promise<SshConfigHost[]> {
+  return invoke<SshConfigHost[]>("list_ssh_config_hosts");
 }
 
 type LocalFont = { family: string };
