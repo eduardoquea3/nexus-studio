@@ -128,6 +128,45 @@ pub struct TableSchemaResult {
     pub indexes: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErDiagramSchema {
+    pub tables: Vec<ErDiagramTable>,
+    pub relationships: Vec<ErDiagramRelationship>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErDiagramTable {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    pub column_count: usize,
+    pub columns: Vec<ErDiagramColumn>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ErDiagramColumn {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub is_primary_key: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErDiagramRelationship {
+    pub source_table: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_schema: Option<String>,
+    pub source_column: String,
+    pub target_table: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_schema: Option<String>,
+    pub target_column: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::ConnectionTestRequest;

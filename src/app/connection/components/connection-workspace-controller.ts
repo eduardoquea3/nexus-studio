@@ -65,6 +65,7 @@ export function useConnectionWorkspaceController({
     createSqlTab(1, profile.id, getInitialDatabase(profile)),
   ]);
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
+  const [isErDiagramOpen, setIsErDiagramOpen] = useState(false);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const [activeTabId, setActiveTabId] = useState("sql-1");
   const [isRunning, setIsRunning] = useState(false);
@@ -149,6 +150,14 @@ export function useConnectionWorkspaceController({
               isActive: false as const,
               command: "new-connection" as const,
             },
+            {
+              id: "command:generate-er-diagram",
+              kind: "command" as const,
+              label: "Generate ER diagram",
+              detail: `Map all tables in ${selectedDatabase}`,
+              isActive: false as const,
+              command: "generate-er-diagram" as const,
+            },
           ]
         : commandBarMode === "tab-switcher"
           ? commandBarTabs.map((tab) => {
@@ -190,8 +199,8 @@ export function useConnectionWorkspaceController({
       commandBarTabs,
       connections,
       profile.id,
-      schemaObjects,
       selectedDatabase,
+      schemaObjects,
     ],
   );
 
@@ -237,7 +246,8 @@ export function useConnectionWorkspaceController({
       await testSavedConnection(nextProfile);
       setConnectionWorkspace({
         connectionId: profile.id,
-        activeTabId: activeTabId || null,
+        activeTabId:
+          (activeTabId === "er-diagram" ? activeSqlTabIdRef.current : activeTabId) || null,
         tabs: [...sqlTabsRef.current, ...tableTabs],
       });
       await onConnectionSwitch?.(nextProfile);
@@ -340,6 +350,7 @@ export function useConnectionWorkspaceController({
     initializedWorkspaceConnectionIdRef.current = profile.id;
     restoringWorkspaceRef.current = true;
     setActiveConnection(profile.id);
+    setIsErDiagramOpen(false);
     if (storedWorkspace) {
       const restoredSqlTabs = storedWorkspace.tabs.flatMap((tab): SqlEditorTab[] =>
         tab.type === "query"
@@ -397,10 +408,18 @@ export function useConnectionWorkspaceController({
     }
     setConnectionWorkspace({
       connectionId: profile.id,
-      activeTabId: activeTabId || null,
+      activeTabId: (activeTabId === "er-diagram" ? activeSqlTabId : activeTabId) || null,
       tabs: [...sqlTabs, ...tableTabs],
     });
-  }, [activeTabId, profile.id, setConnectionWorkspace, sqlTabs, tableTabs, workspaceHydrated]);
+  }, [
+    activeSqlTabId,
+    activeTabId,
+    profile.id,
+    setConnectionWorkspace,
+    sqlTabs,
+    tableTabs,
+    workspaceHydrated,
+  ]);
   useEffect(() => {
     sqlTabsRef.current = sqlTabs;
   }, [sqlTabs]);
@@ -512,6 +531,22 @@ export function useConnectionWorkspaceController({
     sqlTabsRef.current = tabs;
     setSqlTabs(tabs);
   };
+  const openErDiagram = () => {
+    setIsErDiagramOpen(true);
+    setActiveTabId("er-diagram");
+    focusWorkspaceAfterRender();
+  };
+  const closeErDiagram = () => {
+    setIsErDiagramOpen(false);
+    if (activeTabId === "er-diagram") {
+      const fallbackTabId =
+        sqlTabsRef.current.find((tab) => tab.id === activeSqlTabIdRef.current)?.id ??
+        sqlTabsRef.current[0]?.id ??
+        tableTabs[0]?.id ??
+        "";
+      setActiveTabId(fallbackTabId);
+    }
+  };
   const openRoutineTab = async (routine: ObjectMeta) => {
     const id = `routine-${encodeURIComponent(selectedDatabase)}-${routine.object_type}-${encodeURIComponent(routine.signature ?? routine.name)}`;
     if (sqlTabsRef.current.some((tab) => tab.id === id)) {
@@ -616,8 +651,7 @@ export function useConnectionWorkspaceController({
       getQuerySegment(
         activeSqlTab.query,
         cursorPosition ?? editorViewRef.current.state.selection.main.head,
-      ) ||
-      DEFAULT_QUERY;
+      ) || DEFAULT_QUERY;
     await executeQuery(query);
   };
   const executeAllQuery = async () => {
@@ -638,13 +672,13 @@ export function useConnectionWorkspaceController({
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     if (event.key === "Enter" && activeSqlTab) {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.closest(".cm-editor, .cm-content")
-      )
+      if (event.target instanceof HTMLElement && event.target.closest(".cm-editor, .cm-content"))
         return;
       event.preventDefault();
       void (event.shiftKey ? executeActiveQuery() : executeAllQuery());
+    } else if (event.key.toLowerCase() === "w" && activeTabId === "er-diagram") {
+      event.preventDefault();
+      closeErDiagram();
     } else if (event.shiftKey) {
       return;
     } else if (event.key.toLowerCase() === "t") {
@@ -666,6 +700,7 @@ export function useConnectionWorkspaceController({
     selectedDatabase,
     activeSqlTab,
     activeTableTab,
+    isErDiagramOpen,
     sqlTabs,
     tableTabs,
     activeSqlTabId,
@@ -696,6 +731,8 @@ export function useConnectionWorkspaceController({
     closeCommandBar,
     switchConnection,
     openTableTab,
+    openErDiagram,
+    closeErDiagram,
     openRoutineTab,
     handleDatabaseChange,
     createEditorTab,

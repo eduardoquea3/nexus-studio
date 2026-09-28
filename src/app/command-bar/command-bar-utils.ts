@@ -34,7 +34,7 @@ export type CommandBarItem =
       label: string;
       detail: string;
       isActive: false;
-      command: "disconnect" | "new-connection";
+      command: "disconnect" | "new-connection" | "generate-er-diagram";
     };
 
 export function filterCommandBarItems(

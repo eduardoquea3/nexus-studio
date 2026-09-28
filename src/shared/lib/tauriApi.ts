@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
+
 import type {
   ConnectionProfile,
   ConnectResult,
   DataPage,
+  ErDiagramSchema,
   ObjectMeta,
   QueryResult,
   SshTunnelConfig,
@@ -148,6 +150,14 @@ export async function getTableSchema(
   const request = connectionRequestForProfile(profile);
 
   return invoke("get_table_schema", { request: { request, table, schema } });
+}
+
+export async function getErDiagram(
+  profile: ConnectionProfile,
+  database?: string,
+): Promise<ErDiagramSchema> {
+  const request = connectionRequestForProfile(profile, database);
+  return invoke("get_er_diagram", { request });
 }
 
 export async function getTableRules(id: string, table: string): Promise<TableRules> {
