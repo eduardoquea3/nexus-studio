@@ -15,6 +15,9 @@ export async function getDatabases(profile: ConnectionProfile): Promise<string[]
     database: initialDatabase,
     username: profile.connect_mode.username,
     password: profile.password,
+    ssh: profile.ssh_tunnel ?? undefined,
+    connectionId: profile.id,
+    persistSshTunnel: true,
   });
 
   return Array.from(new Set(initialDatabase ? [initialDatabase, ...databases] : databases));

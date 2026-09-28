@@ -1,3 +1,4 @@
+import { Prec } from "@codemirror/state";
 import { Decoration, EditorView, keymap, ViewPlugin } from "@codemirror/view";
 import { RiArrowDownSLine, RiPlayLine } from "@remixicon/react";
 import CodeMirror from "@uiw/react-codemirror";
@@ -119,24 +120,26 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               sqlCompletionIcons,
               sqlEditorTheme,
               activeQueryHighlight,
-              keymap.of([
-                {
-                  key: "Mod-Shift-Enter",
-                  preventDefault: true,
-                  run: (view) => {
-                    void executeActiveQuery(view.state.selection.main.head);
-                    return true;
+              Prec.high(
+                keymap.of([
+                  {
+                    key: "Mod-Shift-Enter",
+                    preventDefault: true,
+                    run: (view) => {
+                      void executeActiveQuery(view.state.selection.main.head);
+                      return true;
+                    },
                   },
-                },
-                {
-                  key: "Mod-Enter",
-                  preventDefault: true,
-                  run: () => {
-                    void executeAllQuery();
-                    return true;
+                  {
+                    key: "Mod-Enter",
+                    preventDefault: true,
+                    run: () => {
+                      void executeAllQuery();
+                      return true;
+                    },
                   },
-                },
-              ]),
+                ]),
+              ),
               EditorView.theme({
                 ".cm-content": { padding: "0.35rem 0" },
                 ".cm-line": { padding: "0 1rem 0 0.5rem", lineHeight: "1.5" },
