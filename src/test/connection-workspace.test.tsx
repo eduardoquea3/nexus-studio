@@ -493,18 +493,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     const table = screen.getByRole("table");
     expect(screen.getByRole("navigation", { name: "SQL result pagination" })).not.toBeNull();
-    expect(screen.getByText("Rows 1-100 of 205")).not.toBeNull();
     expect(screen.getByText("Page 1 of 3")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "SQL result pagination" }).textContent).not.toContain("Rows");
     expect(table.querySelectorAll("tbody tr").length).toBe(100);
 
     fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
-    expect(screen.getByText("Rows 101-200 of 205")).not.toBeNull();
     expect(screen.getByText("Page 2 of 3")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "SQL result pagination" }).textContent).not.toContain("Rows");
     expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(100);
 
     fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
-    expect(screen.getByText("Rows 201-205 of 205")).not.toBeNull();
     expect(screen.getByText("Page 3 of 3")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "SQL result pagination" }).textContent).not.toContain("Rows");
     expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(5);
     expect(screen.getByRole("button", { name: "Next result page" }).getAttribute("disabled")).toBe(
       "",
@@ -514,6 +514,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 200');
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 204');
     expect(screen.getByLabelText("SQL result JSON").textContent).not.toContain('"id": 199');
+    expect(screen.getByText("Rows 201-205 of 205 · 2 ms")).not.toBeNull();
   });
 
   test("hides the previous result and JSON actions while a new query is running", async () => {
@@ -701,8 +702,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
 
-    expect(screen.getByText("Rows 1-100 of 10001")).not.toBeNull();
     expect(screen.getByText("Page 1 of 101")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "SQL result pagination" }).textContent).not.toContain("Rows");
+    expect(screen.getByText("Rows 1-100 of 10001 · 1 ms")).not.toBeNull();
     expect(runQuery).toHaveBeenCalledTimes(1);
   });
 

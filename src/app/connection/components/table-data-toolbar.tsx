@@ -1,12 +1,11 @@
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 
-import { RiAddLine, RiDownloadLine } from "@remixicon/react";
+import { RiAddLine, RiArrowLeftSLine, RiArrowRightSLine, RiDownloadLine } from "@remixicon/react";
 
 import type { JsonActionResult } from "@/shared/lib/json-actions";
 import type { ViewMode } from "@/shared/types/models";
 
 import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type TableDataToolbarProps = {
@@ -25,8 +24,10 @@ type TableDataToolbarProps = {
     filename?: string,
   ) => string;
   exportJsonAction: (text: string, filename: string) => JsonActionResult;
-  total: number;
-  loaded: number;
+  page: number;
+  pageCount: number;
+  isLoading: boolean;
+  setPage: Dispatch<SetStateAction<number>>;
 };
 
 export function TableDataToolbar({
@@ -41,11 +42,13 @@ export function TableDataToolbar({
   setFeedback,
   exportJson,
   exportJsonAction,
-  total,
-  loaded,
+  page,
+  pageCount,
+  isLoading,
+  setPage,
 }: TableDataToolbarProps) {
   return (
-    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
+    <div className="flex h-10 min-h-9 max-h-10 shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
       <div className="flex items-center gap-2">
         {canShowJson ? (
           <div
@@ -119,14 +122,36 @@ export function TableDataToolbar({
           </Button>
         ) : null}
       </div>
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="h-6 rounded-full px-2 text-[0.625rem]">
-          {total} rows
-        </Badge>
-        <Badge variant="secondary" className="h-6 rounded-full px-2 text-[0.625rem]">
-          Showing {loaded}
-        </Badge>
-      </div>
+      <nav
+        aria-label="Table data pagination"
+        className="flex h-7 items-center gap-1 text-[0.65rem]"
+      >
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="border-border disabled:hidden p-1 mr-1"
+          disabled={page <= 1 || isLoading}
+          onClick={() => setPage((current) => Math.max(1, current - 1))}
+          aria-label="Previous table page"
+        >
+          <RiArrowLeftSLine />
+        </Button>
+        <span className="text-center px-1">
+          Page {page} of {pageCount}
+        </span>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="border border-border disabled:hidden p-1 ml-1"
+          disabled={isLoading || page >= pageCount}
+          onClick={() => setPage((current) => current + 1)}
+          aria-label="Next table page"
+        >
+          <RiArrowRightSLine />
+        </Button>
+      </nav>
     </div>
   );
 }

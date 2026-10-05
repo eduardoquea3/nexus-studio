@@ -39,7 +39,8 @@ export function TableDataTab({
   refreshToken = 0,
   exportJson: exportJsonAction = exportJsonFile,
 }: TableDataTabProps) {
-  const { data, error, isLoading, refetch } = useTableData(profile, table, schema);
+  const [page, setPage] = useState(1);
+  const { data, error, isLoading, refetch } = useTableData(profile, table, schema, page);
   const tableSchema = useTableSchema(profile, table, true, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
@@ -91,6 +92,9 @@ export function TableDataTab({
   );
 
   useEffect(() => {
+    setPage(1);
+  }, [profile.id, table, schema]);
+  useEffect(() => {
     setViewMode("table");
     setFeedback(null);
     setSelectedRowIndex(null);
@@ -101,8 +105,9 @@ export function TableDataTab({
   useEffect(() => {
     if (previousRefreshTokenRef.current === refreshToken) return;
     previousRefreshTokenRef.current = refreshToken;
-    void refetch();
-  }, [refreshToken, refetch]);
+    if (page === 1) void refetch();
+    else setPage(1);
+  }, [refreshToken, refetch, page]);
   useEffect(() => {
     if (!schemaColumns || lastStructureSignatureRef.current === structureSignature) return;
     lastStructureSignatureRef.current = structureSignature;
@@ -229,8 +234,10 @@ export function TableDataTab({
         setFeedback={(value) => setFeedback(value)}
         exportJson={exportJson}
         exportJsonAction={exportJsonAction}
-        total={data?.total ?? 0}
-        loaded={data?.rows.length ?? 0}
+        page={page}
+        pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
+        isLoading={isLoading}
+        setPage={setPage}
       />
     </Tabs>
   );

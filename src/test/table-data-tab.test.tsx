@@ -17,15 +17,19 @@ const emptyTableData: DataPage = {
 let currentTableData = emptyTableData;
 let tableLoading = false;
 let tableError: Error | null = null;
+let requestedPage = 1;
 const refetchTable = mock(() => Promise.resolve());
 
 mock.module("@/app/connection/hooks/use-table-data", () => ({
-  useTableData: () => ({
-    data: currentTableData,
-    error: tableError,
-    isLoading: tableLoading,
-    refetch: refetchTable,
-  }),
+  useTableData: (_profile: unknown, _table: string, _schema: string | undefined, page: number) => {
+    requestedPage = page;
+    return {
+      data: currentTableData,
+      error: tableError,
+      isLoading: tableLoading,
+      refetch: refetchTable,
+    };
+  },
 }));
 
 mock.module("@/app/connection/hooks/use-table-schema", () => ({
@@ -118,6 +122,7 @@ describe("TableDataTab empty rows", () => {
     currentTableData = emptyTableData;
     tableLoading = false;
     tableError = null;
+    requestedPage = 1;
     refetchTable.mockClear();
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
     Object.defineProperty(URL, "createObjectURL", {
@@ -129,6 +134,18 @@ describe("TableDataTab empty rows", () => {
       value: originalRevokeObjectURL,
     });
     document.createElement = originalCreateElement;
+  });
+
+  test("navigates through server pages and displays page count", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    expect(screen.getByText("Page 1 of 3")).not.toBeNull();
+    expect(screen.queryByText(/rows/i)).toBeNull();
+    expect(screen.queryByText(/showing/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+    expect(requestedPage).toBe(2);
+    expect(screen.getByRole("button", { name: "Previous table page" }).hasAttribute("disabled")).toBe(false);
   });
 
   test("shows table headers even when there are no rows", () => {
@@ -146,8 +163,8 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("enum")).not.toBeNull();
     expect(screen.getByRole("table").className.includes("min-w-max")).toBe(true);
     expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
-    expect(screen.getByText("0 rows")).not.toBeNull();
-    expect(screen.getByText("Showing 0")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
+    expect(screen.getByText("Page 1 of 1")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
     expect(screen.getByRole("table").className.includes("h-full")).toBe(false);

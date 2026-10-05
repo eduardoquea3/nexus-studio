@@ -139,7 +139,7 @@ export function QueryResultView({
           )}
         </div>
       </div>
-      <div className="grid h-9 min-h-9 max-h-9 w-full shrink-0 grid-cols-[1fr_auto] items-center border-t border-border/70 bg-background/80 px-2 py-1">
+      <div className="grid h-10 min-h-9 max-h-10 w-full shrink-0 grid-cols-[1fr_auto] items-center border-t border-border/70 bg-background/80 px-2">
         <div
           className="flex h-6 items-center justify-self-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
           role="group"
@@ -173,9 +173,6 @@ export function QueryResultView({
             aria-label="SQL result pagination"
             className="flex h-7 items-center gap-1 text-[0.65rem] text-muted-foreground"
           >
-            <span className="hidden sm:inline">
-              Rows {firstVisibleRow}-{lastVisibleRow} of {result.rows.length}
-            </span>
             <Button
               type="button"
               size="xs"
