@@ -17,3 +17,4 @@ Load table records in pages of 100, show current/total pages, and place paginati
 - `bun test src/test/table-data-tab.test.tsx`: 18 passed, 0 failed.
 - `bun test`: 133 passed, 0 failed. `bun run build` passed; Vite reported a large-chunk warning. `git diff --cached --check` passed.
 - The page-count label includes “Page” to match the SQL result pager and its tests.
+- Work-unit commit: `25a55e129c4d00c1eaac99f8c7ae5097c4172dbf` (`feat(connection): paginate table data`).
