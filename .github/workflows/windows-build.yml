@@ -76,6 +76,23 @@ jobs:
       - name: Run frontend tests
         run: bun test --parallel=1
 
+      # linuxdeploy bundles libwayland from the build host. On systems with a
+      # newer Mesa/EGL stack, WebKitGTK can then abort with EGL_BAD_PARAMETER.
+      # Keep Wayland libraries host-provided, as recommended by the AppImage
+      # excludelist and used by TabularisDB's build workflow.
+      - name: Exclude bundled Wayland libraries from AppImage (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p ~/.cache/tauri
+          curl -fsSL https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh \
+            -o ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+          cat >> ~/.cache/tauri/linuxdeploy-plugin-gtk.sh <<'EOF'
+
+          # Keep Wayland libraries host-provided to avoid EGL_BAD_PARAMETER.
+          find "$APPDIR" -name 'libwayland-*.so*' -delete
+          EOF
+          chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+
       - name: Build Tauri application
         run: bun run tauri build
 
