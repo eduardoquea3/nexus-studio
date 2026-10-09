@@ -37,6 +37,8 @@ bun run tauri dev
 
 The Tauri development command starts the Vite frontend and opens the native application. To run only the frontend in a browser, use `bun run dev`.
 
+Install or update the Linux AppImage with `curl`; see [Linux installation](docs/instalacion-linux.md) for details.
+
 ## Development Commands
 
 | Command | Purpose |
