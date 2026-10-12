@@ -10,10 +10,11 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use std::net::TcpListener;
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tauri::State;
 use tokio::net::TcpStream;
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::sleep;
 
 #[tauri::command]
@@ -75,7 +76,7 @@ pub async fn test_connection(
 
     if result.is_err() && request.persist_ssh_tunnel {
         if let Some(connection_id) = request.connection_id.as_deref() {
-            tunnel_manager.close(connection_id);
+            let _ = tunnel_manager.close(connection_id).await;
         }
     }
 
@@ -84,25 +85,53 @@ pub async fn test_connection(
 }
 
 #[tauri::command]
-pub fn close_ssh_tunnel(connection_id: String, tunnel_manager: State<'_, SshTunnelManager>) {
-    tunnel_manager.close(&connection_id);
+pub async fn close_ssh_tunnel(
+    connection_id: String,
+    tunnel_manager: State<'_, SshTunnelManager>,
+) -> Result<(), String> {
+    tunnel_manager.close(&connection_id).await
+}
+
+enum TunnelBackend {
+    OpenSsh(Child),
+    Russh(crate::commands::ssh_russh::RusshTunnelGuard),
 }
 
 pub(crate) struct SshTunnelGuard {
-    child: Child,
+    backend: TunnelBackend,
     pub(crate) local_port: u16,
+}
+
+impl SshTunnelGuard {
+    fn is_alive(&mut self) -> Result<bool, String> {
+        match &mut self.backend {
+            TunnelBackend::OpenSsh(child) => child
+                .try_wait()
+                .map(|status| status.is_none())
+                .map_err(|error| format!("Could not inspect the SSH process: {error}")),
+            TunnelBackend::Russh(tunnel) => Ok(tunnel.is_alive()),
+        }
+    }
 }
 
 impl Drop for SshTunnelGuard {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let TunnelBackend::OpenSsh(child) = &mut self.backend {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
+}
+
+struct ManagedTunnel {
+    config: crate::models::SshTunnelRequest,
+    tunnel: SshTunnelGuard,
 }
 
 #[derive(Default)]
 pub(crate) struct SshTunnelManager {
-    tunnels: Mutex<HashMap<String, SshTunnelGuard>>,
+    tunnels: AsyncMutex<HashMap<String, ManagedTunnel>>,
+    opening_locks: StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
 
 impl SshTunnelManager {
@@ -110,46 +139,88 @@ impl SshTunnelManager {
         &self,
         request: &ConnectionTestRequest,
     ) -> Result<Option<u16>, String> {
-        if request.ssh.is_none() {
+        let Some(ssh) = request.ssh.as_ref() else {
+            if let Some(connection_id) = request.connection_id.as_deref() {
+                let _ = self.close(connection_id).await;
+            }
             return Ok(None);
-        }
+        };
         let connection_id = request
             .connection_id
             .as_deref()
             .ok_or("Connection id is required for a persistent SSH tunnel")?;
 
+        let opening_lock = self.opening_lock(connection_id)?;
+        let guard = opening_lock.clone().lock_owned().await;
+        let result = self.ensure_locked(connection_id, ssh, request).await;
+        drop(guard);
+        self.release_opening_lock(connection_id, &opening_lock);
+        result
+    }
+
+    async fn ensure_locked(
+        &self,
+        connection_id: &str,
+        ssh: &crate::models::SshTunnelRequest,
+        request: &ConnectionTestRequest,
+    ) -> Result<Option<u16>, String> {
         {
-            let mut tunnels = self
-                .tunnels
-                .lock()
-                .map_err(|_| "Could not access SSH tunnel state".to_string())?;
+            let mut tunnels = self.tunnels.lock().await;
             if let Some(tunnel) = tunnels.get_mut(connection_id) {
-                if tunnel
-                    .child
-                    .try_wait()
-                    .map_err(|error| format!("Could not inspect the SSH process: {error}"))?
-                    .is_none()
-                {
-                    return Ok(Some(tunnel.local_port));
+                if tunnel.config == *ssh && tunnel.tunnel.is_alive()? {
+                    return Ok(Some(tunnel.tunnel.local_port));
                 }
                 tunnels.remove(connection_id);
             }
         }
 
-        let tunnel = open_ssh_tunnel(request).await?;
-        let local_port = tunnel.as_ref().map(|tunnel| tunnel.local_port);
-        if let Some(tunnel) = tunnel {
-            self.tunnels
-                .lock()
-                .map_err(|_| "Could not access SSH tunnel state".to_string())?
-                .insert(connection_id.to_string(), tunnel);
-        }
-        Ok(local_port)
+        let Some(tunnel) = open_ssh_tunnel(request).await? else {
+            return Ok(None);
+        };
+        let local_port = tunnel.local_port;
+        self.tunnels.lock().await.insert(
+            connection_id.to_string(),
+            ManagedTunnel {
+                config: ssh.clone(),
+                tunnel,
+            },
+        );
+        Ok(Some(local_port))
     }
 
-    pub(crate) fn close(&self, connection_id: &str) {
-        if let Ok(mut tunnels) = self.tunnels.lock() {
-            tunnels.remove(connection_id);
+    pub(crate) async fn close(&self, connection_id: &str) -> Result<(), String> {
+        let opening_lock = self.opening_lock(connection_id)?;
+        let guard = opening_lock.clone().lock_owned().await;
+        self.tunnels.lock().await.remove(connection_id);
+        drop(guard);
+        self.release_opening_lock(connection_id, &opening_lock);
+        Ok(())
+    }
+
+    fn opening_lock(&self, connection_id: &str) -> Result<Arc<AsyncMutex<()>>, String> {
+        let mut locks = self
+            .opening_locks
+            .lock()
+            .map_err(|_| "Could not access SSH tunnel initialization state".to_string())?;
+        Ok(Arc::clone(
+            locks
+                .entry(connection_id.to_string())
+                .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
+        ))
+    }
+
+    fn release_opening_lock(&self, connection_id: &str, opening_lock: &Arc<AsyncMutex<()>>) {
+        if Arc::strong_count(opening_lock) != 2 {
+            return;
+        }
+        if let Ok(mut locks) = self.opening_locks.lock() {
+            let should_remove = locks
+                .get(connection_id)
+                .is_some_and(|stored| Arc::ptr_eq(stored, opening_lock))
+                && Arc::strong_count(opening_lock) == 2;
+            if should_remove {
+                locks.remove(connection_id);
+            }
         }
     }
 }
@@ -176,6 +247,31 @@ pub(crate) async fn open_ssh_tunnel(
 
     if request.db_type == "sqlite" {
         return Err("SSH tunnels are not supported for SQLite connections".to_string());
+    }
+
+    if uses_russh_password_backend(ssh)? {
+        let SshTunnelAuth::Password { credential_ref } = &ssh.auth else {
+            unreachable!("the backend selector only returns true for password auth")
+        };
+        let password = match request
+            .ssh_password
+            .as_ref()
+            .filter(|password| !password.is_empty())
+        {
+            Some(password) => password.clone(),
+            None => {
+                let credential_ref = credential_ref.as_ref().ok_or_else(|| {
+                    "Enter an SSH password or save one for this connection".to_string()
+                })?;
+                crate::commands::ssh_russh::load_ssh_password(credential_ref.clone()).await?
+            }
+        };
+        let tunnel = crate::commands::ssh_russh::open_ssh_tunnel(ssh, password).await?;
+        let local_port = tunnel.local_port;
+        return Ok(Some(SshTunnelGuard {
+            backend: TunnelBackend::Russh(tunnel),
+            local_port,
+        }));
     }
 
     let local_port = TcpListener::bind(("127.0.0.1", 0))
@@ -215,13 +311,6 @@ pub(crate) async fn open_ssh_tunnel(
         }
     }
 
-    if matches!(&ssh.auth, SshTunnelAuth::Password) {
-        return Err(
-            "SSH password authentication is not supported for automated tests; use a key file"
-                .to_string(),
-        );
-    }
-
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -234,7 +323,21 @@ pub(crate) async fn open_ssh_tunnel(
         return Err(error);
     }
 
-    Ok(Some(SshTunnelGuard { child, local_port }))
+    Ok(Some(SshTunnelGuard {
+        backend: TunnelBackend::OpenSsh(child),
+        local_port,
+    }))
+}
+
+fn uses_russh_password_backend(ssh: &crate::models::SshTunnelRequest) -> Result<bool, String> {
+    match (&ssh.source, &ssh.auth) {
+        (SshTunnelSource::Manual { .. }, SshTunnelAuth::Password { .. }) => Ok(true),
+        (SshTunnelSource::FromSshConfig { .. }, SshTunnelAuth::Password { .. }) => Err(
+            "SSH password authentication is only supported with a manual SSH destination."
+                .to_string(),
+        ),
+        (_, SshTunnelAuth::KeyFile { .. }) => Ok(false),
+    }
 }
 
 pub(crate) fn connection_target<'a>(
@@ -292,6 +395,67 @@ fn format_ssh_exit_error(child: &mut Child, status: ExitStatus) -> String {
 fn terminate_ssh_process(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[cfg(test)]
+mod ssh_backend_tests {
+    use super::uses_russh_password_backend;
+    use crate::models::{SshTunnelAuth, SshTunnelRequest, SshTunnelSource};
+
+    fn ssh_request(source: SshTunnelSource, auth: SshTunnelAuth) -> SshTunnelRequest {
+        SshTunnelRequest {
+            source,
+            auth,
+            remote_bind_host: "db.internal".to_string(),
+            remote_bind_port: 5432,
+        }
+    }
+
+    #[test]
+    fn manual_password_auth_uses_russh() {
+        let ssh = ssh_request(
+            SshTunnelSource::Manual {
+                host: "ssh.example.com".to_string(),
+                port: 22,
+                user: "db-user".to_string(),
+            },
+            SshTunnelAuth::Password {
+                credential_ref: None,
+            },
+        );
+
+        assert!(uses_russh_password_backend(&ssh).expect("manual password should be supported"));
+    }
+
+    #[test]
+    fn password_auth_with_config_alias_is_rejected_explicitly() {
+        let ssh = ssh_request(
+            SshTunnelSource::FromSshConfig {
+                alias: "production".to_string(),
+            },
+            SshTunnelAuth::Password {
+                credential_ref: None,
+            },
+        );
+
+        assert!(uses_russh_password_backend(&ssh).is_err());
+    }
+
+    #[test]
+    fn key_file_auth_keeps_using_openssh() {
+        let ssh = ssh_request(
+            SshTunnelSource::Manual {
+                host: "ssh.example.com".to_string(),
+                port: 22,
+                user: "db-user".to_string(),
+            },
+            SshTunnelAuth::KeyFile {
+                path: "id_ed25519".to_string(),
+            },
+        );
+
+        assert!(!uses_russh_password_backend(&ssh).expect("key auth should use OpenSSH"));
+    }
 }
 
 #[tauri::command]

@@ -33,7 +33,7 @@ export type SshSource =
   | { type: "from_ssh_config"; alias: string };
 
 export type SshAuth =
-  | { type: "password" }
+  | { type: "password"; credential_ref: string | null }
   | { type: "key_file"; path: string; passphrase_ref: string | null };
 
 export interface ObjectMeta {

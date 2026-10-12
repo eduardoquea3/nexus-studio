@@ -22,6 +22,7 @@ export interface ConnectionTestRequest {
   password?: string;
   sqlitePath?: string;
   ssh?: SshTunnelConfig;
+  sshPassword?: string;
   connectionId?: string;
   persistSshTunnel?: boolean;
 }
@@ -99,6 +100,14 @@ export async function disconnect(id: string): Promise<void> {
 
 export async function closeSshTunnel(connectionId: string): Promise<void> {
   return invoke("close_ssh_tunnel", { connectionId });
+}
+
+export async function storeSshPassword(credentialRef: string, password: string): Promise<void> {
+  return invoke("store_ssh_password", { credentialRef, password });
+}
+
+export async function deleteSshPassword(credentialRef: string): Promise<void> {
+  return invoke("delete_ssh_password", { credentialRef });
 }
 
 export async function listTables(id: string): Promise<ObjectMeta[]> {

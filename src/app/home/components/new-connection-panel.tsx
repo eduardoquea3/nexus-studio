@@ -34,6 +34,7 @@ import {
   AccordionTrigger,
 } from "@/components/animate-ui/components/radix/accordion";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { Panel } from "@/shared/components/panel";
 import { Field } from "@/shared/components/ui/field";
@@ -45,12 +46,13 @@ import {
   createSqliteDatabase,
   testConnectionFields,
   listSshConfigHosts,
+  storeSshPassword,
+  deleteSshPassword,
   type SshConfigHost,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
 import { useConnectionStore } from "@/shared/store/connectionStore";
 import { useModalStore } from "@/shared/store/modalStore";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { HomePanels } from "../lib/home-panels";
 
@@ -91,6 +93,7 @@ type ManualSshValues = {
   user: string;
   keyFile: string;
   password: string;
+  credentialRef: string | null;
 };
 
 type ConnectionFeedback = {
@@ -116,6 +119,7 @@ const initialManualSshValues: ManualSshValues = {
   user: "",
   keyFile: "",
   password: "",
+  credentialRef: null,
 };
 
 export function NewConnectionPanel() {
@@ -146,9 +150,7 @@ export function NewConnectionPanel() {
   const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
   const isCurrentSession = sessionKeyRef.current === sessionKey;
   const isUnsupportedLegacyProfile =
-    isCurrentSession &&
-    editingId !== undefined &&
-    unsupportedLegacyProfileId === editingId;
+    isCurrentSession && editingId !== undefined && unsupportedLegacyProfileId === editingId;
   const displayedForm = isCurrentSession ? form : initialFormValues;
 
   const clearImportedFormValues = () => {
@@ -168,6 +170,7 @@ export function NewConnectionPanel() {
   useEffect(() => {
     if (!isOpen) {
       setConnectionString("");
+      setManualSshValues(initialManualSshValues);
       clearImportedFormValues();
       sessionKeyRef.current = null;
       loadedProfileSessionKeyRef.current = null;
@@ -228,7 +231,12 @@ export function NewConnectionPanel() {
               }));
             }
             setSshAuthType(auth.type === "password" ? "password" : "key-file");
-            if (auth.type === "key_file") {
+            if (auth.type === "password") {
+              setManualSshValues((current) => ({
+                ...current,
+                credentialRef: auth.credential_ref ?? null,
+              }));
+            } else {
               setManualSshValues((current) => ({
                 ...current,
                 keyFile: auth.path,
@@ -294,7 +302,7 @@ export function NewConnectionPanel() {
           : { type: "from_ssh_config", alias: sshSource.alias },
       auth:
         sshAuthType === "password"
-          ? { type: "password" }
+          ? { type: "password", credential_ref: manualSshValues.credentialRef }
           : { type: "key_file", path: manualSshValues.keyFile, passphrase_ref: null },
       remote_bind_host: form.host,
       remote_bind_port: Number(form.port),
@@ -311,6 +319,11 @@ export function NewConnectionPanel() {
       password: form.password,
       sqlitePath: form.sqlitePath,
       ssh: getSshTunnelConfig(),
+      sshPassword:
+        sshSource === "manual" && sshAuthType === "password"
+          ? manualSshValues.password || undefined
+          : undefined,
+      connectionId: editingId,
     }) as const;
 
   const handleTest = async () => {
@@ -407,6 +420,29 @@ export function NewConnectionPanel() {
       });
       return;
     }
+    if (connectionTab === "ssh" && sshSource !== "manual" && sshAuthType === "password") {
+      setFeedback({
+        type: "error",
+        title: "Choose a manual SSH destination",
+        description:
+          "SSH password authentication is available for manual destinations. Use a key or agent for SSH config aliases.",
+      });
+      return;
+    }
+    if (
+      connectionTab === "ssh" &&
+      sshSource === "manual" &&
+      sshAuthType === "password" &&
+      !manualSshValues.password &&
+      !manualSshValues.credentialRef
+    ) {
+      setFeedback({
+        type: "error",
+        title: "SSH password is required",
+        description: "Enter an SSH password before saving this connection.",
+      });
+      return;
+    }
     if (isUnsupportedLegacyProfile) {
       setFeedback({
         type: "error",
@@ -417,15 +453,50 @@ export function NewConnectionPanel() {
     }
 
     setIsTesting(true);
+    let newCredentialRef: string | null = null;
+    let profileSaved = false;
     try {
       await testConnectionFields(getTestRequest());
-      const profile = createConnectionProfile(form, editingId, {
-        enabled: connectionTab === "ssh",
-        source: sshSource ?? "manual",
-        authType: sshAuthType,
-        manual: manualSshValues,
-      });
+
+      const connectionId = editingId ?? crypto.randomUUID();
+      let credentialRef = manualSshValues.credentialRef;
+      if (connectionTab === "ssh" && sshSource === "manual" && sshAuthType === "password") {
+        if (manualSshValues.password) {
+          credentialRef = crypto.randomUUID();
+          newCredentialRef = credentialRef;
+          await storeSshPassword(credentialRef, manualSshValues.password);
+        }
+      } else {
+        credentialRef = null;
+      }
+
+      const profile = createConnectionProfile(
+        form,
+        connectionId,
+        {
+          enabled: connectionTab === "ssh",
+          source: sshSource ?? "manual",
+          authType: sshAuthType,
+          manual: manualSshValues,
+        },
+        credentialRef,
+      );
       await saveConnection(profile);
+      profileSaved = true;
+      setManualSshValues((current) => ({
+        ...current,
+        password: "",
+        credentialRef,
+      }));
+
+      if (manualSshValues.credentialRef && manualSshValues.credentialRef !== credentialRef) {
+        try {
+          await deleteSshPassword(manualSshValues.credentialRef);
+        } catch (cleanupError) {
+          console.warn("Could not remove a replaced SSH credential", cleanupError);
+        }
+      }
+
       if (editingId) {
         updateProfile(profile);
       } else {
@@ -438,6 +509,13 @@ export function NewConnectionPanel() {
         description: "The connection profile and its credentials were saved locally.",
       });
     } catch (error) {
+      if (newCredentialRef && !profileSaved) {
+        try {
+          await deleteSshPassword(newCredentialRef);
+        } catch (cleanupError) {
+          console.warn("Could not clean up an unsaved SSH credential", cleanupError);
+        }
+      }
       setFeedback({
         type: "error",
         title: "Could not save connection",
@@ -488,17 +566,17 @@ export function NewConnectionPanel() {
                 Test
               </Button>
               {!isUnsupportedLegacyProfile && (
-              <Button
-                onClick={() => void handleConnect()}
-                disabled={
-                  isTesting ||
-                  isCreatingSqlite ||
-                  isLoadingProfile ||
-                  (connectionTab === "ssh" && sshSource === null)
-                }
-              >
-                {editingId ? "Save changes" : "Connect"}
-              </Button>
+                <Button
+                  onClick={() => void handleConnect()}
+                  disabled={
+                    isTesting ||
+                    isCreatingSqlite ||
+                    isLoadingProfile ||
+                    (connectionTab === "ssh" && sshSource === null)
+                  }
+                >
+                  {editingId ? "Save changes" : "Connect"}
+                </Button>
               )}
             </div>
           </div>
@@ -651,7 +729,6 @@ export function NewConnectionPanel() {
 
         <ConnectionFeedbackMessage feedback={feedback} />
       </div>
-
     </Panel>
   );
 }
@@ -691,18 +768,19 @@ function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
 
 function createConnectionProfile(
   values: ConnectionFormValues,
-  id: string | undefined,
+  id: string,
   ssh: {
     enabled: boolean;
     source: SshSource;
     authType: string;
     manual: ManualSshValues;
   },
+  credentialRef: string | null,
 ): ConnectionProfile {
   const dbType: DbType = values.dbType === "postgresql" ? "postgres" : values.dbType;
 
   return {
-    id: id ?? crypto.randomUUID(),
+    id,
     name: values.name.trim() || `${dbType} connection`,
     db_type: dbType,
     password: values.password,
@@ -730,7 +808,7 @@ function createConnectionProfile(
               : { type: "from_ssh_config", alias: ssh.source.alias },
           auth:
             ssh.authType === "password"
-              ? { type: "password" }
+              ? { type: "password", credential_ref: credentialRef }
               : { type: "key_file", path: ssh.manual.keyFile, passphrase_ref: null },
           remote_bind_host: values.host,
           remote_bind_port: Number(values.port),
@@ -813,7 +891,7 @@ function SshDestinationPicker({
           Choose a host from your SSH config or enter its details manually.
         </p>
       </div>
-          <div className="grid gap-2">
+      <div className="grid gap-2">
         {hosts.map((host) => {
           return (
             <button
@@ -914,14 +992,19 @@ function ManualSshFields({
           onPathChange={(path) => onChange("keyFile", path)}
         />
       ) : (
-        <Field label="SSH password">
-          <PasswordInput
-            iconLeft={RiLockPasswordLine}
-            value={values.password}
-            onChange={(event) => onChange("password", event.target.value)}
-            placeholder="SSH password"
-          />
-        </Field>
+        <div className="grid gap-1">
+          <Field label="SSH password">
+            <PasswordInput
+              iconLeft={RiLockPasswordLine}
+              value={values.password}
+              onChange={(event) => onChange("password", event.target.value)}
+              placeholder="SSH password"
+            />
+          </Field>
+          {values.credentialRef && !values.password ? (
+            <p className="text-xs text-muted-foreground">Leave blank to keep the saved password.</p>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -1010,7 +1093,6 @@ function DatabaseConnectionFields({
           placeholder="Database name"
         />
       </Field>
-
     </>
   );
 }
