@@ -130,7 +130,7 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="border-border disabled:hidden p-1 mr-1"
+          className="border-border p-1 mr-1"
           disabled={page <= 1 || isLoading}
           onClick={() => setPage((current) => Math.max(1, current - 1))}
           aria-label="Previous table page"
@@ -144,7 +144,7 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="border border-border disabled:hidden p-1 ml-1"
+          className="border border-border p-1 ml-1"
           disabled={isLoading || page >= pageCount}
           onClick={() => setPage((current) => current + 1)}
           aria-label="Next table page"

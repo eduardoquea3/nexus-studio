@@ -13,10 +13,15 @@ export const tableDataQueryKey = (
 
 export function useTableData(profile: ConnectionProfile, table: string, schema?: string, page = 1) {
   const database = profile.connect_mode.type === "fields" ? profile.connect_mode.database : "";
+  const queryKey = tableDataQueryKey(profile.id, database, schema, table, page);
 
   return useQuery({
-    queryKey: tableDataQueryKey(profile.id, database, schema, table, page),
+    queryKey,
     queryFn: () => getTableData(profile, table, page, 100, undefined, undefined, schema),
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey.slice(0, -1).every((key, index) => key === queryKey[index])
+        ? previousData
+        : undefined,
     retry: false,
   });
 }

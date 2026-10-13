@@ -40,7 +40,7 @@ export function TableDataTab({
   exportJson: exportJsonAction = exportJsonFile,
 }: TableDataTabProps) {
   const [page, setPage] = useState(1);
-  const { data, error, isLoading, refetch } = useTableData(profile, table, schema, page);
+  const { data, error, isLoading, isFetching, refetch } = useTableData(profile, table, schema, page);
   const tableSchema = useTableSchema(profile, table, true, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
@@ -195,9 +195,10 @@ export function TableDataTab({
               ) : (
                 <DataTable
                   table={dataTable}
-                  isLoading={isLoading || (columnNames.length === 0 && tableSchema.isLoading)}
+                  isLoading={isLoading || isFetching || (columnNames.length === 0 && tableSchema.isLoading)}
                   withShell={false}
                   className="h-full"
+                  rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
                   draftRow={draftRow}
                   draftColumns={schemaColumns}
                   selectedRowId={selectedRowIndex === null ? null : String(selectedRowIndex)}
@@ -236,7 +237,7 @@ export function TableDataTab({
         exportJsonAction={exportJsonAction}
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
-        isLoading={isLoading}
+        isLoading={isFetching}
         setPage={setPage}
       />
     </Tabs>

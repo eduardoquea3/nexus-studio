@@ -16,6 +16,7 @@ const emptyTableData: DataPage = {
 };
 let currentTableData = emptyTableData;
 let tableLoading = false;
+let tableFetching = false;
 let tableError: Error | null = null;
 let requestedPage = 1;
 const refetchTable = mock(() => Promise.resolve());
@@ -24,9 +25,13 @@ mock.module("@/app/connection/hooks/use-table-data", () => ({
   useTableData: (_profile: unknown, _table: string, _schema: string | undefined, page: number) => {
     requestedPage = page;
     return {
-      data: currentTableData,
+      data:
+        currentTableData.rows.length > 0
+          ? { ...currentTableData, page: currentTableData.page === 1 ? page : currentTableData.page }
+          : currentTableData,
       error: tableError,
       isLoading: tableLoading,
+      isFetching: tableFetching,
       refetch: refetchTable,
     };
   },
@@ -121,6 +126,7 @@ describe("TableDataTab empty rows", () => {
     cleanup();
     currentTableData = emptyTableData;
     tableLoading = false;
+    tableFetching = false;
     tableError = null;
     requestedPage = 1;
     refetchTable.mockClear();
@@ -143,9 +149,52 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("Page 1 of 3")).not.toBeNull();
     expect(screen.queryByText(/rows/i)).toBeNull();
     expect(screen.queryByText(/showing/i)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+    const previousButton = screen.getByRole("button", { name: "Previous table page" });
+    const nextButton = screen.getByRole("button", { name: "Next table page" });
+    expect(previousButton.hasAttribute("disabled")).toBe(true);
+    expect(previousButton.className).not.toContain("disabled:hidden");
+    expect(nextButton.className).not.toContain("disabled:hidden");
+
+    fireEvent.click(nextButton);
     expect(requestedPage).toBe(2);
-    expect(screen.getByRole("button", { name: "Previous table page" }).hasAttribute("disabled")).toBe(false);
+    expect(previousButton.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+    expect(screen.getByText("Page 3 of 3")).not.toBeNull();
+    const lastPageNextButton = screen.getByRole("button", { name: "Next table page" });
+    expect(lastPageNextButton.hasAttribute("disabled")).toBe(true);
+    expect(lastPageNextButton.className).not.toContain("disabled:hidden");
+  });
+
+  test("shows global row indexes on later pages and keeps the toolbar available", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: Array.from({ length: 28 }, (_, index) => ({ id: index + 1 })),
+      total: 228,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+
+    expect(screen.getByRole("cell", { name: "201" })).not.toBeNull();
+    expect(screen.getByRole("cell", { name: "228" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Table data view" })).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
+  });
+
+  test("keeps the pagination toolbar stable and disables navigation while fetching", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
+    tableFetching = true;
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    expect(screen.getByText("Loading data...")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Table data view" })).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Next table page" }).hasAttribute("disabled")).toBe(true);
   });
 
   test("shows table headers even when there are no rows", () => {
