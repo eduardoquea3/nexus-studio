@@ -32,9 +32,10 @@ type ConnectionCardProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onOpen?: () => Promise<boolean>;
+  compact?: boolean;
 };
 
-export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onEdit, onDelete, onOpen, compact = false }: ConnectionCardProps) {
   const navigate = useNavigate();
   const [isOpening, setIsOpening] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -73,7 +74,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
       role="button"
       tabIndex={0}
       aria-label={`Open ${connection.name}`}
-      className="group relative flex h-full min-h-0 cursor-pointer select-none flex-col overflow-hidden rounded-md border border-border/70 bg-card py-2 transition-[border-color,background,transform] duration-200 hover:-translate-y-0.5 hover:border-foreground/25 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className={`group relative flex h-full min-h-0 cursor-pointer select-none flex-col overflow-hidden border border-border/70 bg-card transition-colors hover:border-foreground/25 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${compact ? "gap-0 rounded-xl py-0" : "rounded-md py-2"}`}
       onDoubleClick={() => void handleOpen()}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) {
@@ -88,21 +89,24 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
         }
       }}
     >
-      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary/80" />
+      {!compact ? <div className="absolute inset-y-0 left-0 w-0.5 bg-primary/80" /> : null}
 
-      <CardHeader className="gap-2 px-4 py-2 pl-5">
+      <CardHeader className={compact ? "gap-0 px-3 py-2" : "gap-2 px-4 py-2 pl-5"}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-primary transition-colors group-hover:border-primary/30">
               <EngineIcon className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="font-label mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary/85">
-                {connection.engine}
-              </p>
-              <CardTitle className="truncate text-base tracking-[-0.025em]">
+              {!compact ? (
+                <p className="font-label mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary/85">
+                  {connection.engine}
+                </p>
+              ) : null}
+              <CardTitle className={compact ? "truncate text-xs font-medium" : "truncate text-base tracking-[-0.025em]"}>
                 {connection.name}
               </CardTitle>
+              {compact ? <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{connection.engine} · {connectionString || "Saved connection"}</p> : null}
             </div>
           </div>
 
@@ -135,7 +139,9 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-1 flex-col gap-2 px-4 pb-2 pl-5">
+      <CardContent className={compact ? "px-3 pb-2" : "flex flex-1 flex-col gap-2 px-4 pb-2 pl-5"}>
+        <details open={compact ? undefined : true}>
+          <summary className={compact ? "cursor-pointer text-[10px] text-muted-foreground hover:text-foreground" : "hidden"}>Connection details</summary>
         {connection.metadata.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-2">
             {connection.metadata.map((item) => (
@@ -192,6 +198,7 @@ export function ConnectionCard({ connection, onEdit, onDelete, onOpen }: Connect
             ) : null}
           </div>
         ) : null}
+        </details>
       </CardContent>
     </Card>
   );

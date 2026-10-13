@@ -4,12 +4,13 @@ import { ConnectionCard, type ConnectionItem } from "@/shared/components/connect
 
 type ConnectionGridProps = {
   connections: ConnectionItem[];
+  compact?: boolean;
   onOpen: (connection: ConnectionItem) => Promise<boolean>;
   onEdit: (connection: ConnectionItem) => void;
   onDelete: (connection: ConnectionItem) => void;
 };
 
-export function ConnectionGrid({ connections, onOpen, onEdit, onDelete }: ConnectionGridProps) {
+export function ConnectionGrid({ connections, onOpen, onEdit, onDelete, compact = false }: ConnectionGridProps) {
   if (connections.length === 0) {
     return (
       <div className="flex min-h-44 flex-col items-center justify-center rounded-md border border-dashed border-border/80 bg-card/50 px-6 py-10 text-center">
@@ -28,6 +29,7 @@ export function ConnectionGrid({ connections, onOpen, onEdit, onDelete }: Connec
         <ConnectionCard
           key={connection.id}
           connection={connection}
+          compact={compact}
           onOpen={() => onOpen(connection)}
           onEdit={() => onEdit(connection)}
           onDelete={() => onDelete(connection)}

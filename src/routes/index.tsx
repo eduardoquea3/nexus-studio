@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useMemo, useState } from "react";
 
 import type { ConnectionProfile } from "@/shared/types/models";
 
 import { ConnectionGrid } from "@/app/home/components/connection-grid";
 import { HomeCommandBar } from "@/app/command-bar/home-command-bar";
-import { ConnectionToolbar, type ConnectionSort } from "@/app/home/components/connection-toolbar";
-import { DashboardHeader } from "@/app/home/components/dashboard-header";
+import type { ConnectionSort } from "@/app/home/components/connection-toolbar";
 import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
 import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
 import { HomePanels } from "@/app/home/lib/home-panels";
@@ -119,30 +121,70 @@ function Index() {
         isCommandBarVisible={isCommandBarVisible}
       />
       <HomeCommandBar activeConnectionId={activeConnectionId} onOpenChange={setIsCommandBarVisible} />
-      <div className="min-h-full px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
-        <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-7">
-          <DashboardHeader onNewConnection={toggleNewConnection} />
+      <div className="relative isolate min-h-full px-5 pb-10 pt-8 sm:px-8 sm:pt-12">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-52 opacity-40"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+            maskImage: "linear-gradient(to bottom, black, transparent)",
+          }}
+        />
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-12">
+          <header className="flex flex-col items-center gap-5 pb-4">
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex size-20 items-center justify-center rounded-3xl border border-border bg-gradient-to-b from-muted to-background shadow-lg shadow-black/10">
+                <RiDatabaseLine className="size-10 text-foreground" aria-hidden="true" />
+              </div>
+              <h1 className="text-sm font-medium tracking-tight">Nexus Studio</h1>
+            </div>
+            <label className="relative w-full max-w-lg">
+              <span className="sr-only">Search connections</span>
+              <RiSearchLine className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search saved connections..."
+                className="h-10 rounded-xl border-border/70 bg-muted/60 pl-9 text-xs shadow-none"
+              />
+            </label>
+          </header>
           <section aria-labelledby="connections-heading">
-            <div className="mb-5 flex items-baseline gap-2">
-              <h1 id="connections-heading" className="text-2xl font-semibold tracking-[-0.035em]">
-                Connections
-              </h1>
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+              <h2 id="connections-heading" className="text-sm font-semibold tracking-tight">
+                Saved Connections
+              </h2>
               <span
                 className="font-mono text-xs text-muted-foreground"
                 aria-label={`${filteredConnections.length} connections`}
               >
                 {String(filteredConnections.length).padStart(2, "0")}
               </span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="outline" size="icon-sm" className="rounded-full" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh connections">
+                  <RiRefreshLine className={isFetching ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+                </Button>
+                <Button className="h-8 rounded-full px-4 text-xs" onClick={toggleNewConnection}>
+                  New connection <RiAddLine className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-4">
-              <ConnectionToolbar
-                query={query}
-                sort={sort}
-                isFetching={isFetching}
-                onQueryChange={setQuery}
-                onSortChange={setSort}
-                onRefresh={() => void refetch()}
-              />
+              <div className="flex items-center justify-between gap-3">
+                <span className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background">All</span>
+                <select
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as ConnectionSort)}
+                  aria-label="Sort connections"
+                  className="h-8 rounded-lg border border-border/60 bg-background px-2 text-xs text-muted-foreground focus-visible:outline-ring"
+                >
+                  <option value="recent">Recently opened</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
               <ConnectionGrid
                 connections={filteredConnections}
                 onOpen={handleOpen}
