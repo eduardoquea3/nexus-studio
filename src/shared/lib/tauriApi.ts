@@ -45,6 +45,10 @@ export async function createSqliteDatabase(path: string): Promise<void> {
   return invoke("create_sqlite_database", { path });
 }
 
+export async function writeJsonFile(path: string, contents: string): Promise<string> {
+  return invoke("write_json_file", { path, contents });
+}
+
 function connectionRequestForProfile(
   profile: ConnectionProfile,
   database?: string,

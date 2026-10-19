@@ -12,6 +12,7 @@ pub fn run() {
             commands::system::greet,
             commands::system::list_system_fonts,
             commands::system::list_ssh_config_hosts,
+            commands::system::write_json_file,
             commands::ssh_russh::store_ssh_password,
             commands::ssh_russh::delete_ssh_password,
             commands::connection::test_connection,

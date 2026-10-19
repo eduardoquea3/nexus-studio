@@ -20,6 +20,17 @@ let tableFetching = false;
 let tableError: Error | null = null;
 let requestedPage = 1;
 const refetchTable = mock(() => Promise.resolve());
+const exportTableDataJson = mock(async () => ({
+  status: "success" as const,
+  path: "~/Downloads/selected-row.json",
+}));
+const addToast = mock((_options: unknown) => "toast-1");
+
+mock.module("@/app/connection/services/table-data-export-service", () => ({
+  exportTableDataJson,
+}));
+
+mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
 mock.module("@/app/connection/hooks/use-table-data", () => ({
   useTableData: (_profile: unknown, _table: string, _schema: string | undefined, page: number) => {
@@ -130,6 +141,12 @@ describe("TableDataTab empty rows", () => {
     tableError = null;
     requestedPage = 1;
     refetchTable.mockClear();
+    exportTableDataJson.mockClear();
+    exportTableDataJson.mockImplementation(async () => ({
+      status: "success",
+      path: "~/Downloads/selected-row.json",
+    }));
+    addToast.mockClear();
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -221,6 +238,104 @@ describe("TableDataTab empty rows", () => {
     expect(
       document.querySelector('[data-slot="table-container"]')?.parentElement?.className.includes("h-full"),
     ).toBe(true);
+  });
+
+  test("distinguishes table headers, selects visible rows, and mutes null cells", () => {
+    currentTableData = {
+      columns: ["id", "empty", "literal"],
+      rows: [
+        { id: 1, empty: null, literal: "NULL" },
+        { id: 2, empty: "filled", literal: "text" },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const tableHeader = document.querySelector('[data-slot="table-header"]');
+    expect(tableHeader?.className).toContain("bg-accent");
+    expect(tableHeader?.className).not.toContain("/90");
+
+    const nullCells = screen.getAllByRole("cell", { name: "NULL" });
+    expect(nullCells).toHaveLength(2);
+    expect(nullCells[0]?.className).toContain("text-muted-foreground/60");
+    expect(nullCells[1]?.className).not.toContain("text-muted-foreground/60");
+
+    const indexTable = document.querySelector('[data-slot="table"]');
+    expect(indexTable?.querySelector('input[type="checkbox"]')).toBeNull();
+
+    const secondRowSelector = screen.getByRole("button", { name: "Select row 2" });
+    fireEvent.click(secondRowSelector);
+    expect(secondRowSelector.getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector('[data-row-index="1"]')?.getAttribute("data-row-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
+  });
+
+  test("drag-selects a contiguous row range from the index without a visible delay", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+      total: 4,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Select row 2" }), {
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    const lastRow = document.querySelector('[data-row-index="3"]');
+    if (!lastRow) throw new Error("Could not find the row used to end the selection drag");
+    fireEvent.pointerEnter(lastRow, { buttons: 1, pointerId: 1, pointerType: "mouse" });
+
+    expect(screen.getByRole("button", { name: "Select row 2" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 3" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 4" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(document.querySelector('[data-row-index="2"]')?.getAttribute("data-row-selected")).toBe(
+      "true",
+    );
+
+    fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
+
+    expect(screen.getByRole("button", { name: "Export 3 selected rows as JSON" })).not.toBeNull();
+  });
+
+  test("exports the row selected by its index and shows its count and home-relative path", async () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+      total: 4,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select row 3" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export 1 selected row as JSON" }));
+      await Promise.resolve();
+    });
+
+    const payload = serializeJson(currentTableData.columns, [currentTableData.rows[2]!]).text;
+    expect(exportTableDataJson).toHaveBeenCalledWith(payload, "selected-row.json");
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Exported 1 row",
+      type: "success",
+      description: "~/Downloads/selected-row.json",
+    });
   });
 
   test("renders labeled structure checkboxes and toggles nullable state", async () => {

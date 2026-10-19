@@ -1,7 +1,7 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { RiFileCopyLine, RiDownloadLine, RiRefreshLine } from "@remixicon/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile, ViewMode } from "@/shared/types/models";
 
@@ -12,6 +12,8 @@ import {
 import { TableDataToolbar } from "@/app/connection/components/table-data-toolbar";
 import { useTableData } from "@/app/connection/hooks/use-table-data";
 import { useTableSchema } from "@/app/connection/hooks/use-table-schema";
+import { exportTableDataJson } from "@/app/connection/services/table-data-export-service";
+import { toast } from "@/components/ui/toast";
 import { Tabs, TabsContent } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/shared/components/data-table";
@@ -46,7 +48,8 @@ export function TableDataTab({
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
+  const [isExportingRows, setIsExportingRows] = useState(false);
   const previousRefreshTokenRef = useRef(refreshToken);
   const schemaColumns = tableSchema.data?.columns;
   const columnNames = data?.columns.length
@@ -77,6 +80,9 @@ export function TableDataTab({
     [columnNames],
   );
   const dataTable = useDataTable({ columns, data: data?.rows ?? [] });
+  const handleSelectionChange = useCallback((rows: Row<Record<string, unknown>>[]) => {
+    setSelectedRows(rows.map((row) => row.original));
+  }, []);
   const payload = useMemo(
     () =>
       data
@@ -85,11 +91,7 @@ export function TableDataTab({
     [data],
   );
   const canShowJson = Boolean(data && data.rows.length > 0 && data.columns.length > 0 && payload);
-  const selectedRow = selectedRowIndex === null ? null : (data?.rows[selectedRowIndex] ?? null);
-  const selectedRowPayload = useMemo(
-    () => (selectedRow && data ? serializeJson(data.columns, [selectedRow]) : null),
-    [data, selectedRow],
-  );
+  const rowsToExport = selectedRows;
 
   useEffect(() => {
     setPage(1);
@@ -97,11 +99,11 @@ export function TableDataTab({
   useEffect(() => {
     setViewMode("table");
     setFeedback(null);
-    setSelectedRowIndex(null);
+    setSelectedRows([]);
   }, [table]);
   useEffect(() => {
-    setSelectedRowIndex(null);
-  }, [data]);
+    setSelectedRows([]);
+  }, [data?.rows]);
   useEffect(() => {
     if (previousRefreshTokenRef.current === refreshToken) return;
     previousRefreshTokenRef.current = refreshToken;
@@ -122,6 +124,37 @@ export function TableDataTab({
       })),
     );
   }, [schemaColumns, structureSignature]);
+
+  const handleExportRows = async () => {
+    if (!data || rowsToExport.length === 0) return;
+
+    setIsExportingRows(true);
+    const rowCount = rowsToExport.length;
+    const filename = rowCount === 1 ? "selected-row.json" : "selected-rows.json";
+    try {
+      const json = serializeJson(data.columns, rowsToExport).text;
+      const result = await exportTableDataJson(json, filename);
+      if (result.status === "success") {
+        const noun = rowCount === 1 ? "row" : "rows";
+        toast.add({
+          title: `Exported ${rowCount} ${noun}`,
+          type: "success",
+          description: result.path,
+        });
+        setFeedback(`Exported ${rowCount} ${noun} to ${result.path}.`);
+      } else if (result.status === "error") {
+        toast.add({
+          title: "Could not export rows",
+          type: "error",
+          description: result.message,
+        });
+      } else {
+        setFeedback("JSON export cancelled.");
+      }
+    } finally {
+      setIsExportingRows(false);
+    }
+  };
 
   if (isLoading)
     return (
@@ -201,8 +234,7 @@ export function TableDataTab({
                   rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
                   draftRow={draftRow}
                   draftColumns={schemaColumns}
-                  selectedRowId={selectedRowIndex === null ? null : String(selectedRowIndex)}
-                  onRowClick={(row) => setSelectedRowIndex(row.index)}
+                  onSelectionChange={handleSelectionChange}
                   onDraftChange={(column, value) =>
                     setDraftRow((row) => (row ? { ...row, [column]: value } : row))
                   }
@@ -230,11 +262,9 @@ export function TableDataTab({
         columnNames={columnNames}
         draftRow={draftRow}
         setDraftRow={setDraftRow}
-        selectedRowIndex={selectedRowIndex}
-        selectedRowPayload={selectedRowPayload}
-        setFeedback={(value) => setFeedback(value)}
-        exportJson={exportJson}
-        exportJsonAction={exportJsonAction}
+        selectedRowCount={rowsToExport.length}
+        onExportRows={() => void handleExportRows()}
+        isExportingRows={isExportingRows}
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
         isLoading={isFetching}

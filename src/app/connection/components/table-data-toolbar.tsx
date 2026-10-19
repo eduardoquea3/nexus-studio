@@ -2,7 +2,6 @@ import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 
 import { RiAddLine, RiArrowLeftSLine, RiArrowRightSLine, RiDownloadLine } from "@remixicon/react";
 
-import type { JsonActionResult } from "@/shared/lib/json-actions";
 import type { ViewMode } from "@/shared/types/models";
 
 import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/tabs";
@@ -15,15 +14,9 @@ type TableDataToolbarProps = {
   columnNames: string[];
   draftRow: Record<string, unknown> | null;
   setDraftRow: Dispatch<SetStateAction<Record<string, unknown> | null>>;
-  selectedRowIndex: number | null;
-  selectedRowPayload: { text: string } | null;
-  setFeedback: (value: string) => void;
-  exportJson: (
-    text: string,
-    action: (text: string, filename: string) => JsonActionResult,
-    filename?: string,
-  ) => string;
-  exportJsonAction: (text: string, filename: string) => JsonActionResult;
+  selectedRowCount: number;
+  onExportRows: () => void;
+  isExportingRows: boolean;
   page: number;
   pageCount: number;
   isLoading: boolean;
@@ -37,11 +30,9 @@ export function TableDataToolbar({
   columnNames,
   draftRow,
   setDraftRow,
-  selectedRowIndex,
-  selectedRowPayload,
-  setFeedback,
-  exportJson,
-  exportJsonAction,
+  selectedRowCount,
+  onExportRows,
+  isExportingRows,
   page,
   pageCount,
   isLoading,
@@ -105,18 +96,15 @@ export function TableDataToolbar({
           <RiAddLine data-icon="inline-start" /> Add row
         </Button>
         {draftRow ? <span className="text-[0.625rem] text-primary/80">Draft row</span> : null}
-        {selectedRowPayload ? (
+        {selectedRowCount > 0 ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() =>
-              setFeedback(
-                exportJson(selectedRowPayload.text, exportJsonAction, "selected-row.json"),
-              )
-            }
-            aria-label={`Export selected row ${selectedRowIndex === null ? "" : selectedRowIndex + 1} as JSON`}
+            disabled={isExportingRows}
+            onClick={onExportRows}
+            aria-label={`Export ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} as JSON`}
           >
             <RiDownloadLine data-icon="inline-start" /> Export row
           </Button>

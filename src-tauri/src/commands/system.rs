@@ -2,7 +2,8 @@ use font_kit::source::SystemSource;
 use serde::Serialize;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 #[tauri::command]
 pub fn greet(name: &str) -> String {
@@ -33,6 +34,45 @@ pub fn list_ssh_config_hosts() -> Result<Vec<SshConfigHost>, String> {
     let config = fs::read_to_string(&config_path)
         .map_err(|error| format!("Could not read SSH config: {error}"))?;
     Ok(parse_ssh_config_hosts(&config))
+}
+
+#[tauri::command]
+pub async fn write_json_file(
+    app: tauri::AppHandle,
+    path: String,
+    contents: String,
+) -> Result<String, String> {
+    let output_path = PathBuf::from(path);
+    let display_path = app
+        .path()
+        .home_dir()
+        .ok()
+        .and_then(|home| display_home_relative_path(&output_path, &home))
+        .unwrap_or_else(|| output_path.to_string_lossy().into_owned());
+    let error_path = output_path.clone();
+
+    tokio::task::spawn_blocking(move || fs::write(&output_path, contents))
+        .await
+        .map_err(|error| format!("Could not write JSON file: {error}"))?
+        .map_err(|error| {
+            format!(
+                "Could not write JSON file '{}': {error}",
+                error_path.display()
+            )
+        })?;
+
+    Ok(display_path)
+}
+
+fn display_home_relative_path(path: &Path, home: &Path) -> Option<String> {
+    let relative_path = path.strip_prefix(home).ok()?;
+    let relative_path = relative_path.to_string_lossy().replace('\\', "/");
+
+    Some(if relative_path.is_empty() {
+        "~".to_string()
+    } else {
+        format!("~/{relative_path}")
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -91,7 +131,31 @@ fn parse_ssh_config_hosts(config: &str) -> Vec<SshConfigHost> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_ssh_config_hosts;
+    use super::{display_home_relative_path, parse_ssh_config_hosts};
+    use std::path::Path;
+
+    #[test]
+    fn shortens_paths_under_the_home_directory() {
+        let display_path = display_home_relative_path(
+            Path::new("home/user/Downloads/selected-rows.json"),
+            Path::new("home/user"),
+        );
+
+        assert_eq!(
+            display_path.as_deref(),
+            Some("~/Downloads/selected-rows.json")
+        );
+    }
+
+    #[test]
+    fn keeps_paths_outside_the_home_directory_unshortened() {
+        let display_path = display_home_relative_path(
+            Path::new("mnt/shared/selected-rows.json"),
+            Path::new("home/user"),
+        );
+
+        assert_eq!(display_path, None);
+    }
 
     #[test]
     fn parses_hostnames_for_each_alias() {

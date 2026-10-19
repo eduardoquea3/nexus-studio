@@ -1,5 +1,7 @@
 import { RiLoader4Line } from "@remixicon/react";
 import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import type { ColumnInfo } from "@/shared/types/models";
 
@@ -23,9 +25,26 @@ type DataTableProps<TData> = {
   draftColumns?: ColumnInfo[];
   onDraftChange?: (column: string, value: string) => void;
   rowNumberOffset?: number;
-  selectedRowId?: string | null;
-  onRowClick?: (row: Row<TData>) => void;
+  onSelectionChange?: (rows: Row<TData>[]) => void;
 };
+
+type DragSelection<TData> = {
+  startIndex: number;
+  endIndex: number;
+  rows: Row<TData>[];
+};
+
+type DataTableRowProps<TData> = {
+  row: Row<TData>;
+  rowNumber: number;
+  isSelected: boolean;
+  isSelectable: boolean;
+  onPointerEnter: (row: Row<TData>, event: ReactPointerEvent<HTMLTableRowElement>) => void;
+  onPointerDown: (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onKeyboardSelect: (row: Row<TData>, event: ReactMouseEvent<HTMLButtonElement>) => void;
+};
+
+const EMPTY_ROW_SELECTION = new Set<string>();
 
 export function DataTable<TData>({
   table,
@@ -36,9 +55,126 @@ export function DataTable<TData>({
   draftColumns = [],
   onDraftChange,
   rowNumberOffset = 0,
-  selectedRowId = null,
-  onRowClick,
+  onSelectionChange,
 }: DataTableProps<TData>) {
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set());
+  const dragSelectionRef = useRef<DragSelection<TData> | null>(null);
+  const previousDataRef = useRef(table.options.data);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const rows = table.getRowModel().rows;
+  const visibleSelectedRowIds =
+    previousDataRef.current === table.options.data ? selectedRowIds : EMPTY_ROW_SELECTION;
+
+  useEffect(() => {
+    if (previousDataRef.current === table.options.data) return;
+    previousDataRef.current = table.options.data;
+    dragSelectionRef.current = null;
+    tableWrapperRef.current?.classList.remove("select-none");
+    setSelectedRowIds(new Set());
+  }, [table.options.data]);
+
+  useEffect(() => {
+    const stopDragging = () => {
+      const dragSelection = dragSelectionRef.current;
+      if (!dragSelection) return;
+
+      dragSelectionRef.current = null;
+      tableWrapperRef.current?.classList.remove("select-none");
+      setSelectedRowIds(new Set(dragSelection.rows.map((row) => row.id)));
+      onSelectionChange?.(dragSelection.rows);
+    };
+
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+    return () => {
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+  }, [onSelectionChange]);
+
+  const setRowSelectionVisual = (rowIndex: number, isSelected: boolean) => {
+    const rowElement = tableWrapperRef.current?.querySelector<HTMLTableRowElement>(
+      `[data-row-index="${rowIndex}"]`,
+    );
+    if (!rowElement) return;
+
+    if (isSelected) rowElement.setAttribute("data-row-selected", "true");
+    else rowElement.removeAttribute("data-row-selected");
+    rowElement.setAttribute("aria-selected", String(isSelected));
+    rowElement
+      .querySelector<HTMLButtonElement>("[data-row-selector]")
+      ?.setAttribute("aria-pressed", String(isSelected));
+  };
+  const updateSelectionVisuals = (previousRows: Row<TData>[], nextRows: Row<TData>[]) => {
+    const previousIds = new Set(previousRows.map((row) => row.id));
+    const nextIds = new Set(nextRows.map((row) => row.id));
+
+    for (const row of previousRows) {
+      if (!nextIds.has(row.id)) setRowSelectionVisual(row.index, false);
+    }
+    for (const row of nextRows) {
+      if (!previousIds.has(row.id)) setRowSelectionVisual(row.index, true);
+    }
+  };
+  const selectRows = (selectedRows: Row<TData>[]) => {
+    const previousRows = rows.filter((row) => visibleSelectedRowIds.has(row.id));
+    updateSelectionVisuals(previousRows, selectedRows);
+    setSelectedRowIds(new Set(selectedRows.map((row) => row.id)));
+    onSelectionChange?.(selectedRows);
+  };
+  const startRowSelection = (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const selectedRows = [row];
+    const previousRows = rows.filter((item) => visibleSelectedRowIds.has(item.id));
+    updateSelectionVisuals(previousRows, selectedRows);
+    dragSelectionRef.current = {
+      startIndex: row.index,
+      endIndex: row.index,
+      rows: selectedRows,
+    };
+    tableWrapperRef.current?.classList.add("select-none");
+  };
+  const extendRowSelection = (row: Row<TData>, event: ReactPointerEvent<HTMLTableRowElement>) => {
+    const dragSelection = dragSelectionRef.current;
+    if (!dragSelection || (event.buttons & 1) !== 1 || dragSelection.endIndex === row.index) return;
+
+    dragSelection.endIndex = row.index;
+    const firstIndex = Math.min(dragSelection.startIndex, row.index);
+    const lastIndex = Math.max(dragSelection.startIndex, row.index);
+    const selectedRows = rows.filter((item) => item.index >= firstIndex && item.index <= lastIndex);
+    updateSelectionVisuals(dragSelection.rows, selectedRows);
+    dragSelection.rows = selectedRows;
+  };
+  const selectRowWithKeyboard = (row: Row<TData>, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.detail === 0) selectRows([row]);
+  };
+  const selectionHandlersRef = useRef({
+    startRowSelection,
+    extendRowSelection,
+    selectRowWithKeyboard,
+  });
+  selectionHandlersRef.current = {
+    startRowSelection,
+    extendRowSelection,
+    selectRowWithKeyboard,
+  };
+  const handleRowPointerDown = useCallback(
+    (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) =>
+      selectionHandlersRef.current.startRowSelection(row, event),
+    [],
+  );
+  const handleRowPointerEnter = useCallback(
+    (row: Row<TData>, event: ReactPointerEvent<HTMLTableRowElement>) =>
+      selectionHandlersRef.current.extendRowSelection(row, event),
+    [],
+  );
+  const handleKeyboardRowSelect = useCallback(
+    (row: Row<TData>, event: ReactMouseEvent<HTMLButtonElement>) =>
+      selectionHandlersRef.current.selectRowWithKeyboard(row, event),
+    [],
+  );
+
   if (isLoading) {
     return (
       <div
@@ -63,9 +199,12 @@ export function DataTable<TData>({
       )}
     >
       <ScrollArea className="h-full [&_[data-orientation=vertical]]:hidden">
-        <div className="h-full min-w-full w-max pb-3 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible">
+        <div
+          ref={tableWrapperRef}
+          className="h-full min-w-full w-max pb-3 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-visible"
+        >
           <Table className="min-w-max text-xs">
-            <TableHeader className="sticky top-0 bg-muted/90 text-left">
+            <TableHeader className="sticky top-0 z-10 bg-accent text-left">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   <TableHead className="w-12 border-b border-r border-border/70 px-3 py-2 text-right font-medium">
@@ -95,36 +234,17 @@ export function DataTable<TData>({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow
+              {rows.map((row) => (
+                <MemoDataTableRow
                   key={row.id}
-                  data-state={row.id === selectedRowId ? "selected" : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  className={cn(
-                    "hover:bg-muted/40",
-                    onRowClick && "cursor-pointer",
-                    row.id === selectedRowId && "bg-primary/10 hover:bg-primary/15",
-                  )}
-                  onClick={() => onRowClick?.(row)}
-                  onKeyDown={(event) => {
-                    if (onRowClick && (event.key === "Enter" || event.key === " ")) {
-                      event.preventDefault();
-                      onRowClick(row);
-                    }
-                  }}
-                >
-                  <TableCell className="w-12 border-b border-r border-border/50 px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground">
-                    {row.index + rowNumberOffset + 1}
-                  </TableCell>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className="max-w-72 truncate border-b border-r border-border/50 px-3 py-2"
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                  row={row}
+                  rowNumber={row.index + rowNumberOffset + 1}
+                  isSelected={visibleSelectedRowIds.has(row.id)}
+                  isSelectable={Boolean(onSelectionChange)}
+                  onPointerEnter={handleRowPointerEnter}
+                  onPointerDown={handleRowPointerDown}
+                  onKeyboardSelect={handleKeyboardRowSelect}
+                />
               ))}
               {draftRow ? (
                 <TableRow className="bg-primary/5 hover:bg-primary/10">
@@ -157,6 +277,72 @@ export function DataTable<TData>({
     </div>
   );
 }
+
+function DataTableRow<TData>({
+  row,
+  rowNumber,
+  isSelected,
+  isSelectable,
+  onPointerEnter,
+  onPointerDown,
+  onKeyboardSelect,
+}: DataTableRowProps<TData>) {
+  return (
+    <TableRow
+      data-row-index={row.index}
+      data-row-selected={isSelected ? "true" : undefined}
+      aria-selected={isSelected}
+      onPointerEnter={(event) => onPointerEnter(row, event)}
+      className={cn(
+        "transition-none hover:bg-muted/40 data-[row-selected=true]:bg-primary/25 data-[row-selected=true]:hover:bg-primary/30",
+        isSelected && "bg-primary/25 hover:bg-primary/30",
+      )}
+    >
+      <TableCell
+        aria-label={String(rowNumber)}
+        className="w-12 border-b border-r border-border/50 p-0 text-right font-mono text-[0.65rem] text-muted-foreground"
+      >
+        {isSelectable ? (
+          <button
+            type="button"
+            data-row-selector
+            aria-label={`Select row ${rowNumber}`}
+            aria-pressed={isSelected}
+            onPointerDown={(event) => onPointerDown(row, event)}
+            onClick={(event) => onKeyboardSelect(row, event)}
+            className={cn(
+              "flex min-h-9 w-full select-none items-center justify-end px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60",
+              "cursor-pointer hover:bg-muted/60 hover:text-foreground",
+              isSelected && "bg-primary/30 text-foreground",
+            )}
+          >
+            {rowNumber}
+          </button>
+        ) : (
+          <span className="block px-3 py-2">{rowNumber}</span>
+        )}
+      </TableCell>
+      {row.getVisibleCells().map((cell) => {
+        const value = cell.getValue();
+        const isNull = value === null || value === undefined;
+
+        return (
+          <TableCell
+            key={cell.id}
+            className={cn(
+              "max-w-72 truncate border-b border-r border-border/50 px-3 py-2",
+              isNull && "text-muted-foreground/60",
+            )}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+}
+
+const MemoDataTableRow = memo(DataTableRow) as typeof DataTableRow;
 
 function getColumnInfo(columns: ColumnInfo[], name: string) {
   return columns.find((column) => column.name === name);
