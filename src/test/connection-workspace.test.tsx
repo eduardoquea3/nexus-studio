@@ -1152,11 +1152,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(palette.getByRole("button", { name: /master.*Current/ })).not.toBeNull();
     fireEvent.click(developmentDatabase);
 
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
     expect(screen.getByTestId("selected-database").textContent).toBe("development");
   });
 
-  test("opens the ER diagram tab from the Ctrl+Shift+P command", () => {
+  test("opens the ER diagram tab from the Ctrl+Shift+P command after the exit animation", async () => {
     renderWorkspace(fieldsProfile);
     const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
 
@@ -1168,6 +1169,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Generate ER diagram/ }));
 
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(screen.getByRole("tab", { name: "ER diagram tab" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "ER diagram tab" }).getAttribute("data-state")).toBe(
       "active",

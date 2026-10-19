@@ -1,11 +1,17 @@
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
+  RiAddCircleLine,
   RiCodeBoxLine,
   RiDatabase2Line,
+  RiLogoutBoxRLine,
+  RiPlugLine,
   RiSearchLine,
+  RiShare2Line,
   RiTableLine,
 } from "@remixicon/react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile } from "@/shared/types/models";
@@ -18,6 +24,8 @@ import {
   type CommandBarItem,
   type CommandBarMode,
 } from "./command-bar-utils";
+
+gsap.registerPlugin(useGSAP);
 
 type CommandBarGroup = "connections" | "databases" | "tables" | "commands" | "tabs";
 
@@ -51,7 +59,12 @@ export function CommandBar({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const switcherRef = useRef<HTMLElement>(null);
+  const isClosingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const closeAnimationRef = useRef<((afterClose?: () => void) => void) | null>(null);
+  onCloseRef.current = onClose;
   const filteredItems = useMemo(() => filterCommandBarItems(items, query), [items, query]);
   const selectedItem = filteredItems[selectedIndex];
   const isSwitcher = mode === "tab-switcher";
@@ -68,6 +81,74 @@ export function CommandBar({
       inputRef.current?.focus();
     }
   }, [isSwitcher]);
+
+  useGSAP(
+    (_, contextSafe) => {
+      const finishClose = (afterClose?: () => void) => {
+        onCloseRef.current();
+        afterClose?.();
+      };
+      const prefersReducedMotion = window.matchMedia?.(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      if (prefersReducedMotion) {
+        closeAnimationRef.current = (afterClose) => finishClose(afterClose);
+        return () => {
+          closeAnimationRef.current = null;
+        };
+      }
+
+      const timeline = gsap.timeline();
+      timeline.fromTo(
+        containerRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.5, ease: "power2.out" },
+      );
+      timeline.fromTo(
+        switcherRef.current,
+        { opacity: 0, y: 12, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power2.out" },
+        0,
+      );
+
+      const closeAnimation = (afterClose?: () => void) => {
+        if (isClosingRef.current) return;
+        isClosingRef.current = true;
+        gsap
+          .timeline({ onComplete: () => finishClose(afterClose) })
+          .to(switcherRef.current, {
+            opacity: 0,
+            y: 8,
+            scale: 0.97,
+            duration: 0.45,
+            ease: "power2.in",
+          })
+          .to(containerRef.current, { opacity: 0, duration: 0.45, ease: "power2.in" }, 0);
+      };
+      closeAnimationRef.current = contextSafe
+        ? contextSafe(closeAnimation)
+        : closeAnimation;
+
+      return () => {
+        closeAnimationRef.current = null;
+      };
+    },
+    { scope: containerRef },
+  );
+
+  useEffect(() => {
+    if (!inline) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !switcherRef.current?.contains(event.target)) {
+        closeAnimationRef.current?.();
+      }
+    };
+
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, [inline]);
 
   useEffect(() => {
     setSelectedIndex((index) =>
@@ -97,17 +178,20 @@ export function CommandBar({
     if (!item || isLoading) {
       return;
     }
-    if (item.kind === "connection" && onConnectionSelect) {
-      onConnectionSelect(item.connection);
-      return;
-    }
-    onSelect(item);
+    closeAnimationRef.current?.(() => {
+      if (item.kind === "connection" && onConnectionSelect) {
+        onConnectionSelect(item.connection);
+        return;
+      }
+      onSelect(item);
+    });
   };
 
   const selectCurrent = () => selectItem(selectedItem);
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         inline
           ? "absolute left-1/2 top-2 z-50 w-[min(42rem,calc(100%-2rem))] -translate-x-1/2"
@@ -116,7 +200,7 @@ export function CommandBar({
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          closeAnimationRef.current?.();
         }
       }}
     >
@@ -134,7 +218,7 @@ export function CommandBar({
           event.stopPropagation();
           if (event.key === "Escape") {
             event.preventDefault();
-            onClose();
+            closeAnimationRef.current?.();
             return;
           }
           if (event.key === "ArrowDown") {
@@ -169,7 +253,7 @@ export function CommandBar({
               }
             />
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              Ctrl P
+              {mode === "commands" ? "Ctrl Shift P" : "Ctrl P"}
             </kbd>
           </div>
         ) : null}
@@ -279,7 +363,13 @@ function renderItem(
         onMouseEnter={() => setSelectedIndex(index)}
         onClick={() => selectItem(item)}
       >
-        <ItemIcon item={item} />
+        <span
+          aria-hidden="true"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]"
+          data-icon-kind={item.kind === "command" ? item.command : item.kind}
+        >
+          <ItemIcon item={item} />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{item.label}</span>
           <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
@@ -344,20 +434,22 @@ function emptyGroupMessage(group: CommandBarGroup): string {
 
 function ItemIcon({ item }: { item: CommandBarItem }) {
   if (item.kind === "connection") {
-    return <RiDatabase2Line className="size-4 shrink-0 text-primary" />;
+    return <RiPlugLine className="size-4" />;
   }
   if (item.kind === "database") {
-    return <RiDatabase2Line className="size-4 shrink-0 text-primary" />;
+    return <RiDatabase2Line className="size-4" />;
   }
   if (item.kind === "table") {
-    return <RiTableLine className="size-4 shrink-0 text-primary" />;
+    return <RiTableLine className="size-4" />;
   }
   if (item.kind === "command") {
-    return <RiCodeBoxLine className="size-4 shrink-0 text-primary" />;
+    if (item.command === "disconnect") return <RiLogoutBoxRLine className="size-4" />;
+    if (item.command === "new-connection") return <RiAddCircleLine className="size-4" />;
+    return <RiShare2Line className="size-4" />;
   }
   return item.tab.type === "datatable" ? (
-    <RiTableLine className="size-4 shrink-0 text-primary" />
+    <RiTableLine className="size-4" />
   ) : (
-    <RiCodeBoxLine className="size-4 shrink-0 text-primary" />
+    <RiCodeBoxLine className="size-4" />
   );
 }

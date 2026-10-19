@@ -27,8 +27,35 @@ const items: CommandBarItem[] = [
   },
 ];
 
+const commandItems: CommandBarItem[] = [
+  {
+    id: "command:disconnect",
+    kind: "command",
+    label: "Disconnect",
+    detail: "Return to Home",
+    isActive: false,
+    command: "disconnect",
+  },
+  {
+    id: "command:new-connection",
+    kind: "command",
+    label: "New connection",
+    detail: "Create a saved connection",
+    isActive: false,
+    command: "new-connection",
+  },
+  {
+    id: "command:generate-er-diagram",
+    kind: "command",
+    label: "Generate ER diagram",
+    detail: "Map all tables",
+    isActive: false,
+    command: "generate-er-diagram",
+  },
+];
+
 describe("CommandBar", () => {
-  test("selects with ArrowDown and Enter", () => {
+  test("selects with ArrowDown and Enter after the exit animation", async () => {
     const onSelect = mock((_item: CommandBarItem) => undefined);
     render(
       <CommandBar mode="palette" items={items} onClose={() => undefined} onSelect={onSelect} />,
@@ -38,6 +65,8 @@ describe("CommandBar", () => {
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter" });
 
+    expect(onSelect).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0]?.[0]?.id).toBe("table:orders");
   });
@@ -77,14 +106,71 @@ describe("CommandBar", () => {
     expect(document.querySelector(".command-bar-scroll")).not.toBeNull();
   });
 
-  test("closes on Escape and restores no underlying interaction", () => {
+  test("animates the command bar into view with GSAP", () => {
+    render(
+      <CommandBar
+        mode="palette"
+        items={items}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("dialog").style.opacity).toBe("0");
+  });
+
+  test("shows command-specific icons and the Ctrl Shift P shortcut in commands mode", () => {
+    render(
+      <CommandBar
+        mode="commands"
+        items={commandItems}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Ctrl Shift P")).toBeTruthy();
+    expect(document.querySelector('[data-icon-kind="disconnect"] svg')).toBeTruthy();
+    expect(document.querySelector('[data-icon-kind="new-connection"] svg')).toBeTruthy();
+    expect(document.querySelector('[data-icon-kind="generate-er-diagram"] svg')).toBeTruthy();
+  });
+
+  test("animates out before closing on Escape", async () => {
     const onClose = mock(() => undefined);
     const onSelect = mock((_item: CommandBarItem) => undefined);
     render(<CommandBar mode="palette" items={items} onClose={onClose} onSelect={onSelect} />);
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Search commands" }), { key: "Escape" });
 
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test("animates out when clicking elsewhere in the app but stays open on focus changes", async () => {
+    const onClose = mock(() => undefined);
+    render(
+      <>
+        <button type="button">Database selector</button>
+        <CommandBar
+          mode="palette"
+          items={items}
+          onClose={onClose}
+          onSelect={() => undefined}
+          inline
+        />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Database selector" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.blur(window);
+    expect(onClose).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test("renders grouped results and distinguishes loading from no matches", () => {
