@@ -13,6 +13,7 @@ import {
 } from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { SVGProps, useEffect, useRef, useState } from "react";
 
@@ -27,6 +28,7 @@ import {
 } from "@/app/home/lib/connection-panel-state";
 import { parseConnectionString } from "@/app/home/lib/connection-string-parser";
 import { getConnection } from "@/app/home/services/connection-service";
+import { createConnectionId, DuplicateConnectionError } from "@/shared/lib/connection-identity";
 import {
   Accordion,
   AccordionContent,
@@ -123,6 +125,7 @@ const initialManualSshValues: ManualSshValues = {
 };
 
 export function NewConnectionPanel() {
+  const navigate = useNavigate();
   const isOpen = useModalStore((state) => state.modals.includes(HomePanels.NewConnection));
   const closeModal = useModalStore((state) => state.closeModal);
   const modalPayload = useModalStore(
@@ -144,10 +147,12 @@ export function NewConnectionPanel() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [feedback, setFeedback] = useState<ConnectionFeedback | null>(null);
   const [unsupportedLegacyProfileId, setUnsupportedLegacyProfileId] = useState<string>();
+  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
   const sessionKey = getConnectionSessionKey(isOpen, editingId);
   const sessionKeyRef = useRef<string | null>(null);
   const loadedProfileSessionKeyRef = useRef<string | null>(null);
   const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
+  const isConnectingRef = useRef(false);
   const isCurrentSession = sessionKeyRef.current === sessionKey;
   const isUnsupportedLegacyProfile =
     isCurrentSession && editingId !== undefined && unsupportedLegacyProfileId === editingId;
@@ -192,6 +197,23 @@ export function NewConnectionPanel() {
       importedFieldsRef.current = [];
     }
   }, [isOpen, sessionKey]);
+
+  useEffect(() => {
+    if (isOpen || pendingConnectionId === null) return;
+
+    const connectionId = pendingConnectionId;
+    setPendingConnectionId(null);
+    void navigate({
+      to: "/connections/$connectionId",
+      params: { connectionId },
+    }).catch((error: unknown) => {
+      toast.add({
+        title: "Connection saved but could not be opened",
+        type: "error",
+        description: String(error),
+      });
+    });
+  }, [isOpen, navigate, pendingConnectionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -404,6 +426,8 @@ export function NewConnectionPanel() {
   };
 
   const handleConnect = async () => {
+    if (isConnectingRef.current) return;
+
     if (!form.name.trim()) {
       setFeedback({
         type: "error",
@@ -452,13 +476,13 @@ export function NewConnectionPanel() {
       return;
     }
 
+    isConnectingRef.current = true;
     setIsTesting(true);
     let newCredentialRef: string | null = null;
     let profileSaved = false;
     try {
       await testConnectionFields(getTestRequest());
 
-      const connectionId = editingId ?? crypto.randomUUID();
       let credentialRef = manualSshValues.credentialRef;
       if (connectionTab === "ssh" && sshSource === "manual" && sshAuthType === "password") {
         if (manualSshValues.password) {
@@ -470,9 +494,9 @@ export function NewConnectionPanel() {
         credentialRef = null;
       }
 
-      const profile = createConnectionProfile(
+      const profileDraft = createConnectionProfile(
         form,
-        connectionId,
+        editingId ?? "",
         {
           enabled: connectionTab === "ssh",
           source: sshSource ?? "manual",
@@ -481,7 +505,11 @@ export function NewConnectionPanel() {
         },
         credentialRef,
       );
-      await saveConnection(profile);
+      const profile = editingId
+        ? profileDraft
+        : { ...profileDraft, id: await createConnectionId(profileDraft) };
+      const profileToSave = editingId ? profile : { ...profile, last_opened_at: Date.now() };
+      await saveConnection(profileToSave, editingId ? "update" : "create");
       profileSaved = true;
       setManualSshValues((current) => ({
         ...current,
@@ -498,16 +526,23 @@ export function NewConnectionPanel() {
       }
 
       if (editingId) {
-        updateProfile(profile);
+        updateProfile(profileToSave);
+        await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
+        setFeedback({
+          type: "success",
+          title: "Connection updated",
+          description: "The connection profile and its credentials were saved locally.",
+        });
       } else {
-        addProfile(profile);
+        addProfile(profileToSave);
+        setPendingConnectionId(profileToSave.id);
+        closeModal(HomePanels.NewConnection);
+        void queryClient
+          .invalidateQueries({ queryKey: connectionsQueryKey })
+          .catch((error: unknown) => {
+            console.warn("Could not refresh saved connections", error);
+          });
       }
-      await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-      setFeedback({
-        type: "success",
-        title: editingId ? "Connection updated" : "Connection saved",
-        description: "The connection profile and its credentials were saved locally.",
-      });
     } catch (error) {
       if (newCredentialRef && !profileSaved) {
         try {
@@ -516,12 +551,16 @@ export function NewConnectionPanel() {
           console.warn("Could not clean up an unsaved SSH credential", cleanupError);
         }
       }
+      const isDuplicateConnection = error instanceof DuplicateConnectionError;
       setFeedback({
         type: "error",
-        title: "Could not save connection",
-        description: String(error),
+        title: isDuplicateConnection ? "Connection already exists" : "Could not save connection",
+        description: isDuplicateConnection
+          ? error.message
+          : String(error),
       });
     } finally {
+      isConnectingRef.current = false;
       setIsTesting(false);
     }
   };

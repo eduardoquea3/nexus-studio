@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 
+import { assertUniqueConnection } from "@/shared/lib/connection-identity";
 import type {
   ConnectionProfile,
   ConnectResult,
@@ -12,6 +13,8 @@ import type {
   TableRules,
   TableSchema,
 } from "../types/models";
+
+let connectionSaveQueue: Promise<void> = Promise.resolve();
 
 export interface ConnectionTestRequest {
   dbType: "postgres" | "mysql" | "sqlite";
@@ -79,15 +82,24 @@ export async function listDatabases(request: ListDatabasesRequest): Promise<stri
   return invoke("list_databases", { request });
 }
 
-export async function saveConnection(profile: ConnectionProfile): Promise<void> {
-  const store = await load("connections.json");
-  const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
-  const nextProfiles = profiles.some((item) => item.id === profile.id)
-    ? profiles.map((item) => (item.id === profile.id ? profile : item))
-    : [...profiles, profile];
+export function saveConnection(
+  profile: ConnectionProfile,
+  mode: "create" | "update",
+): Promise<void> {
+  const saveOperation = connectionSaveQueue.then(async () => {
+    const store = await load("connections.json");
+    const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+    assertUniqueConnection(profiles, profile, mode);
+    const nextProfiles = mode === "update" && profiles.some((item) => item.id === profile.id)
+      ? profiles.map((item) => (item.id === profile.id ? profile : item))
+      : [...profiles, profile];
 
-  await store.set("profiles", nextProfiles);
-  await store.save();
+    await store.set("profiles", nextProfiles);
+    await store.save();
+  });
+
+  connectionSaveQueue = saveOperation.catch(() => undefined);
+  return saveOperation;
 }
 
 export async function connect(id: string): Promise<ConnectResult> {
