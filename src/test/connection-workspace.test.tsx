@@ -31,6 +31,7 @@ const getTableSchema = mock(async () => ({
   columns: [],
   indexes: [],
 }));
+const listDatabases = mock(async () => ["development", "analytics"]);
 const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
 const availableConnections: ConnectionProfile[] = [];
@@ -98,10 +99,12 @@ mock.module("react-resizable-panels", () => ({
 
 mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: ({
+    selectedDatabase,
     onDatabaseChange,
     onTableSelect,
     onRoutineSelect,
   }: {
+    selectedDatabase: string;
     onDatabaseChange: (database: string) => void;
     onTableSelect: (table: string) => void;
     onRoutineSelect: (routine: {
@@ -111,6 +114,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
     }) => void;
   }) => (
     <aside data-testid="connection-sidebar">
+      <span data-testid="selected-database">{selectedDatabase}</span>
       <button type="button" onClick={() => onDatabaseChange("development")}>
         Select development
       </button>
@@ -168,7 +172,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
   getTableSchema,
   getRoutineDefinition,
   listConnections: mock(async () => []),
-  listDatabases: mock(async () => []),
+  listDatabases,
   listFunctions: mock(async () => []),
   listOtherObjects: mock(async () => []),
   listSchemaObjects,
@@ -1134,6 +1138,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     expect(screen.getByRole("button", { name: /Disconnect/ })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Generate ER diagram/ })).not.toBeNull();
+  });
+
+  test("lists and switches databases from the Ctrl+P palette", async () => {
+    renderWorkspace({ ...fieldsProfile, password: "test-password" });
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, { key: "p", code: "KeyP", ctrlKey: true });
+
+    const palette = within(screen.getByRole("dialog", { name: "Command palette" }));
+    const developmentDatabase = await palette.findByRole("button", { name: /development/ });
+    expect(palette.getByRole("heading", { name: "Databases" })).not.toBeNull();
+    expect(palette.getByRole("button", { name: /master.*Current/ })).not.toBeNull();
+    fireEvent.click(developmentDatabase);
+
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+    expect(screen.getByTestId("selected-database").textContent).toBe("development");
   });
 
   test("opens the ER diagram tab from the Ctrl+Shift+P command", () => {

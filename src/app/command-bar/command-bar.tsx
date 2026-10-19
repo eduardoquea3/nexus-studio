@@ -19,7 +19,7 @@ import {
   type CommandBarMode,
 } from "./command-bar-utils";
 
-type CommandBarGroup = "connections" | "tables" | "commands" | "tabs";
+type CommandBarGroup = "connections" | "databases" | "tables" | "commands" | "tabs";
 
 type CommandBarProps = {
   mode: CommandBarMode;
@@ -163,7 +163,9 @@ export function CommandBar({
               aria-label="Search commands"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               placeholder={
-                mode === "commands" ? "Search commands..." : "Search tables and connections..."
+                mode === "commands"
+                  ? "Search commands..."
+                  : "Search databases, tables, and connections..."
               }
             />
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
@@ -287,6 +289,11 @@ function renderItem(
             Active
           </span>
         ) : null}
+        {item.kind === "database" && item.isActive ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+            Current
+          </span>
+        ) : null}
         {isSwitcher && index === selectedIndex ? (
           <span className="text-[10px] text-muted-foreground">Enter</span>
         ) : null}
@@ -298,11 +305,13 @@ function renderItem(
 function itemGroup(item: CommandBarItem): CommandBarGroup {
   return item.kind === "connection"
     ? "connections"
-    : item.kind === "table"
-      ? "tables"
-      : item.kind === "command"
-        ? "commands"
-        : "tabs";
+    : item.kind === "database"
+      ? "databases"
+      : item.kind === "table"
+        ? "tables"
+        : item.kind === "command"
+          ? "commands"
+          : "tabs";
 }
 
 function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
@@ -312,25 +321,32 @@ function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
 function groupLabel(group: CommandBarGroup): string {
   return group === "connections"
     ? "Connections"
-    : group === "tables"
-      ? "Tables"
-      : group === "commands"
-        ? "Commands"
-        : "Open tabs";
+    : group === "databases"
+      ? "Databases"
+      : group === "tables"
+        ? "Tables"
+        : group === "commands"
+          ? "Commands"
+          : "Open tabs";
 }
 
 function emptyGroupMessage(group: CommandBarGroup): string {
   return group === "connections"
     ? "No connections"
-    : group === "tables"
-      ? "No tables"
-      : group === "commands"
-        ? "No commands"
-        : "No open tabs";
+    : group === "databases"
+      ? "No databases"
+      : group === "tables"
+        ? "No tables"
+        : group === "commands"
+          ? "No commands"
+          : "No open tabs";
 }
 
 function ItemIcon({ item }: { item: CommandBarItem }) {
   if (item.kind === "connection") {
+    return <RiDatabase2Line className="size-4 shrink-0 text-primary" />;
+  }
+  if (item.kind === "database") {
     return <RiDatabase2Line className="size-4 shrink-0 text-primary" />;
   }
   if (item.kind === "table") {

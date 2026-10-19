@@ -14,7 +14,7 @@ import {
   type CommandBarItem,
   type CommandBarMode,
 } from "@/app/command-bar/command-bar-utils";
-import { databasesQueryKey } from "@/app/connection/hooks/use-databases";
+import { databasesQueryKey, useDatabases } from "@/app/connection/hooks/use-databases";
 import { useSchemaObjects, schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { useConnections } from "@/app/home/hooks/use-connections";
@@ -61,6 +61,11 @@ export function useConnectionWorkspaceController({
     isFetching: isFetchingConnections,
   } = useConnections();
   const [selectedDatabase, setSelectedDatabase] = useState(() => getInitialDatabase(profile));
+  const {
+    data: databaseValues = [],
+    isLoading: isLoadingDatabases,
+    isFetching: isFetchingDatabases,
+  } = useDatabases(profile);
   const [sqlTabs, setSqlTabs] = useState<SqlEditorTab[]>([
     createSqlTab(1, profile.id, getInitialDatabase(profile)),
   ]);
@@ -103,6 +108,13 @@ export function useConnectionWorkspaceController({
   const sqlTables = useMemo(
     () => schemaObjects.filter((object) => object.object_type === "table"),
     [schemaObjects],
+  );
+  const databases = useMemo(
+    () =>
+      Array.from(
+        new Set([getInitialDatabase(profile), ...databaseValues, selectedDatabase].filter(Boolean)),
+      ),
+    [databaseValues, profile, selectedDatabase],
   );
   const sqlDialect =
     profile.db_type === "postgres" ? PostgreSQL : profile.db_type === "mysql" ? MySQL : SQLite;
@@ -182,6 +194,14 @@ export function useConnectionWorkspaceController({
                 isActive: connection.id === profile.id,
                 connection,
               })),
+              ...databases.map((database) => ({
+                id: `database:${profile.id}:${database}`,
+                kind: "database" as const,
+                label: database,
+                detail: database === selectedDatabase ? "Current database" : "Switch database",
+                isActive: database === selectedDatabase,
+                database,
+              })),
               ...schemaObjects
                 .filter((object) => object.object_type === "table")
                 .map((table) => ({
@@ -198,6 +218,7 @@ export function useConnectionWorkspaceController({
       commandBarMode,
       commandBarTabs,
       connections,
+      databases,
       profile.id,
       selectedDatabase,
       schemaObjects,
@@ -723,6 +744,8 @@ export function useConnectionWorkspaceController({
     switchingConnectionIds,
     isLoadingConnections,
     isFetchingConnections,
+    isLoadingDatabases,
+    isFetchingDatabases,
     isLoadingSchema,
     isFetchingSchema,
     navigate,

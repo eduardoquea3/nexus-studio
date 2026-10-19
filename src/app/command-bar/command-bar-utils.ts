@@ -14,6 +14,14 @@ export type CommandBarItem =
     }
   | {
       id: string;
+      kind: "database";
+      label: string;
+      detail: string;
+      isActive: boolean;
+      database: string;
+    }
+  | {
+      id: string;
       kind: "table";
       label: string;
       detail: string;

@@ -33,6 +33,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
     switchingConnectionIds,
     isLoadingConnections,
     isFetchingConnections,
+    isLoadingDatabases,
+    isFetchingDatabases,
     isLoadingSchema,
     isFetchingSchema,
     editorSectionRef,
@@ -80,12 +82,15 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
             } else if (item.kind === "table") {
               openTableTab(item.table.name, item.table.schema);
               closeCommandBar();
+            } else if (item.kind === "database") {
+              controller.handleDatabaseChange(item.database);
+              closeCommandBar();
             }
           }}
           onConnectionSelect={(connection) => void switchConnection(connection)}
           groups={
             commandBarMode === "palette"
-              ? ["connections", "tables"]
+              ? ["connections", "databases", "tables"]
               : commandBarMode === "commands"
                 ? ["commands"]
                 : ["tabs"]
@@ -95,6 +100,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
             (switchingConnectionIds.size > 0 ||
               isLoadingConnections ||
               isFetchingConnections ||
+              isLoadingDatabases ||
+              isFetchingDatabases ||
               isLoadingSchema ||
               isFetchingSchema)
           }
