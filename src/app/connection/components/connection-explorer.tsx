@@ -1,15 +1,10 @@
 import {
   RiArrowRightSLine,
-  RiFunctionLine,
-  RiGitBranchLine,
   RiLoader4Line,
   RiRefreshLine,
   RiSearchLine,
   RiTableLine,
-  RiEyeLine,
 } from "@remixicon/react";
-
-import type { ColumnInfo, ObjectMeta } from "@/shared/types/models";
 
 import {
   FileItem,
@@ -21,59 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-const explorerGroups = [
-  {
-    id: "tables",
-    label: "Tables",
-    objectType: "table",
-    emptyLabel: "No tables found",
-    icon: RiTableLine,
-  },
-  {
-    id: "views",
-    label: "Views",
-    objectType: "view",
-    emptyLabel: "No views found",
-    icon: RiEyeLine,
-  },
-  {
-    id: "functions",
-    label: "Functions",
-    objectType: "function",
-    emptyLabel: "No functions found",
-    icon: RiFunctionLine,
-  },
-  {
-    id: "procedures",
-    label: "Procedures",
-    objectType: "procedure",
-    emptyLabel: "No procedures found",
-    icon: RiGitBranchLine,
-  },
-] as const;
-
-type ConnectionExplorerProps = {
-  dbType: ObjectMeta["object_type"] | string;
-  schemaObjects: ObjectMeta[];
-  isLoading: boolean;
-  error: unknown;
-  isFetching: boolean;
-  refetch: () => unknown;
-  filterText: string;
-  setFilterText: (value: string) => void;
-  normalizedFilter: string;
-  openGroups: string[];
-  setOpenGroups: (groups: string[]) => void;
-  expandedTables: string[];
-  tableColumns: Record<string, ColumnInfo[]>;
-  loadingTables: Record<string, boolean>;
-  tableSchemaErrors: Record<string, boolean>;
-  tableResourceKey: (schema: string | undefined, table: string) => string;
-  toggleTable: (table: string, schema?: string) => void;
-  onTableSelect: (table: string, schema?: string) => void;
-  onRoutineSelect: (routine: ObjectMeta) => void;
-};
+import { explorerGroups } from "../utils/connection-explorer";
+import type { ConnectionExplorerProps } from "../types/connection-explorer";
 
 export function ConnectionExplorer({
   dbType,
@@ -111,7 +55,7 @@ export function ConnectionExplorer({
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-2 py-2">
-        <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Explorer
         </p>
         <Button
@@ -127,8 +71,8 @@ export function ConnectionExplorer({
           <RiRefreshLine className={cn(isFetching && "animate-spin")} aria-hidden="true" />
         </Button>
       </div>
-      <div className="relative px-2 pb-2">
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+      <div className="relative mx-2 mb-2">
+        <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center">
           <RiSearchLine className="size-3.5 text-muted-foreground" aria-hidden="true" />
         </span>
         <Input
@@ -140,11 +84,11 @@ export function ConnectionExplorer({
         />
       </div>
       {isLoading ? (
-        <p className="px-2 py-2 text-[0.65rem] text-muted-foreground">Loading...</p>
+        <p className="px-2 py-2 text-2xs text-muted-foreground">Loading...</p>
       ) : error ? (
-        <p className="px-2 py-2 text-[0.65rem] text-destructive">Unable to load objects</p>
+        <p className="px-2 py-2 text-2xs text-destructive">Unable to load objects</p>
       ) : normalizedFilter && matchingGroups.length === 0 ? (
-        <p className="px-2 py-2 text-[0.65rem] text-muted-foreground">No matching objects</p>
+        <p className="px-2 py-2 text-2xs text-muted-foreground">No matching objects</p>
       ) : (
         <Files open={openGroups} onOpenChange={setOpenGroups} className="min-w-0 p-0">
           {availableGroups.map((group) => {
@@ -158,12 +102,12 @@ export function ConnectionExplorer({
                 <FolderTrigger icon={group.icon} className="text-xs">
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                     <span>{group.label}</span>
-                    <span className="text-[0.65rem] text-muted-foreground">{objects.length}</span>
+                    <span className="text-2xs text-muted-foreground">{objects.length}</span>
                   </span>
                 </FolderTrigger>
                 <FolderContent>
                   {objects.length === 0 ? (
-                    <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">
+                    <p className="px-2 py-1 text-2xs text-muted-foreground">
                       {normalizedFilter ? "No matching objects" : group.emptyLabel}
                     </p>
                   ) : (
@@ -234,7 +178,7 @@ export function ConnectionExplorer({
                           {isTable && isExpanded ? (
                             <div className="ml-8 border-l border-border/60 py-1 pl-2">
                               {loadingTables[resourceKey] ? (
-                                <div className="flex items-center gap-1.5 px-2 py-1 text-[0.65rem] text-muted-foreground">
+                                <div className="flex items-center gap-1.5 px-2 py-1 text-2xs text-muted-foreground">
                                   <RiLoader4Line
                                     className="size-3 animate-spin"
                                     aria-hidden="true"
@@ -242,7 +186,7 @@ export function ConnectionExplorer({
                                   Loading columns...
                                 </div>
                               ) : tableSchemaErrors[resourceKey] ? (
-                                <p className="px-2 py-1 text-[0.65rem] text-destructive">
+                                <p className="px-2 py-1 text-2xs text-destructive">
                                   Unable to load columns
                                 </p>
                               ) : columns?.length ? (
@@ -250,7 +194,7 @@ export function ConnectionExplorer({
                                   {columns.map((column) => (
                                     <div
                                       key={column.name}
-                                      className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1 text-[0.65rem]"
+                                      className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1 text-2xs"
                                       title={`${column.name}: ${column.data_type}`}
                                     >
                                       <span className="min-w-0 flex-[2] truncate text-foreground/80">
@@ -263,7 +207,7 @@ export function ConnectionExplorer({
                                   ))}
                                 </div>
                               ) : (
-                                <p className="px-2 py-1 text-[0.65rem] text-muted-foreground">
+                                <p className="px-2 py-1 text-2xs text-muted-foreground">
                                   No columns found
                                 </p>
                               )}

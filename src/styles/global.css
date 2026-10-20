@@ -230,6 +230,7 @@
   --font-label: var(--font-label);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
+  --text-2xs: 0.65rem;
 
   --radius-sm: 0.25rem;
   --radius-md: var(--radius-sm);
