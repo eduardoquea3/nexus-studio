@@ -9,7 +9,7 @@
     "format": "bunx --bun oxfmt --write '**/*.{ts,tsx}'",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "bun test"
+    "test": "bun test --isolate"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
