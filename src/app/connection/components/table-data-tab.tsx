@@ -107,9 +107,8 @@ export function TableDataTab({
   useEffect(() => {
     if (previousRefreshTokenRef.current === refreshToken) return;
     previousRefreshTokenRef.current = refreshToken;
-    if (page === 1) void refetch();
-    else setPage(1);
-  }, [refreshToken, refetch, page]);
+    void refetch();
+  }, [refreshToken, refetch]);
   useEffect(() => {
     if (!schemaColumns || lastStructureSignatureRef.current === structureSignature) return;
     lastStructureSignatureRef.current = structureSignature;
@@ -186,7 +185,7 @@ export function TableDataTab({
       }}
     >
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabsContent value="data" className="h-full min-h-0 overflow-hidden p-0 m-0">
+        <TabsContent value="data" className="h-full min-h-0 overflow-hidden p-0 m-0" transition={{ duration: 0 }}>
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
             <div className="min-h-0 flex-1 overflow-hidden">
               {viewMode === "json" && canShowJson && payload ? (
@@ -246,7 +245,7 @@ export function TableDataTab({
             </p>
           </div>
         </TabsContent>
-        <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0">
+        <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0" transition={{ duration: 0 }}>
           <TableDataStructure
             structureDraft={structureDraft}
             setStructureDraft={setStructureDraft}
@@ -265,6 +264,7 @@ export function TableDataTab({
         selectedRowCount={rowsToExport.length}
         onExportRows={() => void handleExportRows()}
         isExportingRows={isExportingRows}
+        onRefresh={() => void refetch()}
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
         isLoading={isFetching}

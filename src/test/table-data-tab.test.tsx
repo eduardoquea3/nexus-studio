@@ -38,7 +38,10 @@ mock.module("@/app/connection/hooks/use-table-data", () => ({
     return {
       data:
         currentTableData.rows.length > 0
-          ? { ...currentTableData, page: currentTableData.page === 1 ? page : currentTableData.page }
+          ? {
+              ...currentTableData,
+              page: currentTableData.page === 1 ? page : currentTableData.page,
+            }
           : currentTableData,
       error: tableError,
       isLoading: tableLoading,
@@ -163,7 +166,7 @@ describe("TableDataTab empty rows", () => {
     currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
     render(<TableDataTab profile={profile} table="auth" />);
 
-    expect(screen.getByText("Page 1 of 3")).not.toBeNull();
+    expect(screen.getByLabelText("Current page 1")).not.toBeNull();
     expect(screen.queryByText(/rows/i)).toBeNull();
     expect(screen.queryByText(/showing/i)).toBeNull();
     const previousButton = screen.getByRole("button", { name: "Previous table page" });
@@ -176,7 +179,7 @@ describe("TableDataTab empty rows", () => {
     expect(requestedPage).toBe(2);
     expect(previousButton.hasAttribute("disabled")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
-    expect(screen.getByText("Page 3 of 3")).not.toBeNull();
+    expect(screen.getByLabelText("Current page 3")).not.toBeNull();
     const lastPageNextButton = screen.getByRole("button", { name: "Next table page" });
     expect(lastPageNextButton.hasAttribute("disabled")).toBe(true);
     expect(lastPageNextButton.className).not.toContain("disabled:hidden");
@@ -211,7 +214,49 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("group", { name: "Table data view" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Next table page" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Next table page" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+  });
+
+  test("refreshes table data and supports first and last page navigation", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
+    const view = render(<TableDataTab profile={profile} table="auth" refreshToken={0} />);
+
+    expect(screen.getByRole("button", { name: "First table page" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Last table page" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Last table page" }));
+    expect(requestedPage).toBe(3);
+    expect(screen.getByLabelText("Current page 3")).not.toBeNull();
+    view.rerender(<TableDataTab profile={profile} table="auth" refreshToken={1} />);
+    expect(requestedPage).toBe(3);
+    expect(refetchTable).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "First table page" }));
+    expect(requestedPage).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh table data" }));
+    expect(refetchTable).toHaveBeenCalledTimes(2);
+  });
+
+  test("uses icon-only refresh and add-row actions and shows only the current page", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const refreshButton = screen.getByRole("button", { name: "Refresh table data" });
+    const addRowButton = screen.getByRole("button", { name: "Add row" });
+    expect(refreshButton.textContent).toBe("");
+    expect(addRowButton.textContent).toBe("");
+    expect(refreshButton.className).toContain("h-8 w-8 bg-muted/90");
+    expect(addRowButton.className).toContain("h-8 w-8 bg-muted/90");
+    expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
+    expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
+    expect(screen.getByLabelText("Current page 1").textContent).toBe("1");
+    expect(screen.queryByText("Page 1 of 3")).toBeNull();
   });
 
   test("shows table headers even when there are no rows", () => {
@@ -230,13 +275,15 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("table").className.includes("min-w-max")).toBe(true);
     expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
-    expect(screen.getByText("Page 1 of 1")).not.toBeNull();
+    expect(screen.getByLabelText("Current page 1")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
     expect(screen.queryByText(/is empty/i)).toBeNull();
     expect(screen.getByRole("table").className.includes("h-full")).toBe(false);
     expect(screen.getByRole("table").className.includes("w-full")).toBe(true);
     expect(
-      document.querySelector('[data-slot="table-container"]')?.parentElement?.className.includes("h-full"),
+      document
+        .querySelector('[data-slot="table-container"]')
+        ?.parentElement?.className.includes("h-full"),
     ).toBe(true);
   });
 

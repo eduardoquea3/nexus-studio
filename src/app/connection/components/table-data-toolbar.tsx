@@ -1,6 +1,14 @@
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 
-import { RiAddLine, RiArrowLeftSLine, RiArrowRightSLine, RiDownloadLine } from "@remixicon/react";
+import {
+  RiAddLine,
+  RiArrowLeftDoubleLine,
+  RiArrowLeftSLine,
+  RiArrowRightDoubleLine,
+  RiArrowRightSLine,
+  RiDownloadLine,
+  RiRefreshLine,
+} from "@remixicon/react";
 
 import type { ViewMode } from "@/shared/types/models";
 
@@ -17,6 +25,7 @@ type TableDataToolbarProps = {
   selectedRowCount: number;
   onExportRows: () => void;
   isExportingRows: boolean;
+  onRefresh: () => void;
   page: number;
   pageCount: number;
   isLoading: boolean;
@@ -33,6 +42,7 @@ export function TableDataToolbar({
   selectedRowCount,
   onExportRows,
   isExportingRows,
+  onRefresh,
   page,
   pageCount,
   isLoading,
@@ -87,13 +97,27 @@ export function TableDataToolbar({
         </TabsList>
         <Button
           type="button"
+          variant="outline"
+          size="icon-xs"
+          className="h-8 w-8 bg-muted/90 p-0 hover:bg-muted"
+          disabled={isLoading}
+          onClick={onRefresh}
+          aria-label="Refresh table data"
+          title="Refresh table data"
+        >
+          <RiRefreshLine className="size-5" />
+        </Button>
+        <Button
+          type="button"
           variant={draftRow ? "secondary" : "outline"}
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
+          size="icon-xs"
+          className="h-8 w-8 bg-muted/90 p-0 hover:bg-muted"
           disabled={columnNames.length === 0}
           onClick={() => setDraftRow(Object.fromEntries(columnNames.map((column) => [column, ""])))}
+          aria-label="Add row"
+          title="Add row"
         >
-          <RiAddLine data-icon="inline-start" /> Add row
+          <RiAddLine className="size-5" />
         </Button>
         {draftRow ? <span className="text-[0.625rem] text-primary/80">Draft row</span> : null}
         {selectedRowCount > 0 ? (
@@ -118,6 +142,17 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
+          className="border-border p-1"
+          disabled={page <= 1 || isLoading}
+          onClick={() => setPage(1)}
+          aria-label="First table page"
+        >
+          <RiArrowLeftDoubleLine />
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
           className="border-border p-1 mr-1"
           disabled={page <= 1 || isLoading}
           onClick={() => setPage((current) => Math.max(1, current - 1))}
@@ -125,8 +160,8 @@ export function TableDataToolbar({
         >
           <RiArrowLeftSLine />
         </Button>
-        <span className="text-center px-1">
-          Page {page} of {pageCount}
+        <span aria-label={`Current page ${page}`} className="min-w-5 text-center px-1">
+          {page}
         </span>
         <Button
           type="button"
@@ -138,6 +173,17 @@ export function TableDataToolbar({
           aria-label="Next table page"
         >
           <RiArrowRightSLine />
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="border-border p-1"
+          disabled={isLoading || page >= pageCount}
+          onClick={() => setPage(pageCount)}
+          aria-label="Last table page"
+        >
+          <RiArrowRightDoubleLine />
         </Button>
       </nav>
     </div>
