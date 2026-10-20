@@ -205,7 +205,9 @@ const { ConnectionWorkspace, getQuerySegment } =
   await import("../app/connection/components/connection-workspace");
 const { splitSqlStatements } =
   await import("../app/connection/components/connection-workspace-utils");
-const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 const profile = {
   id: "connection-1",
@@ -324,6 +326,67 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByTestId("selected-database").textContent).toBe("development");
     expect(screen.getByRole("heading", { name: "Database mismatch" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Switch to sales" })).not.toBeNull();
+  });
+
+  test("keeps an opened table view mounted when switching workspace tabs", async () => {
+    getTableData.mockClear();
+    useWorkspaceStore.setState({
+      isHydrated: true,
+      activeConnectionId: "connection-1",
+      connections: {
+        "connection-1": {
+          connectionId: "connection-1",
+          activeTabId: "query-1",
+          tabs: [
+            {
+              id: "query-1",
+              type: "query",
+              connectionId: "connection-1",
+              database: "master",
+              title: "Query 1",
+              query: "select 1",
+              isDirty: false,
+              queryResult: null,
+              queryError: null,
+              viewMode: "table",
+            },
+            {
+              id: "table-company",
+              type: "datatable",
+              connectionId: "connection-1",
+              database: "master",
+              schema: "public",
+              tableName: "company",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWorkspace(fieldsProfile);
+    fireEvent.click(screen.getByRole("tab", { name: /company/ }));
+    await screen.findByRole("tab", { name: "Structure" });
+    await waitFor(() => expect(getTableData).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Structure" }));
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe(
+      "active",
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Query 1/ }));
+    expect(screen.queryByRole("tab", { name: "Structure" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /company/ }));
+
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe(
+      "active",
+    );
+    expect(getTableData).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.queryByRole("tab", { name: "Structure" })).toBeNull();
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    fireEvent.keyUp(window, { key: "Control" });
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe("active");
+    expect(getTableData).toHaveBeenCalledTimes(1);
   });
 
   test("renders one editor and keeps one editor when tabs are added", () => {
@@ -1118,6 +1181,95 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     expect(switcher.getByRole("button", { name: /Query 3/ }).getAttribute("aria-selected")).toBe(
       "true",
+    );
+  });
+
+  test.each([1, -1] as const)(
+    "counts every shortcut event before React commits (direction %s)",
+    async (direction) => {
+      renderWorkspace();
+      fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+
+      act(() => {
+        for (let index = 0; index < 8; index += 1) {
+          window.dispatchEvent(
+            new window.KeyboardEvent("keydown", {
+              key: "Tab",
+              ctrlKey: true,
+              shiftKey: direction === -1,
+              bubbles: true,
+            }),
+          );
+        }
+        window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Control", bubbles: true }));
+      });
+
+      const expectedTab = direction === 1 ? "Query 3" : "Query 2";
+      expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+      expect(screen.getByRole("tab", { name: expectedTab }).getAttribute("data-state")).toBe(
+        "active",
+      );
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(screen.getByRole("tab", { name: expectedTab }).getAttribute("data-state")).toBe(
+        "active",
+      );
+    },
+  );
+
+  test("previews every shortcut step and cancels back to its origin with Escape", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "ArrowDown" });
+    expect(screen.getByRole("tab", { name: "Query 1" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Query 1" }).getAttribute("data-state")).toBe("active");
+  });
+
+  test("continues from the latest tab across shortcut sessions before the next render", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    act(() => {
+      for (let session = 0; session < 2; session += 1) {
+        window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }));
+        window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Control" }));
+      }
+    });
+    expect(screen.getByRole("tab", { name: "Query 3" }).getAttribute("data-state")).toBe("active");
+    expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+  });
+
+  test("keeps live preview aligned with separate-task presses and stops after release", async () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    let index = 0;
+    for (const direction of [1, 1, -1, 1, -1, -1, 1, 1]) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: direction === -1 });
+      });
+      index = (index + direction + 3) % 3;
+      expect(
+        screen.getByRole("tab", { name: `Query ${index + 1}` }).getAttribute("data-state"),
+      ).toBe("active");
+    }
+    fireEvent.keyUp(window, { key: "Control" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+    expect(screen.getByRole("tab", { name: `Query ${index + 1}` }).getAttribute("data-state")).toBe(
+      "active",
     );
   });
 

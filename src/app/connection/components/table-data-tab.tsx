@@ -1,4 +1,4 @@
-import type { ColumnDef, Row } from "@tanstack/react-table";
+import type { Row } from "@tanstack/react-table";
 
 import { RiFileCopyLine, RiDownloadLine, RiRefreshLine } from "@remixicon/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,15 +10,14 @@ import {
   type StructureDraft,
 } from "@/app/connection/components/table-data-structure";
 import { TableDataToolbar } from "@/app/connection/components/table-data-toolbar";
+import { TableDataGrid } from "@/app/connection/components/table-data-grid";
 import { useTableData } from "@/app/connection/hooks/use-table-data";
 import { useTableSchema } from "@/app/connection/hooks/use-table-schema";
 import { exportTableDataJson } from "@/app/connection/services/table-data-export-service";
-import { toast } from "@/components/ui/toast";
 import { Tabs, TabsContent } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
-import { DataTable } from "@/shared/components/data-table";
+import { toast } from "@/components/ui/toast";
 import { JsonCodePanel } from "@/shared/components/json-code-panel";
-import { useDataTable } from "@/shared/hooks/use-data-table";
 import {
   copyJsonToClipboard,
   exportJsonFile,
@@ -30,6 +29,7 @@ type TableDataTabProps = {
   profile: ConnectionProfile;
   table: string;
   schema?: string;
+  isActive?: boolean;
   refreshToken?: number;
   exportJson?: (text: string, filename: string) => JsonActionResult;
 };
@@ -38,12 +38,19 @@ export function TableDataTab({
   profile,
   table,
   schema,
+  isActive = true,
   refreshToken = 0,
   exportJson: exportJsonAction = exportJsonFile,
 }: TableDataTabProps) {
   const [page, setPage] = useState(1);
-  const { data, error, isLoading, isFetching, refetch } = useTableData(profile, table, schema, page);
-  const tableSchema = useTableSchema(profile, table, true, schema);
+  const { data, error, isLoading, isFetching, refetch } = useTableData(
+    profile,
+    table,
+    schema,
+    page,
+    isActive,
+  );
+  const tableSchema = useTableSchema(profile, table, isActive, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
@@ -70,18 +77,11 @@ export function TableDataTab({
         .join("|")
     : "";
   const lastStructureSignatureRef = useRef<string | null>(null);
-  const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
-    () =>
-      columnNames.map((column) => ({
-        accessorKey: column,
-        header: column,
-        cell: (context) => formatCell(context.getValue()),
-      })),
-    [columnNames],
-  );
-  const dataTable = useDataTable({ columns, data: data?.rows ?? [] });
   const handleSelectionChange = useCallback((rows: Row<Record<string, unknown>>[]) => {
     setSelectedRows(rows.map((row) => row.original));
+  }, []);
+  const handleDraftChange = useCallback((column: string, value: string) => {
+    setDraftRow((row) => (row ? { ...row, [column]: value } : row));
   }, []);
   const payload = useMemo(
     () =>
@@ -105,10 +105,14 @@ export function TableDataTab({
     setSelectedRows([]);
   }, [data?.rows]);
   useEffect(() => {
+    if (!isActive) {
+      previousRefreshTokenRef.current = refreshToken;
+      return;
+    }
     if (previousRefreshTokenRef.current === refreshToken) return;
     previousRefreshTokenRef.current = refreshToken;
     void refetch();
-  }, [refreshToken, refetch]);
+  }, [isActive, refreshToken, refetch]);
   useEffect(() => {
     if (!schemaColumns || lastStructureSignatureRef.current === structureSignature) return;
     lastStructureSignatureRef.current = structureSignature;
@@ -161,7 +165,7 @@ export function TableDataTab({
         <p role="status" className="sr-only">
           Loading data...
         </p>
-        <DataTable table={dataTable} isLoading />
+        <TableDataGrid data={data} draftColumns={schemaColumns} isLoading withShell />
       </div>
     );
   if (error)
@@ -185,7 +189,11 @@ export function TableDataTab({
       }}
     >
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabsContent value="data" className="h-full min-h-0 overflow-hidden p-0 m-0" transition={{ duration: 0 }}>
+        <TabsContent
+          value="data"
+          className="h-full min-h-0 overflow-hidden p-0 m-0"
+          transition={{ duration: 0 }}
+        >
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
             <div className="min-h-0 flex-1 overflow-hidden">
               {viewMode === "json" && canShowJson && payload ? (
@@ -225,18 +233,18 @@ export function TableDataTab({
                   }
                 />
               ) : (
-                <DataTable
-                  table={dataTable}
-                  isLoading={isLoading || isFetching || (columnNames.length === 0 && tableSchema.isLoading)}
+                <TableDataGrid
+                  data={data}
+                  isLoading={
+                    isLoading || isFetching || (columnNames.length === 0 && tableSchema.isLoading)
+                  }
                   withShell={false}
                   className="h-full"
                   rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
                   draftRow={draftRow}
                   draftColumns={schemaColumns}
                   onSelectionChange={handleSelectionChange}
-                  onDraftChange={(column, value) =>
-                    setDraftRow((row) => (row ? { ...row, [column]: value } : row))
-                  }
+                  onDraftChange={handleDraftChange}
                 />
               )}
             </div>
@@ -245,7 +253,11 @@ export function TableDataTab({
             </p>
           </div>
         </TabsContent>
-        <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0" transition={{ duration: 0 }}>
+        <TabsContent
+          value="structure"
+          className="min-h-0 max-h-full overflow-auto p-4 m-0"
+          transition={{ duration: 0 }}
+        >
           <TableDataStructure
             structureDraft={structureDraft}
             setStructureDraft={setStructureDraft}
@@ -290,11 +302,6 @@ function exportJson(
     : result === "cancelled"
       ? "JSON export cancelled."
       : "Could not export JSON.";
-}
-function formatCell(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { CommandBarItem } from "@/app/command-bar/command-bar-utils";
 
 const { CommandBar } = await import("@/app/command-bar/command-bar");
-const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
 
 afterEach(() => cleanup());
 
@@ -55,6 +55,49 @@ const commandItems: CommandBarItem[] = [
 ];
 
 describe("CommandBar", () => {
+  test("preserves every batched arrow step in the uncontrolled palette", () => {
+    render(
+      <CommandBar
+        mode="palette"
+        items={items}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+    const input = screen.getByRole("textbox", { name: "Search commands" });
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    expect(screen.getByRole("button", { name: /users/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  test("keeps controlled highlighting event-driven without replaying prop updates", () => {
+    const onHighlightChange = mock((_item: CommandBarItem | undefined) => undefined);
+    const props = {
+      mode: "tab-switcher" as const,
+      items,
+      onClose: () => undefined,
+      onSelect: () => undefined,
+      onHighlightChange,
+    };
+    const { rerender } = render(<CommandBar {...props} selectedId="table:users" />);
+    expect(onHighlightChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
+    expect(onHighlightChange).toHaveBeenCalledTimes(1);
+    expect(onHighlightChange.mock.calls[0]?.[0]?.id).toBe("table:orders");
+    rerender(<CommandBar {...props} selectedId="table:orders" />);
+    expect(onHighlightChange).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /orders/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /users/ }));
+    expect(onHighlightChange.mock.calls[1]?.[0]?.id).toBe("table:users");
+  });
+
   test("selects with ArrowDown and Enter after the exit animation", async () => {
     const onSelect = mock((_item: CommandBarItem) => undefined);
     render(

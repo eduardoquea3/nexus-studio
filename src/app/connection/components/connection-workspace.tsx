@@ -1,7 +1,6 @@
 import type { ConnectionProfile } from "@/shared/types/models";
 
 import { CommandBar } from "@/app/command-bar/command-bar";
-import { nextTabIndex } from "@/app/command-bar/command-bar-utils";
 import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
 import { ConnectionWorkspaceContent } from "@/app/connection/components/connection-workspace-content";
 
@@ -19,10 +18,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
   const {
     commandBarMode,
     commandBarItems,
-    tabItems,
     activeTabId,
-    switcherInitialDirection,
-    switcherCycle,
+    highlightSwitcherTab,
     closeCommandBar,
     activateWorkspaceTab,
     setActiveTabId,
@@ -49,19 +46,11 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
         <CommandBar
           mode={commandBarMode}
           items={commandBarItems}
-          initialIndex={
-            commandBarMode === "tab-switcher"
-              ? nextTabIndex(tabItems, activeTabId, switcherInitialDirection)
-              : 0
-          }
-          cycleRequest={commandBarMode === "tab-switcher" ? switcherCycle : undefined}
+          selectedId={commandBarMode === "tab-switcher" ? activeTabId : undefined}
           onHighlightChange={(item) => {
             if (commandBarMode !== "tab-switcher") return;
             if (item?.kind !== "tab") return;
-            if (item.tab.id === activeTabId) return;
-            activateWorkspaceTab(profile.id, item.tab.id);
-            setActiveTabId(item.tab.id);
-            if (item.tab.type === "query") setActiveSqlTabId(item.tab.id);
+            highlightSwitcherTab(item.tab.id);
           }}
           onClose={closeCommandBar}
           inline

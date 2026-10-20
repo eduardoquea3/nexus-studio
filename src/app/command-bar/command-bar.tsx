@@ -33,6 +33,7 @@ type CommandBarProps = {
   mode: CommandBarMode;
   items: readonly CommandBarItem[];
   initialIndex?: number;
+  selectedId?: string;
   isLoading?: boolean;
   onClose: () => void;
   onSelect: (item: CommandBarItem) => void;
@@ -47,6 +48,7 @@ export function CommandBar({
   mode,
   items,
   initialIndex = 0,
+  selectedId,
   isLoading = false,
   onClose,
   onSelect,
@@ -57,7 +59,7 @@ export function CommandBar({
   inline = false,
 }: CommandBarProps) {
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+  const [localSelectedIndex, setSelectedIndex] = useState(initialIndex);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const switcherRef = useRef<HTMLElement>(null);
@@ -66,7 +68,22 @@ export function CommandBar({
   const closeAnimationRef = useRef<((afterClose?: () => void) => void) | null>(null);
   onCloseRef.current = onClose;
   const filteredItems = useMemo(() => filterCommandBarItems(items, query), [items, query]);
+  const selectedIndex =
+    selectedId === undefined
+      ? localSelectedIndex
+      : filteredItems.findIndex((item) => item.id === selectedId);
   const selectedItem = filteredItems[selectedIndex];
+  const highlightItem = (index: number) => {
+    if (selectedId === undefined) setSelectedIndex(index);
+    else onHighlightChange?.(filteredItems[index]);
+  };
+  const moveHighlight = (direction: -1 | 1) => {
+    if (selectedId === undefined) {
+      setSelectedIndex((index) => moveSelection(index, filteredItems.length, direction));
+    } else {
+      highlightItem(moveSelection(selectedIndex, filteredItems.length, direction));
+    }
+  };
   const isSwitcher = mode === "tab-switcher";
   const visibleGroups = groups ?? (isSwitcher ? ["tabs"] : inferGroups(items));
   const groupedItems = visibleGroups.map((group) => ({
@@ -92,7 +109,7 @@ export function CommandBar({
         "(prefers-reduced-motion: reduce)",
       ).matches;
 
-      if (prefersReducedMotion) {
+      if (isSwitcher || prefersReducedMotion) {
         closeAnimationRef.current = (afterClose) => finishClose(afterClose);
         return () => {
           closeAnimationRef.current = null;
@@ -134,7 +151,7 @@ export function CommandBar({
         closeAnimationRef.current = null;
       };
     },
-    { scope: containerRef },
+    { scope: containerRef, dependencies: [isSwitcher], revertOnUpdate: true },
   );
 
   useEffect(() => {
@@ -157,12 +174,12 @@ export function CommandBar({
   }, [filteredItems.length]);
 
   useEffect(() => {
-    if (cycleRequest) {
+    if (cycleRequest && selectedId === undefined) {
       setSelectedIndex((index) =>
         moveSelection(index, filteredItems.length, cycleRequest.direction),
       );
     }
-  }, [cycleRequest, filteredItems.length]);
+  }, [cycleRequest, filteredItems.length, selectedId]);
 
   useEffect(() => {
     const selectedElement =
@@ -171,8 +188,8 @@ export function CommandBar({
   }, [selectedIndex, filteredItems.length]);
 
   useEffect(() => {
-    onHighlightChange?.(selectedItem);
-  }, [onHighlightChange, selectedItem]);
+    if (selectedId === undefined) onHighlightChange?.(selectedItem);
+  }, [onHighlightChange, selectedItem, selectedId]);
 
   const selectItem = (item: CommandBarItem | undefined) => {
     if (!item || isLoading) {
@@ -223,12 +240,12 @@ export function CommandBar({
           }
           if (event.key === "ArrowDown") {
             event.preventDefault();
-            setSelectedIndex((index) => moveSelection(index, filteredItems.length, 1));
+            moveHighlight(1);
             return;
           }
           if (event.key === "ArrowUp") {
             event.preventDefault();
-            setSelectedIndex((index) => moveSelection(index, filteredItems.length, -1));
+            moveHighlight(-1);
             return;
           }
           if (event.key === "Enter") {
@@ -274,7 +291,7 @@ export function CommandBar({
           {!isLoading && isSwitcher && filteredItems.length > 0 ? (
             <ul aria-label="Open tabs" className="space-y-0.5">
               {filteredItems.map((item, index) =>
-                renderItem(item, index, selectedIndex, true, setSelectedIndex, selectItem),
+                renderItem(item, index, selectedIndex, true, highlightItem, selectItem),
               )}
             </ul>
           ) : null}
@@ -299,7 +316,7 @@ export function CommandBar({
                           filteredItems.indexOf(item),
                           selectedIndex,
                           isSwitcher,
-                          setSelectedIndex,
+                          highlightItem,
                           selectItem,
                         ),
                       )}
@@ -316,7 +333,7 @@ export function CommandBar({
           {!isLoading && !isSwitcher && query.trim() && filteredItems.length > 0 ? (
             <ul aria-label="Command results" className="space-y-1">
               {filteredItems.map((item, index) =>
-                renderItem(item, index, selectedIndex, isSwitcher, setSelectedIndex, selectItem),
+                renderItem(item, index, selectedIndex, isSwitcher, highlightItem, selectItem),
               )}
             </ul>
           ) : null}
