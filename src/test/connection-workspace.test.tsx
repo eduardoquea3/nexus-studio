@@ -183,6 +183,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
   saveConnection: mock(async () => undefined),
   testConnectionFields: mock(async () => "ok"),
   testSavedConnection,
+  writeJsonFile: mock(async () => "export.json"),
 }));
 
 mock.module("@/app/home/hooks/use-connections", () => ({
@@ -269,6 +270,60 @@ describe("ConnectionWorkspace SQL tabs", () => {
   afterEach(() => {
     cleanup();
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+  });
+
+  test("keeps the saved connection database selected and blocks a table tab from another database", () => {
+    getTableData.mockClear();
+    useWorkspaceStore.setState({
+      isHydrated: true,
+      activeConnectionId: "connection-1",
+      connections: {
+        "connection-1": {
+          connectionId: "connection-1",
+          activeTabId: "table-sales-public-company",
+          tabs: [
+            {
+              id: "query-sales",
+              type: "query",
+              connectionId: "connection-1",
+              database: "sales",
+              title: "Sales query",
+              query: "select 1",
+              isDirty: false,
+              queryResult: null,
+              queryError: null,
+              viewMode: "table",
+            },
+            {
+              id: "table-sales-public-company",
+              type: "datatable",
+              connectionId: "connection-1",
+              database: "sales",
+              schema: "public",
+              tableName: "company",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWorkspace(fieldsProfile);
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("master");
+    expect(screen.getByRole("heading", { name: "Database mismatch" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to sales" })).not.toBeNull();
+    expect(getTableData).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to sales" }));
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("sales");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("development");
+    expect(screen.getByRole("heading", { name: "Database mismatch" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to sales" })).not.toBeNull();
   });
 
   test("renders one editor and keeps one editor when tabs are added", () => {

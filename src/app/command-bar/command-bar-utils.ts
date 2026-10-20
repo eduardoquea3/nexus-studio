@@ -93,7 +93,7 @@ export function describeConnection(profile: ConnectionProfile): string {
 
 export function describeTab(tab: WorkspaceTab): { label: string; detail: string } {
   if (tab.type === "datatable") {
-    return { label: tab.tableName, detail: `${tab.schema ?? "public"} · table` };
+    return { label: tab.tableName, detail: `${tab.schema ?? "public"} · ${tab.database} · table` };
   }
 
   if (tab.type === "routine") {

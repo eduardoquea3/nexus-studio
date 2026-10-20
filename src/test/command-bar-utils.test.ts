@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import type { QueryTab } from "@/shared/types/connection-workspace";
 import {
+  describeTab,
   filterCommandBarItems,
   moveSelection,
   nextTabIndex,
   type CommandBarItem,
 } from "@/app/command-bar/command-bar-utils";
+import { getTableTabTitle } from "@/app/connection/components/connection-workspace-view-utils";
 
 const queryTab = (id: string): QueryTab => ({
   id,
@@ -19,6 +21,15 @@ const queryTab = (id: string): QueryTab => ({
   queryResult: null,
   queryError: null,
   viewMode: "table",
+});
+
+const dataTableTab = (database: string) => ({
+  id: `table-${database}-users`,
+  type: "datatable" as const,
+  connectionId: "connection-1",
+  database,
+  schema: "public",
+  tableName: "users",
 });
 
 const items: CommandBarItem[] = [
@@ -47,6 +58,18 @@ const items: CommandBarItem[] = [
 ];
 
 describe("command bar selection", () => {
+  test("adds the database to a table tab title only when the same table is open elsewhere", () => {
+    const salesTab = dataTableTab("sales");
+    const backTab = dataTableTab("back");
+
+    expect(getTableTabTitle(salesTab, [salesTab])).toBe("users");
+    expect(getTableTabTitle(salesTab, [salesTab, backTab])).toBe("users · sales");
+  });
+
+  test("includes the source database in open table tab details", () => {
+    expect(describeTab(dataTableTab("sales")).detail).toBe("public · sales · table");
+  });
+
   test("filters incrementally across labels, details, and item types", () => {
     expect(filterCommandBarItems(items, "prod").map((item) => item.id)).toEqual(["connection:one"]);
     expect(filterCommandBarItems(items, "table").map((item) => item.id)).toEqual(["table:users"]);

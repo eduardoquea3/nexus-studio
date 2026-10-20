@@ -401,10 +401,10 @@ export function useConnectionWorkspaceController({
       sqlTabsRef.current = restoredSqlTabs;
       setTableTabs(restoredTableTabs);
       setActiveTabId(storedWorkspace.activeTabId ?? restoredSqlTabs[0]?.id ?? "");
-      const activeSql = activeTab?.type === "query" ? activeTab : restoredSqlTabs[0];
-      setActiveSqlTabId(activeSql?.id ?? "");
+      const activeSql = activeTab?.type === "query" ? activeTab : undefined;
+      setActiveSqlTabId(activeSql?.id ?? restoredSqlTabs[0]?.id ?? "");
       setSelectedDatabase(
-        activeSql?.database ?? activeTab?.database ?? getInitialDatabase(profile),
+        activeSql?.database ?? getInitialDatabase(profile),
       );
     } else {
       const initialTab = createSqlTab(1, profile.id, getInitialDatabase(profile));

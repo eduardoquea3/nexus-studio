@@ -4,6 +4,7 @@ import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { getTableTabTitle } from "./connection-workspace-view-utils";
 import type { WorkspaceController } from "./connection-workspace-controller";
 
 export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceController }) {
@@ -18,6 +19,7 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
     openErDiagram,
     closeErDiagram,
   } = controller;
+  const tableTabs = workspaceTabs.flatMap((tab) => (tab.type === "table" ? [tab] : []));
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-0.5">
       <TabsList className="h-7 min-w-0 overflow-hidden rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
@@ -41,7 +43,9 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
               ) : (
                 <RiTableLine className="size-3.5 text-primary" />
               )}
-              <span className="truncate">{tab.type === "sql" ? tab.title : tab.tableName}</span>
+              <span className="truncate">
+                {tab.type === "sql" ? tab.title : getTableTabTitle(tab, tableTabs)}
+              </span>
               {tab.type === "sql" ? (
                 <span
                   className="inline-flex size-1.5 shrink-0 items-center justify-center"
