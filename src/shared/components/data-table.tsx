@@ -61,6 +61,8 @@ export function DataTable<TData>({
   const dragSelectionRef = useRef<DragSelection<TData> | null>(null);
   const previousDataRef = useRef(table.options.data);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const draftRowRef = useRef<HTMLTableRowElement>(null);
+  const hasDraftRow = draftRow !== null;
   const rows = table.getRowModel().rows;
   const visibleSelectedRowIds =
     previousDataRef.current === table.options.data ? selectedRowIds : EMPTY_ROW_SELECTION;
@@ -72,6 +74,16 @@ export function DataTable<TData>({
     tableWrapperRef.current?.classList.remove("select-none");
     setSelectedRowIds(new Set());
   }, [table.options.data]);
+
+  useEffect(() => {
+    if (!hasDraftRow) return;
+
+    const row = draftRowRef.current;
+    if (!row) return;
+
+    row.scrollIntoView?.({ block: "nearest" });
+    row.querySelector<HTMLElement>("input, select, textarea")?.focus({ preventScroll: true });
+  }, [hasDraftRow]);
 
   useEffect(() => {
     const stopDragging = () => {
@@ -247,7 +259,10 @@ export function DataTable<TData>({
                 />
               ))}
               {draftRow ? (
-                <TableRow className="bg-primary/5 hover:bg-primary/10">
+                <TableRow
+                  ref={draftRowRef}
+                  className="bg-primary/5 hover:bg-primary/10"
+                >
                   <TableCell className="w-12 border-b border-r border-primary/20 px-3 py-1.5 text-right font-mono text-[0.65rem] text-primary/80">
                     {table.getRowModel().rows.length + rowNumberOffset + 1}
                   </TableCell>

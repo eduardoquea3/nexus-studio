@@ -6,6 +6,7 @@ import {
   RiArrowLeftSLine,
   RiArrowRightDoubleLine,
   RiArrowRightSLine,
+  RiCloseLine,
   RiDownloadLine,
   RiRefreshLine,
 } from "@remixicon/react";
@@ -29,7 +30,7 @@ type TableDataToolbarProps = {
   page: number;
   pageCount: number;
   isLoading: boolean;
-  setPage: Dispatch<SetStateAction<number>>;
+  onPageChange: (page: number) => void;
 };
 
 export function TableDataToolbar({
@@ -46,11 +47,11 @@ export function TableDataToolbar({
   page,
   pageCount,
   isLoading,
-  setPage,
+  onPageChange,
 }: TableDataToolbarProps) {
   return (
-    <div className="flex h-10 min-h-9 max-h-10 shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/80 px-3 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
-      <div className="flex items-center gap-2">
+    <div className="grid h-10 min-h-9 max-h-10 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-border/70 bg-background/80 px-3 text-xs text-muted-foreground backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--border)/0.35)]">
+      <div className="flex min-w-0 items-center gap-2 justify-self-start">
         {canShowJson ? (
           <div
             className="flex h-8 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
@@ -95,11 +96,13 @@ export function TableDataToolbar({
             Structure
           </TabsTrigger>
         </TabsList>
+      </div>
+      <div className="col-start-3 row-start-1 flex items-center gap-1 justify-self-end">
         <Button
           type="button"
           variant="outline"
           size="icon-xs"
-          className="h-8 w-8 bg-muted/90 p-0 hover:bg-muted"
+          className="h-8 w-8 rounded-md border-border/70 bg-muted/70 p-0 transition-colors hover:bg-accent"
           disabled={isLoading}
           onClick={onRefresh}
           aria-label="Refresh table data"
@@ -111,15 +114,24 @@ export function TableDataToolbar({
           type="button"
           variant={draftRow ? "secondary" : "outline"}
           size="icon-xs"
-          className="h-8 w-8 bg-muted/90 p-0 hover:bg-muted"
-          disabled={columnNames.length === 0}
-          onClick={() => setDraftRow(Object.fromEntries(columnNames.map((column) => [column, ""])))}
-          aria-label="Add row"
-          title="Add row"
+          className={
+            draftRow
+              ? "h-8 w-8 rounded-md border border-destructive/35 bg-destructive/10 p-0 text-destructive transition-colors hover:bg-destructive/15"
+              : "h-8 w-8 rounded-md border-border/70 bg-muted/70 p-0 transition-colors hover:bg-accent"
+          }
+          disabled={!draftRow && (isLoading || columnNames.length === 0)}
+          onClick={() =>
+            setDraftRow(
+              draftRow
+                ? null
+                : Object.fromEntries(columnNames.map((column) => [column, ""])),
+            )
+          }
+          aria-label={draftRow ? "Cancel add row" : "Add row"}
+          title={draftRow ? "Cancel add row" : "Add row"}
         >
-          <RiAddLine className="size-5" />
+          {draftRow ? <RiCloseLine className="size-4" /> : <RiAddLine className="size-5" />}
         </Button>
-        {draftRow ? <span className="text-[0.625rem] text-primary/80">Draft row</span> : null}
         {selectedRowCount > 0 ? (
           <Button
             type="button"
@@ -136,15 +148,15 @@ export function TableDataToolbar({
       </div>
       <nav
         aria-label="Table data pagination"
-        className="flex h-7 items-center gap-1 text-[0.65rem]"
+        className="col-start-2 row-start-1 flex h-7 items-center justify-self-center gap-1 text-[0.65rem]"
       >
         <Button
           type="button"
           size="xs"
           variant="ghost"
-          className="border-border p-1"
+          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={page <= 1 || isLoading}
-          onClick={() => setPage(1)}
+          onClick={() => onPageChange(1)}
           aria-label="First table page"
         >
           <RiArrowLeftDoubleLine />
@@ -153,23 +165,26 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="border-border p-1 mr-1"
+          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={page <= 1 || isLoading}
-          onClick={() => setPage((current) => Math.max(1, current - 1))}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
           aria-label="Previous table page"
         >
           <RiArrowLeftSLine />
         </Button>
-        <span aria-label={`Current page ${page}`} className="min-w-5 text-center px-1">
+        <span
+          aria-label={`Current page ${page}`}
+          className="flex h-7 min-w-8 items-center justify-center rounded-md border border-primary/30 bg-primary/10 px-2 text-center font-medium tabular-nums text-foreground"
+        >
           {page}
         </span>
         <Button
           type="button"
           size="xs"
           variant="ghost"
-          className="border border-border p-1 ml-1"
+          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={isLoading || page >= pageCount}
-          onClick={() => setPage((current) => current + 1)}
+          onClick={() => onPageChange(page + 1)}
           aria-label="Next table page"
         >
           <RiArrowRightSLine />
@@ -178,9 +193,9 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="border-border p-1"
+          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={isLoading || page >= pageCount}
-          onClick={() => setPage(pageCount)}
+          onClick={() => onPageChange(pageCount)}
           aria-label="Last table page"
         >
           <RiArrowRightDoubleLine />

@@ -83,6 +83,13 @@ export function TableDataTab({
   const handleDraftChange = useCallback((column: string, value: string) => {
     setDraftRow((row) => (row ? { ...row, [column]: value } : row));
   }, []);
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      if (nextPage !== page) setDraftRow(null);
+      setPage(nextPage);
+    },
+    [page],
+  );
   const payload = useMemo(
     () =>
       data
@@ -280,7 +287,7 @@ export function TableDataTab({
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
         isLoading={isFetching}
-        setPage={setPage}
+        onPageChange={handlePageChange}
       />
     </Tabs>
   );

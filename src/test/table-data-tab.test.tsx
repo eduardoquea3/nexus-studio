@@ -185,6 +185,20 @@ describe("TableDataTab empty rows", () => {
     expect(lastPageNextButton.className).not.toContain("disabled:hidden");
   });
 
+  test("cancels an unsaved draft row when changing pages", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    expect(screen.getByRole("button", { name: "Cancel add row" })).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+
+    expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel add row" })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
   test("shows global row indexes on later pages and keeps the toolbar available", () => {
     currentTableData = {
       columns: ["id"],
@@ -217,6 +231,7 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("button", { name: "Next table page" }).hasAttribute("disabled")).toBe(
       true,
     );
+    expect(screen.getByRole("button", { name: "Add row" }).hasAttribute("disabled")).toBe(true);
   });
 
   test("refreshes table data and supports first and last page navigation", () => {
@@ -251,11 +266,14 @@ describe("TableDataTab empty rows", () => {
     const addRowButton = screen.getByRole("button", { name: "Add row" });
     expect(refreshButton.textContent).toBe("");
     expect(addRowButton.textContent).toBe("");
-    expect(refreshButton.className).toContain("h-8 w-8 bg-muted/90");
-    expect(addRowButton.className).toContain("h-8 w-8 bg-muted/90");
+    expect(refreshButton.className).toContain("h-8 w-8 rounded-md");
+    expect(addRowButton.className).toContain("h-8 w-8 rounded-md");
     expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
     expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
     expect(screen.getByLabelText("Current page 1").textContent).toBe("1");
+    expect(screen.getByRole("navigation", { name: "Table data pagination" }).className).toContain(
+      "justify-self-center",
+    );
     expect(screen.queryByText("Page 1 of 3")).toBeNull();
   });
 
@@ -423,7 +441,54 @@ describe("TableDataTab empty rows", () => {
       (screen.getByRole("textbox") as HTMLInputElement).className.includes("bg-primary/10"),
     ).toBe(true);
     expect(screen.getByRole("cell", { name: "1" })).not.toBeNull();
-    expect(screen.getByText("Draft row")).not.toBeNull();
+    expect(screen.queryByText("Draft row")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add row" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel add row" }).textContent).toBe("");
+  });
+
+  test("focuses the new row editor after adding a row", () => {
+    const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    const scrolledElements: HTMLElement[] = [];
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value(this: HTMLElement) {
+        scrolledElements.push(this);
+      },
+    });
+
+    try {
+      render(<TableDataTab profile={profile} table="auth" />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+
+      expect(document.activeElement).toBe(screen.getByRole("textbox"));
+      expect(scrolledElements).toHaveLength(1);
+      expect(scrolledElements[0]?.tagName).toBe("TR");
+    } finally {
+      if (scrollIntoViewDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          scrollIntoViewDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  test("cancels a local draft row from the data toolbar", () => {
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel add row" }));
+
+    expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel add row" })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   test("shows display indexes without adding them to row data", () => {
