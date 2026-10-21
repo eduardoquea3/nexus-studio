@@ -449,7 +449,7 @@ function ThemeSelector({ theme, families, onSelect }: ThemeSelectorProps) {
                 No themes found.
               </Combobox.Empty>
             ) : null}
-            <Combobox.List className="max-h-64 overflow-y-auto">
+            <Combobox.List className="theme-selector-scroll max-h-64 overflow-y-auto">
               {(family: ThemeFamily) => {
                 const variant = family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
                 return (
