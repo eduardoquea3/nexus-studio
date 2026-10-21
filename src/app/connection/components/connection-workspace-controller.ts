@@ -39,11 +39,13 @@ export type TableTab = DataTableTab;
 export type WorkspaceController = ReturnType<typeof useConnectionWorkspaceController>;
 export type ConnectionWorkspaceControllerProps = {
   profile: ConnectionProfile;
+  isActive?: boolean;
   onConnectionSwitch?: (profile: ConnectionProfile) => void | Promise<void>;
 };
 
 export function useConnectionWorkspaceController({
   profile,
+  isActive = true,
   onConnectionSwitch,
 }: ConnectionWorkspaceControllerProps) {
   const navigate = useNavigate();
@@ -316,6 +318,7 @@ export function useConnectionWorkspaceController({
     highlightSwitcherTab,
   };
   useEffect(() => {
+    if (!isActive) return;
     const isEditableTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
       const isCodeMirror =
@@ -371,7 +374,7 @@ export function useConnectionWorkspaceController({
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, []);
+  }, [isActive]);
   const focusEditor = (view: EditorView, tabId: string) => {
     view.focus();
     if (!initializedEditorIdsRef.current.has(tabId)) {
@@ -382,7 +385,6 @@ export function useConnectionWorkspaceController({
   useEffect(() => {
     if (editorViewRef.current) focusEditor(editorViewRef.current, activeSqlTabId);
   }, [activeSqlTabId]);
-  useEffect(() => setSelectedDatabase(getInitialDatabase(profile)), [profile]);
   useEffect(() => {
     if (
       !workspaceHydrated ||
@@ -425,9 +427,7 @@ export function useConnectionWorkspaceController({
       setActiveTabId(storedWorkspace.activeTabId ?? restoredSqlTabs[0]?.id ?? "");
       const activeSql = activeTab?.type === "query" ? activeTab : undefined;
       setActiveSqlTabId(activeSql?.id ?? restoredSqlTabs[0]?.id ?? "");
-      setSelectedDatabase(
-        activeSql?.database ?? getInitialDatabase(profile),
-      );
+      setSelectedDatabase(getInitialDatabase(profile));
     } else {
       const initialTab = createSqlTab(1, profile.id, getInitialDatabase(profile));
       setSqlTabs([initialTab]);
@@ -470,6 +470,7 @@ export function useConnectionWorkspaceController({
     activeSqlTabIdRef.current = activeSqlTabId;
   }, [activeSqlTabId]);
   useEffect(() => {
+    if (!isActive) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (
         event.key.toLowerCase() !== "r" ||
@@ -484,7 +485,7 @@ export function useConnectionWorkspaceController({
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activeTabId]);
+  }, [activeTabId, isActive]);
 
   const createEditorTab = () => {
     const number =

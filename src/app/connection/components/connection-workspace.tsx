@@ -10,11 +10,16 @@ export { getQuerySegment } from "./connection-workspace-utils";
 
 type ConnectionWorkspaceProps = {
   profile: ConnectionProfile;
+  isActive?: boolean;
   onConnectionSwitch?: (profile: ConnectionProfile) => void | Promise<void>;
 };
 
-export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionWorkspaceProps) {
-  const controller = useConnectionWorkspaceController({ profile, onConnectionSwitch });
+export function ConnectionWorkspace({
+  profile,
+  isActive = true,
+  onConnectionSwitch,
+}: ConnectionWorkspaceProps) {
+  const controller = useConnectionWorkspaceController({ profile, isActive, onConnectionSwitch });
   const {
     commandBarMode,
     commandBarItems,

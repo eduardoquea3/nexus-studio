@@ -1,6 +1,9 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
+
+import { ConnectionSessionHost } from "@/app/connection/components/connection-session-host";
 import { Toaster } from "@/components/ui/toast";
+
 import { TitleBar } from "../shared/components/title-bar";
 import { GlobalKeymaps } from "../shared/keymaps/global-keymaps";
 
@@ -23,8 +26,14 @@ function RootLayout() {
     document.addEventListener("contextmenu", preventContextMenu);
     window.addEventListener("keydown", preventBrowserZoom);
     window.addEventListener("wheel", preventWheelZoom, { capture: true, passive: false });
-    window.addEventListener("gesturestart", preventTrackpadGestureZoom, { capture: true, passive: false });
-    window.addEventListener("gesturechange", preventTrackpadGestureZoom, { capture: true, passive: false });
+    window.addEventListener("gesturestart", preventTrackpadGestureZoom, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("gesturechange", preventTrackpadGestureZoom, {
+      capture: true,
+      passive: false,
+    });
 
     return () => {
       document.removeEventListener("contextmenu", preventContextMenu);
@@ -40,6 +49,7 @@ function RootLayout() {
       <GlobalKeymaps />
       <TitleBar />
       <main className="min-h-0 flex-1 overflow-hidden">
+        <ConnectionSessionHost />
         <Outlet />
       </main>
       <Toaster />
