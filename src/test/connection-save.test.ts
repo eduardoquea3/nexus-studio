@@ -19,6 +19,7 @@ mock.module("@tauri-apps/plugin-store", () => ({
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async () => undefined,
+  isTauri: () => false,
 }));
 
 const { saveConnection } = await import("@/shared/lib/tauriApi");

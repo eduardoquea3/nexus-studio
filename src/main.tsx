@@ -5,7 +5,7 @@ import ReactDOM from "react-dom/client";
 import { routeTree } from "./routeTree.gen";
 import { getConnections } from "./app/home/services/connection-service";
 import { initWorkspacePersistence } from "./shared/store/workspace-persistence";
-import { listSchemaObjects } from "./shared/lib/tauriApi";
+import { listSchemaObjects, preloadSystemFonts } from "./shared/lib/tauriApi";
 import { useWorkspaceStore } from "./shared/store/workspace-store";
 import { initThemeStore } from "./shared/store/theme-store";
 import "./styles/global.css";
@@ -55,6 +55,7 @@ async function initWorkspaceStore() {
 }
 
 async function bootstrap() {
+  preloadSystemFonts();
   await Promise.allSettled([initThemeStore(), initWorkspaceStore()]);
 
   const rootElement = document.getElementById("root");

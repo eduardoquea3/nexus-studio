@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 
 import { assertUniqueConnection } from "@/shared/lib/connection-identity";
@@ -225,7 +225,26 @@ type LocalFontWindow = Window & {
   queryLocalFonts?: () => Promise<LocalFont[]>;
 };
 
-export async function listSystemFonts(): Promise<string[]> {
+let systemFontsRequest: Promise<string[]> | undefined;
+
+export function listSystemFonts(): Promise<string[]> {
+  // Retain successful discovery for this app session and share pending requests.
+  systemFontsRequest ??= fetchSystemFonts().catch((error: unknown) => {
+    systemFontsRequest = undefined;
+    throw error;
+  });
+  return systemFontsRequest;
+}
+
+export function preloadSystemFonts(): void {
+  // Browser font access can require a user gesture; only warm native discovery.
+  if (isTauri()) {
+    // A failed preload must not block startup; Settings can retry later.
+    void listSystemFonts().catch(() => undefined);
+  }
+}
+
+async function fetchSystemFonts(): Promise<string[]> {
   try {
     return await invoke<string[]>("list_system_fonts");
   } catch (error) {
