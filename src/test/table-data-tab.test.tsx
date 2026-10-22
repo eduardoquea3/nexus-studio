@@ -199,6 +199,24 @@ describe("TableDataTab empty rows", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  test("keeps the index column content-sized and centered with px-3 padding", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100 };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const header = screen.getByRole("columnheader", { name: "#" });
+    const grid = header.closest("[class*='[&_tr>:first-child]:w-px']");
+    expect(grid).not.toBeNull();
+    expect(grid?.classList.contains("[&_tr>:first-child]:text-center")).toBe(true);
+    expect(grid?.classList.contains("[&_[data-row-selector]]:justify-center")).toBe(true);
+    expect(header.classList.contains("px-3")).toBe(true);
+    expect(screen.getByRole("button", { name: "Select row 1" }).classList.contains("px-3")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    const draftIndex = screen.getByRole("textbox").closest("tr")?.firstElementChild;
+    expect(draftIndex?.textContent).toBe("2");
+    expect(draftIndex?.classList.contains("px-3")).toBe(true);
+  });
+
   test("shows global row indexes on later pages and keeps the toolbar available", () => {
     currentTableData = {
       columns: ["id"],

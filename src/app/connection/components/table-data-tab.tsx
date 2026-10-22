@@ -246,7 +246,7 @@ export function TableDataTab({
                     isLoading || isFetching || (columnNames.length === 0 && tableSchema.isLoading)
                   }
                   withShell={false}
-                  className="h-full"
+                  className="h-full [&_tr>:first-child]:w-px [&_tr>:first-child]:text-center [&_[data-row-selector]]:justify-center [&_[data-row-selector]]:text-center"
                   rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
                   draftRow={draftRow}
                   draftColumns={schemaColumns}
