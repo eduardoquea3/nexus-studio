@@ -1,32 +1,46 @@
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
+import { Combobox } from "@base-ui/react/combobox";
 import {
-  RiAddLine,
   RiArrowLeftLine,
   RiContrast2Line,
   RiArrowDownSLine,
   RiCheckLine,
   RiFontFamily,
-  RiSubtractLine,
+  RiComputerLine,
+  RiCodeSSlashLine,
+  RiTableLine,
+  RiMoonLine,
+  RiSunLine,
 } from "@remixicon/react";
+import { useRouter } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+
+import type { ThemeMode, ThemeVariant } from "@/shared/types/theme";
+
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { listSystemFonts } from "@/shared/lib/tauriApi";
-import { Combobox } from "@base-ui/react/combobox";
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   THEME_VARIANTS,
   useThemeStore,
 } from "@/shared/store/theme-store";
-import type { ThemeMode, ThemeVariant } from "@/shared/types/theme";
 
-const sections = [
-  { label: "Appearance", description: "Theme and interface", icon: RiContrast2Line },
+const SETTINGS_TABS = [
+  { value: "general", label: "General", icon: RiComputerLine },
+  { value: "sql-editor", label: "SQL Editor", icon: RiCodeSSlashLine },
+  { value: "table", label: "Table", icon: RiTableLine },
 ] as const;
 
-const THEME_COLOR_KEYS = ["--primary", "--accent", "--background", "--card", "--destructive"] as const;
+const THEME_COLOR_KEYS = [
+  "--primary",
+  "--accent",
+  "--background",
+  "--card",
+  "--destructive",
+] as const;
 
 type ThemeFamily = {
   id: string;
@@ -110,133 +124,154 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 bg-background text-foreground">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-        <div className="border-b border-border px-4 py-3">
+    <div className="flex h-full min-h-0 bg-background text-foreground">
+      <aside className="flex w-16 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground sm:w-52">
+        <div className="border-b border-border px-2 py-3 sm:px-4">
           <Button
             type="button"
             variant="ghost"
-            className="h-auto gap-2 px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
             onClick={goBack}
             aria-label="Back to app"
+            className="gap-2 text-xs"
           >
             <RiArrowLeftLine aria-hidden="true" />
-            <span>Back to app</span>
+            <span className="hidden sm:inline">Back to app</span>
           </Button>
         </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="p-4">
-            <nav aria-label="Settings sections" className="space-y-1">
-              <p className="mb-3 px-2 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/60">
-                Configure
-              </p>
-              {sections.map((section, index) => {
-                const Icon = section.icon;
-                return (
-                  <button
-                    key={section.label}
-                    type="button"
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                      index === 0
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    )}
-                    aria-current={index === 0 ? "page" : undefined}
-                  >
-                    <Icon className="size-4 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0">
-                      <span className="block text-xs font-medium">{section.label}</span>
-                      <span className="block truncate text-[0.65rem] text-sidebar-foreground/60">{section.description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </ScrollArea>
-        <div className="border-t border-border p-4">
-          <p className="px-2 text-[0.65rem] text-sidebar-foreground/60">Nexus Studio 0.1</p>
-        </div>
-      </aside>
-
-      <ScrollArea className="min-w-0 flex-1">
-        <div className="mx-auto min-h-full w-full max-w-4xl px-5 py-6 sm:px-8 sm:py-8">
-          <header className="mb-8 flex items-start gap-4 border-b border-border pb-6">
-            <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-2">
-                <p className="font-label text-[0.65rem] font-medium uppercase tracking-[0.18em] text-primary">Control room</p>
-              </div>
-              <h1 className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">Settings</h1>
-              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                Tune the workspace around the way you inspect and shape your data.
+        <nav aria-label="Settings sections" className="flex-1 px-2 py-5 sm:px-3">
+          <p className="mb-3 hidden px-2 font-label text-[0.65rem] uppercase tracking-widest text-muted-foreground sm:block">
+            Settings
+          </p>
+          <div
+            aria-current="page"
+            aria-label="Appearance"
+            className="flex items-center gap-2 rounded-lg bg-sidebar-accent px-3 py-2 text-sidebar-accent-foreground"
+          >
+            <RiContrast2Line className="size-4 shrink-0" aria-hidden="true" />
+            <div className="hidden min-w-0 sm:block">
+              <h1 className="text-xs font-medium">Appearance</h1>
+              <p className="mt-0.5 truncate text-[0.65rem] text-muted-foreground">
+                Theme and interface
               </p>
             </div>
-          </header>
-
-          <main className="space-y-8">
-            <section aria-labelledby="appearance-heading">
-              <div className="mb-4">
-                <h2 id="appearance-heading" className="text-base font-semibold">Appearance</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Set the visual environment for long database sessions.</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card">
-                <div className="border-b border-border px-4 py-4 sm:px-5">
-                  <p className="text-sm font-medium">Theme</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Choose a visual system. Use the title bar toggle to switch between light and dark.
-                  </p>
+          </div>
+        </nav>
+        <p className="hidden border-t border-border px-5 py-4 text-[0.65rem] text-muted-foreground sm:block">
+          Nexus Studio
+        </p>
+      </aside>
+      <ScrollArea className="min-w-0 flex-1">
+        <main className="mx-auto w-full max-w-4xl px-5 py-7 sm:px-8">
+          <Tabs defaultValue="general">
+            <TabsList
+              aria-label="Appearance settings"
+              className="mb-6 h-10 w-fit rounded-xl border border-border p-1"
+            >
+              {SETTINGS_TABS.map(({ value, label, icon: Icon }) => (
+                <TabsTrigger key={value} value={value} className="gap-2 rounded-lg px-3 text-xs">
+                  <Icon aria-hidden="true" />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <p className="sr-only">Set the visual environment for long database sessions.</p>
+            <TabsContent value="general" className="space-y-8">
+              <section aria-labelledby="theme-selection-heading">
+                <SectionHeading id="theme-selection-heading">Theme selection</SectionHeading>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border py-3">
+                  <div>
+                    <h2 className="text-xs font-medium">Theme mode</h2>
+                    <p className="mt-1 text-[0.65rem] text-muted-foreground">
+                      Choose a theme and its light or dark appearance.
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5" role="group" aria-label="Theme mode">
+                    {(["light", "dark"] as const).map((mode) => {
+                      const variant = THEME_FAMILIES.find(
+                        (family) => family.variants[theme.mode]?.id === theme.id,
+                      )?.variants[mode];
+                      const Icon = mode === "light" ? RiSunLine : RiMoonLine;
+                      return (
+                        <Button
+                          key={mode}
+                          size="sm"
+                          variant={theme.mode === mode ? "default" : "outline"}
+                          disabled={!variant}
+                          aria-pressed={theme.mode === mode}
+                          onClick={() => {
+                            if (variant) void setTheme(variant.id);
+                          }}
+                        >
+                          <Icon data-icon="inline-start" aria-hidden="true" />
+                          {mode === "light" ? "Light" : "Dark"}
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="p-4 sm:p-5">
-                  <ThemeSelector
-                    theme={theme}
-                    families={THEME_FAMILIES}
-                    onSelect={(themeId) => void setTheme(themeId)}
-                  />
-                </div>
-              </div>
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
-                <FontSetting
-                  title="SQL editor"
-                  defaultLabel="Editor default"
-                  value={sqlEditorFontFamily}
-                  options={systemFontOptions}
-                  isLoading={isLoadingFonts}
-                  onChange={(fontFamily) => void setSqlEditorFontFamily(fontFamily)}
-                  fontSize={sqlEditorFontSize}
-                  onFontSizeChange={(fontSize) => void setSqlEditorFontSize(fontSize)}
+                <ThemeSelector
+                  theme={theme}
+                  families={THEME_FAMILIES}
+                  onSelect={(id) => void setTheme(id)}
                 />
-                <FontSetting
-                  title="Results"
-                  defaultLabel="Interface default"
-                  value={resultFontFamily}
-                  options={systemFontOptions}
-                  isLoading={isLoadingFonts}
-                  onChange={(fontFamily) => void setResultFontFamily(fontFamily)}
-                  fontSize={resultFontSize}
-                  onFontSizeChange={(fontSize) => void setResultFontSize(fontSize)}
-                />
-                <FontSetting
-                  title="Interface"
-                  defaultLabel="Theme default"
-                  value={interfaceFontFamily}
-                  options={systemFontOptions}
-                  isLoading={isLoadingFonts}
-                  onChange={(fontFamily) => void setInterfaceFontFamily(fontFamily)}
-                  fontSize={interfaceFontSize}
-                  onFontSizeChange={(fontSize) => void setInterfaceFontSize(fontSize)}
-                />
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {fontLoadError
-                  ? "System fonts could not be loaded. Theme defaults remain active."
-                  : `${systemFonts.length} installed ${systemFonts.length === 1 ? "font" : "fonts"} available`}
-              </p>
-            </section>
-          </main>
-        </div>
+              </section>
+              <FontSetting
+                title="Interface"
+                defaultLabel="Theme default"
+                value={interfaceFontFamily}
+                options={systemFontOptions}
+                isLoading={isLoadingFonts}
+                onChange={(family) => void setInterfaceFontFamily(family)}
+                fontSize={interfaceFontSize}
+                onFontSizeChange={(size) => void setInterfaceFontSize(size)}
+              />
+            </TabsContent>
+            <TabsContent value="sql-editor">
+              <FontSetting
+                title="SQL editor"
+                defaultLabel="Editor default"
+                value={sqlEditorFontFamily}
+                options={systemFontOptions}
+                isLoading={isLoadingFonts}
+                onChange={(family) => void setSqlEditorFontFamily(family)}
+                fontSize={sqlEditorFontSize}
+                onFontSizeChange={(size) => void setSqlEditorFontSize(size)}
+              />
+            </TabsContent>
+            <TabsContent value="table">
+              <FontSetting
+                title="Results"
+                defaultLabel="Interface default"
+                value={resultFontFamily}
+                options={systemFontOptions}
+                isLoading={isLoadingFonts}
+                onChange={(family) => void setResultFontFamily(family)}
+                fontSize={resultFontSize}
+                onFontSizeChange={(size) => void setResultFontSize(size)}
+              />
+            </TabsContent>
+          </Tabs>
+          <p className="mt-4 text-[0.65rem] text-muted-foreground" role="status">
+            {fontLoadError
+              ? "System fonts could not be loaded. Theme defaults remain active."
+              : isLoadingFonts
+                ? "Loading installed fonts..."
+                : `${systemFonts.length} installed ${systemFonts.length === 1 ? "font" : "fonts"} available`}
+          </p>
+        </main>
       </ScrollArea>
     </div>
+  );
+}
+
+function SectionHeading({ id, children }: { id?: string; children: React.ReactNode }) {
+  return (
+    <h2
+      id={id}
+      className="border-b border-border pb-1.5 font-label text-[0.65rem] font-medium uppercase tracking-widest text-muted-foreground"
+    >
+      {children}
+    </h2>
   );
 }
 
@@ -274,7 +309,8 @@ function FontSetting({
       : []),
     ...options,
   ];
-  const selectedFont = fontOptions.find((option) => option.family === (value ?? "")) ?? fontOptions[0];
+  const selectedFont =
+    fontOptions.find((option) => option.family === (value ?? "")) ?? fontOptions[0];
   const [fontFilter, setFontFilter] = useState(selectedFont.label);
   const fontInputRef = useRef<HTMLInputElement>(null);
   const normalizedFontFilter = fontFilter.trim().toLowerCase();
@@ -286,110 +322,182 @@ function FontSetting({
     setFontFilter(selectedFont.label);
   }, [selectedFont.value]);
 
+  const preferredFonts = [
+    "JetBrains Mono",
+    "DejaVu Sans Mono",
+    "Hack",
+    "Inter",
+    "Open Sans",
+    "Roboto",
+  ];
+  const quickFonts = [
+    ...preferredFonts.flatMap((name) => options.filter((option) => option.family === name)),
+    ...options.filter((option) => !preferredFonts.includes(option.family)),
+  ].slice(0, 5);
+  const cards = [fontOptions[0], ...quickFonts];
+
   return (
-    <div className="rounded-lg border border-border bg-card">
-      <div className="flex items-start gap-3 border-b border-border px-4 py-4">
-        <RiFontFamily className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{title}</p>
+    <div className="space-y-8">
+      <section aria-label={`${title} font family`}>
+        <SectionHeading>Font family</SectionHeading>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((option) => {
+            const selected = option.family === (value ?? "");
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-label={option.label}
+                aria-pressed={selected}
+                disabled={isLoading && Boolean(option.family)}
+                onClick={() => onChange(option.family || null)}
+                className={cn(
+                  "min-w-0 rounded-xl border border-border p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  selected && "border-primary bg-accent",
+                )}
+                style={option.family ? { fontFamily: option.family } : undefined}
+              >
+                <span className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate">{option.label}</span>
+                  {selected ? (
+                    <RiCheckLine className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                  ) : null}
+                </span>
+                <span className="mt-2 block text-[0.65rem] text-muted-foreground">
+                  Aa Bb Cc 123
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <div className="p-4">
-        <Combobox.Root
-          items={fontOptions}
-          value={selectedFont}
-          disabled={isLoading}
-          autoHighlight
-          openOnInputClick
-          inputValue={fontFilter}
-          filteredItems={filteredFontOptions}
-          itemToStringLabel={(option: FontOption | null) => option?.label ?? ""}
-          onInputValueChange={setFontFilter}
-          onValueChange={(option) => {
-            setFontFilter(option?.label ?? "");
-            onChange(option?.family || null);
-          }}
+        <div
+          className={cn(
+            "mt-3 rounded-xl border border-border p-3",
+            value &&
+              !quickFonts.some((option) => option.family === value) &&
+              "border-primary bg-accent",
+          )}
         >
-          <div className="relative">
-            <Combobox.Input
-              ref={fontInputRef}
-              aria-label={`${title} font`}
-              placeholder={isLoading ? "Loading fonts..." : "Search fonts"}
-              className="h-10 w-full rounded-md border border-border/70 bg-background/80 px-3 pr-9 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-background/90 focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
-              style={selectedFont.family ? { fontFamily: selectedFont.family } : undefined}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <Combobox.Trigger
-              aria-label={`Toggle ${title} fonts`}
-              className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
-              onFocus={() => fontInputRef.current?.select()}
-            >
-              <RiArrowDownSLine aria-hidden="true" />
-            </Combobox.Trigger>
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <RiFontFamily className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            Custom font
           </div>
-          <Combobox.Portal>
-            <Combobox.Positioner align="start" sideOffset={4} className="z-50">
-              <Combobox.Popup className="w-(--anchor-width) overflow-hidden rounded-lg border border-border/70 bg-popover/95 text-popover-foreground shadow-lg ring-1 ring-border/50">
-                {filteredFontOptions.length === 0 ? (
-                  <Combobox.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    No fonts found.
-                  </Combobox.Empty>
-                ) : null}
-                <Combobox.List
-                  className="max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground [&::-webkit-scrollbar-track]:bg-transparent"
-                  style={{ scrollbarColor: "var(--border) transparent", scrollbarWidth: "thin" }}
-                >
-                  {(option: FontOption) => (
-                    <Combobox.Item
-                      key={option.value}
-                      value={option}
-                      className="flex min-h-8 w-full cursor-default items-center gap-2 px-3 py-1.5 text-xs outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
-                    >
-                      <span
-                        className="min-w-0 flex-1 truncate"
-                        style={option.family ? { fontFamily: option.family } : undefined}
+          <Combobox.Root
+            items={fontOptions}
+            value={selectedFont}
+            disabled={isLoading}
+            autoHighlight
+            openOnInputClick
+            inputValue={fontFilter}
+            filteredItems={filteredFontOptions}
+            itemToStringLabel={(option: FontOption | null) => option?.label ?? ""}
+            onInputValueChange={setFontFilter}
+            onValueChange={(option) => {
+              setFontFilter(option?.label ?? "");
+              onChange(option?.family || null);
+            }}
+          >
+            <div className="relative">
+              <Combobox.Input
+                ref={fontInputRef}
+                aria-label={`${title} font`}
+                placeholder={isLoading ? "Loading fonts..." : "Search fonts"}
+                className="h-10 w-full rounded-md border border-border/70 bg-background/80 px-3 pr-9 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-background/90 focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+                style={selectedFont.family ? { fontFamily: selectedFont.family } : undefined}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <Combobox.Trigger
+                aria-label={`Toggle ${title} fonts`}
+                className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+                onFocus={() => fontInputRef.current?.select()}
+              >
+                <RiArrowDownSLine aria-hidden="true" />
+              </Combobox.Trigger>
+            </div>
+            <Combobox.Portal>
+              <Combobox.Positioner align="start" sideOffset={4} className="z-50">
+                <Combobox.Popup className="w-(--anchor-width) overflow-hidden rounded-lg border border-border/70 bg-popover/95 text-popover-foreground shadow-lg ring-1 ring-border/50">
+                  {filteredFontOptions.length === 0 ? (
+                    <Combobox.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      No fonts found.
+                    </Combobox.Empty>
+                  ) : null}
+                  <Combobox.List
+                    className="max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground [&::-webkit-scrollbar-track]:bg-transparent"
+                    style={{ scrollbarColor: "var(--border) transparent", scrollbarWidth: "thin" }}
+                  >
+                    {(option: FontOption) => (
+                      <Combobox.Item
+                        key={option.value}
+                        value={option}
+                        className="flex min-h-8 w-full cursor-default items-center gap-2 px-3 py-1.5 text-xs outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
                       >
-                        {option.label}
-                      </span>
-                      <Combobox.ItemIndicator>
-                        <RiCheckLine aria-hidden="true" />
-                      </Combobox.ItemIndicator>
-                    </Combobox.Item>
-                  )}
-                </Combobox.List>
-              </Combobox.Popup>
-            </Combobox.Positioner>
-          </Combobox.Portal>
-        </Combobox.Root>
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
-          <span className="text-xs text-muted-foreground">Font size</span>
-          <div className="flex items-center gap-1 rounded-md border border-border/70 bg-background/70 p-0.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={fontSize <= FONT_SIZE_MIN}
-              onClick={() => onFontSizeChange(Math.max(FONT_SIZE_MIN, fontSize - 1))}
-              aria-label={`Decrease ${title} font size`}
-            >
-              <RiSubtractLine aria-hidden="true" />
-            </Button>
-            <span className="min-w-12 text-center font-mono text-xs text-foreground" aria-live="polite">
-              {fontSize} px
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={fontSize >= FONT_SIZE_MAX}
-              onClick={() => onFontSizeChange(Math.min(FONT_SIZE_MAX, fontSize + 1))}
-              aria-label={`Increase ${title} font size`}
-            >
-              <RiAddLine aria-hidden="true" />
-            </Button>
+                        <span
+                          className="min-w-0 flex-1 truncate"
+                          style={option.family ? { fontFamily: option.family } : undefined}
+                        >
+                          {option.label}
+                        </span>
+                        <Combobox.ItemIndicator>
+                          <RiCheckLine aria-hidden="true" />
+                        </Combobox.ItemIndicator>
+                      </Combobox.Item>
+                    )}
+                  </Combobox.List>
+                </Combobox.Popup>
+              </Combobox.Positioner>
+            </Combobox.Portal>
+          </Combobox.Root>
+          <p className="mt-2 text-[0.65rem] text-muted-foreground">Search all installed fonts.</p>
+        </div>
+      </section>
+      <section aria-label={`${title} font size`}>
+        <SectionHeading>Font size</SectionHeading>
+        <div className="flex flex-wrap items-center justify-between gap-4 py-4">
+          <div>
+            <h3 className="text-xs font-medium">Font size</h3>
+            <p className="mt-1 text-[0.65rem] text-muted-foreground">
+              Adjust the {title.toLowerCase()} font size ({FONT_SIZE_MIN}–{FONT_SIZE_MAX}px).
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={FONT_SIZE_MIN}
+              max={FONT_SIZE_MAX}
+              step={1}
+              value={fontSize}
+              aria-label={`${title} font size`}
+              onChange={(event) => onFontSizeChange(Number(event.target.value))}
+              className="h-4 w-36 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <output className="min-w-10 text-right text-xs tabular-nums" aria-live="polite">
+              {fontSize}px
+            </output>
           </div>
         </div>
-      </div>
+        <div className="overflow-hidden rounded-xl border border-border p-3">
+          <p className="mb-2 text-[0.65rem] text-muted-foreground">Preview</p>
+          <p
+            className="break-words leading-relaxed"
+            style={{
+              fontFamily:
+                title === "SQL editor"
+                  ? "var(--font-sql-editor, var(--font-sans))"
+                  : title === "Results"
+                    ? "var(--font-results, var(--font-sans))"
+                    : "var(--font-sans)",
+              fontSize: `${fontSize}px`,
+            }}
+          >
+            {title === "SQL editor"
+              ? "SELECT * FROM account WHERE active = true;"
+              : title === "Results"
+                ? "1    account    active    2026-01-01"
+                : "Aa Bb Cc 123 — The quick brown fox jumps over the lazy dog"}
+          </p>
+        </div>
+      </section>
     </div>
   );
 }
@@ -401,91 +509,61 @@ type ThemeSelectorProps = {
 };
 
 function ThemeSelector({ theme, families, onSelect }: ThemeSelectorProps) {
-  const selectedFamily = families.find((family) => family.variants[theme.mode]?.fileName === theme.fileName) ?? families[0];
-  const [filter, setFilter] = useState(selectedFamily?.name ?? "");
-  const filteredFamilies = families.filter((family) => family.name.toLowerCase().includes(filter.trim().toLowerCase()));
-  const activeVariant = selectedFamily?.variants[theme.mode];
-
-  useEffect(() => {
-    setFilter(selectedFamily?.name ?? "");
-  }, [selectedFamily?.id]);
-
   return (
-    <Combobox.Root
-      items={families}
-      value={selectedFamily}
-      inputValue={filter}
-      filteredItems={filteredFamilies}
-      autoHighlight
-      openOnInputClick
-      itemToStringLabel={(family: ThemeFamily | null) => family?.name ?? ""}
-      onInputValueChange={setFilter}
-      onValueChange={(family) => {
-        if (!family) return;
-        setFilter(family.name);
-        const variant = family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
-        if (variant) onSelect(variant.id);
-      }}
+    <div
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+      role="group"
+      aria-label="Themes"
     >
-      <div className="relative">
-        <ThemeSwatches variant={activeVariant} className="absolute inset-y-0 left-3" />
-        <Combobox.Input
-          aria-label="Theme"
-          className="h-10 w-full rounded-md border border-border/70 bg-background/80 px-3 pl-24 pr-9 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:bg-background/90 focus:border-ring focus:ring-2 focus:ring-ring/30"
-          placeholder="Search themes"
-        />
-        <Combobox.Trigger
-          aria-label="Toggle themes"
-          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
-        >
-          <RiArrowDownSLine aria-hidden="true" />
-        </Combobox.Trigger>
-      </div>
-      <Combobox.Portal>
-        <Combobox.Positioner align="start" sideOffset={4} className="z-50">
-          <Combobox.Popup className="w-(--anchor-width) overflow-hidden rounded-lg border border-border/70 bg-popover/95 text-popover-foreground shadow-lg ring-1 ring-border/50">
-            {filteredFamilies.length === 0 ? (
-              <Combobox.Empty className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No themes found.
-              </Combobox.Empty>
-            ) : null}
-            <Combobox.List className="theme-selector-scroll max-h-64 overflow-y-auto">
-              {(family: ThemeFamily) => {
-                const variant = family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
-                return (
-                  <Combobox.Item
-                    key={family.id}
-                    value={family}
-                    className="flex min-h-12 w-full cursor-default items-center gap-3 px-3 py-2 text-xs outline-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
-                  >
-                    <ThemeSwatches variant={variant} />
-                    <span className="min-w-0 flex-1 truncate font-medium">{family.name}</span>
-                    <Combobox.ItemIndicator>
-                      <RiCheckLine aria-hidden="true" />
-                    </Combobox.ItemIndicator>
-                  </Combobox.Item>
-                );
-              }}
-            </Combobox.List>
-          </Combobox.Popup>
-        </Combobox.Positioner>
-      </Combobox.Portal>
-    </Combobox.Root>
-  );
-}
-
-function ThemeSwatches({ variant, className }: { variant?: ThemeVariant; className?: string }) {
-  if (!variant) return null;
-
-  return (
-    <span className={cn("flex items-center -space-x-1", className)} aria-hidden="true">
-      {THEME_COLOR_KEYS.map((key) => (
-        <span
-          key={key}
-          className="size-4 rounded-full border-2 border-popover shadow-sm"
-          style={{ backgroundColor: variant.variables[key] ?? "transparent" }}
-        />
-      ))}
-    </span>
+      {families.map((family) => {
+        const variant =
+          family.variants[theme.mode] ?? family.variants.dark ?? family.variants.light;
+        if (!variant) return null;
+        const selected = variant.id === theme.id;
+        return (
+          <button
+            key={family.id}
+            type="button"
+            aria-label={`${family.name} theme`}
+            aria-pressed={selected}
+            onClick={() => onSelect(variant.id)}
+            className={cn(
+              "min-w-0 rounded-xl border border-border p-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected && "border-primary bg-accent",
+            )}
+          >
+            <span className="flex items-center gap-2 text-[0.7rem] font-medium">
+              <span
+                className="size-3.5 shrink-0 rounded-full border border-border"
+                style={{
+                  background: `linear-gradient(135deg, ${variant.variables["--primary"] ?? "var(--primary)"} 50%, ${variant.variables["--accent"] ?? "var(--accent)"} 50%)`,
+                }}
+                aria-hidden="true"
+              />
+              <span className="truncate">{family.name}</span>
+              {selected ? (
+                <RiCheckLine
+                  className="ml-auto size-3.5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </span>
+            <span className="my-3 flex gap-1" aria-hidden="true">
+              {THEME_COLOR_KEYS.map((key) => (
+                <span
+                  key={key}
+                  className="size-3 rounded-[3px] border border-foreground/5"
+                  style={{ backgroundColor: variant.variables[key] ?? "transparent" }}
+                />
+              ))}
+            </span>
+            <span className="flex items-center justify-between gap-1 text-[0.6rem] text-muted-foreground">
+              <span>Built-in · offline</span>
+              <span>{variant.mode === "dark" ? "Dark" : "Light"}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
