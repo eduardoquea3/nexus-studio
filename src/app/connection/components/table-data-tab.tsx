@@ -93,9 +93,12 @@ export function TableDataTab({
   const payload = useMemo(
     () =>
       data
-        ? serializeJson(data.columns, data.rows, { page: data.page, pageSize: data.page_size })
+        ? serializeJson(data.columns, selectedRows.length > 0 ? selectedRows : data.rows, {
+            page: data.page,
+            pageSize: data.page_size,
+          })
         : null,
-    [data],
+    [data, selectedRows],
   );
   const canShowJson = Boolean(data && data.rows.length > 0 && data.columns.length > 0 && payload);
   const rowsToExport = selectedRows;
@@ -207,7 +210,8 @@ export function TableDataTab({
                 <JsonCodePanel
                   ariaLabel="Table data JSON"
                   text={payload.text}
-                  meta={`Page ${data?.page ?? 0} · ${data?.rows.length ?? 0} loaded`}
+                  fontScope="results"
+                  meta={`Page ${data?.page ?? 0} · ${payload.rowCount} ${selectedRows.length > 0 ? "selected" : "loaded"}`}
                   issues={payload.issues.length > 0}
                   largeMessage={
                     exceedsJsonRenderThreshold(payload.rowCount)
@@ -276,7 +280,10 @@ export function TableDataTab({
       <TableDataToolbar
         canShowJson={canShowJson}
         viewMode={viewMode}
-        setViewMode={setViewMode}
+        setViewMode={(nextViewMode) => {
+          if (viewMode === "json" && nextViewMode === "table") setSelectedRows([]);
+          setViewMode(nextViewMode);
+        }}
         columnNames={columnNames}
         draftRow={draftRow}
         setDraftRow={setDraftRow}

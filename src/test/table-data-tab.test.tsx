@@ -101,14 +101,16 @@ mock.module("@/shared/components/json-code-panel", () => ({
     meta,
     actions,
     largeMessage,
+    fontScope,
   }: {
     ariaLabel: string;
     text: string;
     meta?: string;
     actions?: ReactNode;
     largeMessage?: string;
+    fontScope?: "interface" | "results";
   }) => (
-    <div aria-label={ariaLabel}>
+    <div aria-label={ariaLabel} data-font-scope={fontScope}>
       {meta ? <span>{meta}</span> : null}
       {largeMessage ? null : <pre>{text}</pre>}
       {actions}
@@ -209,7 +211,9 @@ describe("TableDataTab empty rows", () => {
     expect(grid?.classList.contains("[&_tr>:first-child]:text-center")).toBe(true);
     expect(grid?.classList.contains("[&_[data-row-selector]]:justify-center")).toBe(true);
     expect(header.classList.contains("px-3")).toBe(true);
-    expect(screen.getByRole("button", { name: "Select row 1" }).classList.contains("px-3")).toBe(true);
+    expect(screen.getByRole("button", { name: "Select row 1" }).classList.contains("px-3")).toBe(
+      true,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
     const draftIndex = screen.getByRole("textbox").closest("tr")?.firstElementChild;
@@ -487,11 +491,7 @@ describe("TableDataTab empty rows", () => {
       expect(scrolledElements[0]?.tagName).toBe("TR");
     } finally {
       if (scrollIntoViewDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "scrollIntoView",
-          scrollIntoViewDescriptor,
-        );
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
       } else {
         Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
       }
@@ -699,6 +699,22 @@ describe("TableDataTab empty rows", () => {
     expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
   });
 
+  test("uses Results typography for table JSON instead of Interface typography", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    expect(screen.getByLabelText("Table data JSON").getAttribute("data-font-scope")).toBe(
+      "results",
+    );
+  });
+
   test("exposes selected Table/JSON state and supports keyboard activation", () => {
     currentTableData = {
       columns: ["id"],
@@ -754,6 +770,128 @@ describe("TableDataTab empty rows", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Data" }));
 
     expect(screen.getByLabelText("Table data JSON").textContent).toContain('"id": 1');
+  });
+
+  for (const count of [1, 2]) {
+    test(`shows only ${count} selected rows in JSON and copies/exports the same selection`, async () => {
+      currentTableData = {
+        columns: ["id", "name"],
+        rows: [
+          { id: 1, name: "first" },
+          { id: 2, name: "second" },
+          { id: 3, name: "third" },
+          { id: 4, name: "fourth" },
+        ],
+        total: 4,
+        page: 1,
+        page_size: 100,
+      };
+      const originalRows = JSON.stringify(currentTableData.rows);
+      const writeText = mock(async (_text: string) => undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+      const exportJson = mock((_text: string, _filename: string) => "success" as const);
+      render(<TableDataTab profile={profile} table="auth" exportJson={exportJson} />);
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Select row 2" }), {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      if (count > 1) {
+        fireEvent.pointerEnter(document.querySelector('[data-row-index="2"]')!, {
+          buttons: 1,
+          pointerId: 1,
+          pointerType: "mouse",
+        });
+      }
+      fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+      fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+      const expected = serializeJson(
+        currentTableData.columns,
+        currentTableData.rows.slice(1, 1 + count),
+      ).text;
+      expect(screen.getByLabelText("Table data JSON").querySelector("pre")?.textContent).toBe(
+        expected,
+      );
+      expect(screen.getByText(`Page 1 · ${count} selected`)).not.toBeNull();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Copy table data JSON" }));
+      });
+      expect(writeText).toHaveBeenCalledWith(expected);
+      fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
+      expect(exportJson.mock.calls[0]?.[0]).toBe(expected);
+      expect(JSON.stringify(currentTableData.rows)).toBe(originalRows);
+      expect(refetchTable).not.toHaveBeenCalled();
+    });
+  }
+
+  test("clears the selection on JSON-to-Table so the next JSON view contains every loaded row", async () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      total: 3,
+      page: 1,
+      page_size: 100,
+    };
+    const writeText = mock(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const exportJson = mock((_text: string, _filename: string) => "success" as const);
+    render(<TableDataTab profile={profile} table="auth" exportJson={exportJson} />);
+    fireEvent.click(screen.getByRole("button", { name: "Select row 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("Table data JSON").querySelector("pre")?.textContent).toBe(
+      serializeJson(["id"], [{ id: 2 }]).text,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    expect(screen.getByRole("button", { name: "Select row 2" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(screen.queryByRole("button", { name: "Export 1 selected row as JSON" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const expected = serializeJson(["id"], currentTableData.rows).text;
+    expect(screen.getByLabelText("Table data JSON").querySelector("pre")?.textContent).toBe(
+      expected,
+    );
+    expect(screen.getByText("Page 1 · 3 loaded")).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy table data JSON" }));
+    });
+    expect(writeText).toHaveBeenCalledWith(expected);
+    fireEvent.click(screen.getByRole("button", { name: "Export table data JSON" }));
+    expect(exportJson.mock.calls[0]?.[0]).toBe(expected);
+    expect(refetchTable).not.toHaveBeenCalled();
+  });
+
+  test("clears the JSON selection when the loaded rows are replaced", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }],
+      total: 2,
+      page: 1,
+      page_size: 100,
+    };
+    const view = render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Select row 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("Table data JSON").querySelector("pre")?.textContent).toBe(
+      serializeJson(["id"], [{ id: 2 }]).text,
+    );
+    currentTableData = { ...currentTableData, rows: [{ id: 3 }, { id: 4 }] };
+    view.rerender(<TableDataTab profile={profile} table="auth" />);
+    expect(screen.getByLabelText("Table data JSON").querySelector("pre")?.textContent).toBe(
+      serializeJson(["id"], currentTableData.rows).text,
+    );
+    expect(screen.getByText("Page 1 · 2 loaded")).not.toBeNull();
   });
 
   test("shows JSON for the loaded page and excludes a local draft row", () => {

@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { type ReactNode, StrictMode, useEffect } from "react";
 
+import type { TableDataExportResult } from "@/app/connection/services/table-data-export-service";
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
@@ -40,6 +41,15 @@ const getTableSchema = mock(async () => ({
 const listDatabases = mock(async () => ["development", "analytics"]);
 const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
+const exportTableDataJson = mock(
+  async (_text: string, _filename: string): Promise<TableDataExportResult> => ({
+    status: "success",
+    path: "~/Downloads/sql-result.json",
+  }),
+);
+mock.module("@/app/connection/services/table-data-export-service", () => ({
+  exportTableDataJson,
+}));
 const availableConnections: ConnectionProfile[] = [];
 const closeSshTunnel = mock(async (_connectionId: string) => undefined);
 const getConnectionProfile = mock(async (id: string) =>
@@ -559,6 +569,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
     runQuery.mockImplementation(defaultRunQuery);
     getRoutineDefinition.mockClear();
     addToast.mockClear();
+    exportTableDataJson.mockReset();
+    exportTableDataJson.mockResolvedValue({
+      status: "success",
+      path: "~/Downloads/sql-result.json",
+    });
     testSavedConnection.mockReset();
     testSavedConnection.mockResolvedValue("ok");
     availableConnections.splice(0);
@@ -910,12 +925,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     expect(viewGroup.className).toContain("bg-muted/30");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("bg-primary/15");
+    expect(screen.queryByRole("button", { name: "Copy SQL result JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export SQL result JSON" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const toolbar = screen.getByRole("toolbar", { name: "SQL result toolbar" });
+    expect(within(toolbar).getByRole("button", { name: "Copy SQL result JSON" })).not.toBeNull();
+    expect(within(toolbar).getByRole("button", { name: "Export SQL result JSON" })).not.toBeNull();
+    expect(within(toolbar).getByRole("button", { name: "Run all queries" })).not.toBeNull();
+    expect(within(toolbar).getByLabelText("Query result statistics")).not.toBeNull();
+    expect(screen.queryByText("1 rows · 2 ms")).toBeNull();
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"name": "Ada"');
     expect(screen.getByRole("button", { name: "JSON" }).className).toContain("bg-primary/15");
     expect(runQuery).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy SQL result JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export SQL result JSON" })).toBeNull();
   });
 
   test("paginates SQL results in pages of 100 rows", async () => {
@@ -958,7 +983,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 200');
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 204');
     expect(screen.getByLabelText("SQL result JSON").textContent).not.toContain('"id": 199');
-    expect(screen.getByText("Rows 201-205 of 205 · 2 ms")).not.toBeNull();
+    expect(screen.getByText("Rows 201-205 of 205")).not.toBeNull();
   });
 
   test("hides the previous result and JSON actions while a new query is running", async () => {
@@ -1061,78 +1086,105 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(tableButton.getAttribute("aria-pressed")).toBe("false");
   });
 
-  test("announces export success and sends the exact displayed payload", async () => {
+  test("announces the saved path only after JSON export finishes", async () => {
+    let finishExport!: (result: TableDataExportResult) => void;
+    exportTableDataJson.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishExport = resolve;
+        }),
+    );
     runQuery.mockResolvedValueOnce({
       columns: ["id"],
       rows: [{ id: 1 }],
       affected: 0,
       duration_ms: 1,
     });
-    const createObjectURL = mock((value: Blob) => {
-      void value;
-      return "blob:sql-result";
-    });
-    const revokeObjectURL = mock(() => undefined);
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
-    const click = mock(() => undefined);
-    const originalCreateElement = document.createElement.bind(document);
-    document.createElement = ((tagName: string) => {
-      const element = originalCreateElement(tagName);
-      if (tagName === "a") element.click = click;
-      return element;
-    }) as typeof document.createElement;
-
     renderWorkspace();
     setEditorQuery();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
-      await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+
+    expect(exportTableDataJson).toHaveBeenCalledWith(
+      '[\n  {\n    "id": 1\n  }\n]',
+      "sql-result.json",
+    );
+    expect(addToast).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Export SQL result JSON" }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+    expect(exportTableDataJson).toHaveBeenCalledTimes(1);
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
-      await Promise.resolve();
+      finishExport({ status: "success", path: "/tmp/custom folder/query-output.json" });
     });
 
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
-    const blob = createObjectURL.mock.calls[0]?.[0];
-    expect(blob).toBeInstanceOf(Blob);
-    if (!(blob instanceof Blob)) throw new Error("Expected an exported JSON Blob");
-    expect(await blob.text()).toBe('[\n  {\n    "id": 1\n  }\n]');
-    expect(screen.getByText("JSON export started.")).not.toBeNull();
+    expect(addToast).toHaveBeenCalledWith({
+      title: "JSON exported",
+      type: "success",
+      description: "/tmp/custom folder/query-output.json",
+    });
+    expect(
+      screen.getByText("JSON exported to /tmp/custom folder/query-output.json."),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Export SQL result JSON" }).hasAttribute("disabled"),
+    ).toBe(false);
     expect(runQuery).toHaveBeenCalledTimes(1);
-    expect(click).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   test("announces an actual export failure without mutating database state", async () => {
+    exportTableDataJson.mockResolvedValueOnce({ status: "error", message: "permission denied" });
     runQuery.mockResolvedValueOnce({
       columns: ["id"],
       rows: [{ id: 1 }],
       affected: 0,
       duration_ms: 1,
     });
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: mock(() => {
-        throw new Error("blocked");
-      }),
+    renderWorkspace();
+    setEditorQuery();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+    });
+
+    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Could not export JSON",
+      type: "error",
+      description: "permission denied",
+    });
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  test("does not announce success when the export dialog is cancelled", async () => {
+    exportTableDataJson.mockResolvedValueOnce({ status: "cancelled" });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
     });
     renderWorkspace();
     setEditorQuery();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
-      await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
-      await Promise.resolve();
     });
-
-    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(screen.getByText("JSON export cancelled.")).not.toBeNull();
+    expect(addToast).not.toHaveBeenCalled();
     expect(runQuery).toHaveBeenCalledTimes(1);
-    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   test("paginates large SQL results without rendering every row at once", async () => {
@@ -1150,7 +1202,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(
       screen.getByRole("navigation", { name: "SQL result pagination" }).textContent,
     ).not.toContain("Rows");
-    expect(screen.getByText("Rows 1-100 of 10001 · 1 ms")).not.toBeNull();
+    expect(screen.getByText("Rows 1-100 of 10001")).not.toBeNull();
     expect(runQuery).toHaveBeenCalledTimes(1);
   });
 
