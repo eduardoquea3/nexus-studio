@@ -2,12 +2,16 @@ import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 
 import {
   RiAddLine,
+  RiArrowGoBackLine,
   RiArrowLeftDoubleLine,
   RiArrowLeftSLine,
   RiArrowRightDoubleLine,
   RiArrowRightSLine,
+  RiCheckLine,
   RiCloseLine,
+  RiDeleteBinLine,
   RiDownloadLine,
+  RiLoader4Line,
   RiRefreshLine,
 } from "@remixicon/react";
 
@@ -24,12 +28,21 @@ type TableDataToolbarProps = {
   draftRow: Record<string, unknown> | null;
   setDraftRow: Dispatch<SetStateAction<Record<string, unknown> | null>>;
   selectedRowCount: number;
+  canMarkSelectedForDeletion: boolean;
+  pendingDeletionCount: number;
+  isApplyingDeletions: boolean;
+  onMarkSelectedForDeletion: () => void;
+  onUndoPendingDeletion: () => void;
+  onCancelPendingDeletions: () => void;
+  onApplyPendingDeletions: () => void;
   onExportRows: () => void;
   isExportingRows: boolean;
   onRefresh: () => void;
   page: number;
   pageCount: number;
   isLoading: boolean;
+  isInsertingRow: boolean;
+  onInsertRow: () => void;
   onPageChange: (page: number) => void;
 };
 
@@ -41,12 +54,21 @@ export function TableDataToolbar({
   draftRow,
   setDraftRow,
   selectedRowCount,
+  canMarkSelectedForDeletion,
+  pendingDeletionCount,
+  isApplyingDeletions,
+  onMarkSelectedForDeletion,
+  onUndoPendingDeletion,
+  onCancelPendingDeletions,
+  onApplyPendingDeletions,
   onExportRows,
   isExportingRows,
   onRefresh,
   page,
   pageCount,
   isLoading,
+  isInsertingRow,
+  onInsertRow,
   onPageChange,
 }: TableDataToolbarProps) {
   return (
@@ -102,7 +124,7 @@ export function TableDataToolbar({
           type="button"
           variant="outline"
           size="icon-xs"
-          className="h-8 w-8 rounded-md border-border/70 bg-muted/70 p-0 transition-colors hover:bg-accent"
+          className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
           disabled={isLoading}
           onClick={onRefresh}
           aria-label="Refresh table data"
@@ -116,15 +138,13 @@ export function TableDataToolbar({
           size="icon-xs"
           className={
             draftRow
-              ? "h-8 w-8 rounded-md border border-destructive/35 bg-destructive/10 p-0 text-destructive transition-colors hover:bg-destructive/15"
-              : "h-8 w-8 rounded-md border-border/70 bg-muted/70 p-0 transition-colors hover:bg-accent"
+              ? `h-8 w-8 rounded-md p-0 transition-colors ${destructiveActionClassName}`
+              : `h-8 w-8 rounded-md p-0 transition-colors ${primaryActionClassName}`
           }
           disabled={!draftRow && (isLoading || columnNames.length === 0)}
           onClick={() =>
             setDraftRow(
-              draftRow
-                ? null
-                : Object.fromEntries(columnNames.map((column) => [column, ""])),
+              draftRow ? null : Object.fromEntries(columnNames.map((column) => [column, ""])),
             )
           }
           aria-label={draftRow ? "Cancel add row" : "Add row"}
@@ -132,18 +152,101 @@ export function TableDataToolbar({
         >
           {draftRow ? <RiCloseLine className="size-4" /> : <RiAddLine className="size-5" />}
         </Button>
-        {selectedRowCount > 0 ? (
+        {draftRow ? (
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            disabled={isExportingRows}
-            onClick={onExportRows}
-            aria-label={`Export ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} as JSON`}
+            size="icon-lg"
+            className={primaryActionClassName}
+            disabled={isLoading || isInsertingRow}
+            onClick={onInsertRow}
+            aria-label="Insert row"
+            title="Insert row"
           >
-            <RiDownloadLine data-icon="inline-start" /> Export row
+            <RiCheckLine className="size-4" />
           </Button>
+        ) : null}
+        {selectedRowCount > 0 ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-lg"
+              className={primaryActionClassName}
+              disabled={isExportingRows}
+              onClick={onExportRows}
+              aria-label={`Export ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} as JSON`}
+              title={`Export ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} as JSON`}
+            >
+              <RiDownloadLine className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-lg"
+              className={destructiveActionClassName}
+              disabled={!canMarkSelectedForDeletion || isLoading || isApplyingDeletions}
+              onClick={onMarkSelectedForDeletion}
+              aria-label={`Mark ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} for deletion`}
+              title={
+                canMarkSelectedForDeletion
+                  ? "Mark selected rows for deletion"
+                  : "Cannot delete rows without a primary key"
+              }
+            >
+              <RiDeleteBinLine className="size-4" />
+            </Button>
+          </>
+        ) : null}
+        {pendingDeletionCount > 0 ? (
+          <>
+            <span
+              role="status"
+              className="whitespace-nowrap px-1 font-medium tabular-nums text-destructive"
+            >
+              {pendingDeletionCount} pending
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-xs"
+              className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
+              disabled={isApplyingDeletions}
+              onClick={onUndoPendingDeletion}
+              aria-label="Undo last pending deletion"
+              title="Undo last pending deletion"
+            >
+              <RiArrowGoBackLine className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-xs"
+              className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
+              disabled={isApplyingDeletions}
+              onClick={onCancelPendingDeletions}
+              aria-label="Cancel pending deletions"
+              title="Cancel pending deletions"
+            >
+              <RiCloseLine className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="icon-lg"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isApplyingDeletions || isLoading}
+              onClick={onApplyPendingDeletions}
+              aria-label={`Apply ${pendingDeletionCount} pending ${pendingDeletionCount === 1 ? "deletion" : "deletions"}`}
+              title="Delete all marked rows"
+            >
+              {isApplyingDeletions ? (
+                <RiLoader4Line className="size-4 animate-spin" />
+              ) : (
+                <RiCheckLine className="size-4" />
+              )}
+            </Button>
+          </>
         ) : null}
       </div>
       <nav
@@ -215,3 +318,10 @@ function activateViewMode(
     setViewMode(nextMode);
   }
 }
+
+const primaryActionClassName =
+  "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary dark:border-primary/30 dark:bg-primary/10 dark:hover:bg-primary/20";
+const destructiveActionClassName =
+  "border-destructive/35 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive dark:border-destructive/35 dark:bg-destructive/15 dark:hover:bg-destructive/25";
+const neutralActionClassName =
+  "border-border/70 bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground";

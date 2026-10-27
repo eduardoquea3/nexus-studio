@@ -95,6 +95,15 @@ pub struct TableDataRequest {
     pub page_size: u32,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteRecordsRequest {
+    pub request: ConnectionTestRequest,
+    pub table: String,
+    pub schema: Option<String>,
+    pub pk_maps: Vec<HashMap<String, serde_json::Value>>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutineDefinitionRequest {

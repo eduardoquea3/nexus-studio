@@ -1,6 +1,7 @@
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+
 import { RiLoader4Line } from "@remixicon/react";
 import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import type { ColumnInfo } from "@/shared/types/models";
@@ -15,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { isRequiredTimestampColumn } from "@/shared/lib/table-column-utils";
 
 type DataTableProps<TData> = {
   table: TanStackTable<TData>;
@@ -26,6 +28,8 @@ type DataTableProps<TData> = {
   onDraftChange?: (column: string, value: string) => void;
   rowNumberOffset?: number;
   onSelectionChange?: (rows: Row<TData>[]) => void;
+  isRowPending?: (row: TData) => boolean;
+  selectionResetToken?: number;
 };
 
 type DragSelection<TData> = {
@@ -39,6 +43,7 @@ type DataTableRowProps<TData> = {
   rowNumber: number;
   isSelected: boolean;
   isSelectable: boolean;
+  isPending: boolean;
   onPointerEnter: (row: Row<TData>, event: ReactPointerEvent<HTMLTableRowElement>) => void;
   onPointerDown: (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) => void;
   onKeyboardSelect: (row: Row<TData>, event: ReactMouseEvent<HTMLButtonElement>) => void;
@@ -56,10 +61,13 @@ export function DataTable<TData>({
   onDraftChange,
   rowNumberOffset = 0,
   onSelectionChange,
+  isRowPending,
+  selectionResetToken = 0,
 }: DataTableProps<TData>) {
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set());
   const dragSelectionRef = useRef<DragSelection<TData> | null>(null);
   const previousDataRef = useRef(table.options.data);
+  const previousSelectionResetTokenRef = useRef(selectionResetToken);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   const draftRowRef = useRef<HTMLTableRowElement>(null);
   const hasDraftRow = draftRow !== null;
@@ -74,6 +82,14 @@ export function DataTable<TData>({
     tableWrapperRef.current?.classList.remove("select-none");
     setSelectedRowIds(new Set());
   }, [table.options.data]);
+
+  useEffect(() => {
+    if (previousSelectionResetTokenRef.current === selectionResetToken) return;
+    previousSelectionResetTokenRef.current = selectionResetToken;
+    dragSelectionRef.current = null;
+    tableWrapperRef.current?.classList.remove("select-none");
+    setSelectedRowIds(new Set());
+  }, [selectionResetToken]);
 
   useEffect(() => {
     if (!hasDraftRow) return;
@@ -128,18 +144,22 @@ export function DataTable<TData>({
       if (!previousIds.has(row.id)) setRowSelectionVisual(row.index, true);
     }
   };
-  const selectRows = (selectedRows: Row<TData>[]) => {
-    const previousRows = rows.filter((row) => visibleSelectedRowIds.has(row.id));
+  const toggleRowSelection = (row: Row<TData>) => {
+    const previousRows = rows.filter((item) => visibleSelectedRowIds.has(item.id));
+    const selectedIds = new Set(previousRows.map((item) => item.id));
+    if (selectedIds.has(row.id)) selectedIds.delete(row.id);
+    else selectedIds.add(row.id);
+
+    const selectedRows = rows.filter((item) => selectedIds.has(item.id));
     updateSelectionVisuals(previousRows, selectedRows);
-    setSelectedRowIds(new Set(selectedRows.map((row) => row.id)));
+    setSelectedRowIds(selectedIds);
     onSelectionChange?.(selectedRows);
+    return selectedRows;
   };
   const startRowSelection = (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    const selectedRows = [row];
-    const previousRows = rows.filter((item) => visibleSelectedRowIds.has(item.id));
-    updateSelectionVisuals(previousRows, selectedRows);
+    const selectedRows = toggleRowSelection(row);
     dragSelectionRef.current = {
       startIndex: row.index,
       endIndex: row.index,
@@ -159,7 +179,7 @@ export function DataTable<TData>({
     dragSelection.rows = selectedRows;
   };
   const selectRowWithKeyboard = (row: Row<TData>, event: ReactMouseEvent<HTMLButtonElement>) => {
-    if (event.detail === 0) selectRows([row]);
+    if (event.detail === 0) toggleRowSelection(row);
   };
   const selectionHandlersRef = useRef({
     startRowSelection,
@@ -253,16 +273,14 @@ export function DataTable<TData>({
                   rowNumber={row.index + rowNumberOffset + 1}
                   isSelected={visibleSelectedRowIds.has(row.id)}
                   isSelectable={Boolean(onSelectionChange)}
+                  isPending={isRowPending?.(row.original) ?? false}
                   onPointerEnter={handleRowPointerEnter}
                   onPointerDown={handleRowPointerDown}
                   onKeyboardSelect={handleKeyboardRowSelect}
                 />
               ))}
               {draftRow ? (
-                <TableRow
-                  ref={draftRowRef}
-                  className="bg-primary/5 hover:bg-primary/10"
-                >
+                <TableRow ref={draftRowRef} className="bg-primary/5 hover:bg-primary/10">
                   <TableCell className="w-12 border-b border-r border-primary/20 px-3 py-1.5 text-right font-mono text-[0.65rem] text-primary/80">
                     {table.getRowModel().rows.length + rowNumberOffset + 1}
                   </TableCell>
@@ -298,6 +316,7 @@ function DataTableRow<TData>({
   rowNumber,
   isSelected,
   isSelectable,
+  isPending,
   onPointerEnter,
   onPointerDown,
   onKeyboardSelect,
@@ -306,16 +325,24 @@ function DataTableRow<TData>({
     <TableRow
       data-row-index={row.index}
       data-row-selected={isSelected ? "true" : undefined}
+      data-row-pending-delete={isPending ? "true" : undefined}
       aria-selected={isSelected}
       onPointerEnter={(event) => onPointerEnter(row, event)}
       className={cn(
-        "transition-none hover:bg-muted/40 data-[row-selected=true]:bg-primary/25 data-[row-selected=true]:hover:bg-primary/30",
-        isSelected && "bg-primary/25 hover:bg-primary/30",
+        "transition-none",
+        isPending
+          ? "bg-destructive/10 hover:bg-destructive/15 data-[row-selected=true]:bg-destructive/20 data-[row-selected=true]:hover:bg-destructive/25"
+          : "hover:bg-muted/40 data-[row-selected=true]:bg-primary/25 data-[row-selected=true]:hover:bg-primary/30",
+        isSelected && !isPending && "bg-primary/25 hover:bg-primary/30",
+        isSelected && isPending && "bg-destructive/20 hover:bg-destructive/25",
       )}
     >
       <TableCell
-        aria-label={String(rowNumber)}
-        className="w-12 border-b border-r border-border/50 p-0 text-right font-mono text-[0.65rem] text-muted-foreground"
+        aria-label={isPending ? `${rowNumber}, pending deletion` : String(rowNumber)}
+        className={cn(
+          "w-12 border-b border-r border-border/50 p-0 text-right font-mono text-[0.65rem] text-muted-foreground",
+          isPending && "text-destructive/70",
+        )}
       >
         {isSelectable ? (
           <button
@@ -329,6 +356,7 @@ function DataTableRow<TData>({
               "flex min-h-9 w-full select-none items-center justify-end px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60",
               "cursor-pointer hover:bg-muted/60 hover:text-foreground",
               isSelected && "bg-primary/30 text-foreground",
+              isPending && !isSelected && "text-destructive/70",
             )}
           >
             {rowNumber}
@@ -347,6 +375,7 @@ function DataTableRow<TData>({
             className={cn(
               "max-w-72 truncate border-b border-r border-border/50 px-3 py-2",
               isNull && "text-muted-foreground/60",
+              isPending && "text-destructive/80 line-through decoration-destructive/50",
             )}
           >
             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -382,6 +411,18 @@ function DraftEditor({
   const enumValues = column?.enum_values ?? [];
   const dataType = column?.data_type.toLowerCase() ?? "";
   const isBoolean = dataType === "boolean" || dataType === "bool" || dataType === "tinyint(1)";
+
+  if (isRequiredTimestampColumn(column)) {
+    return (
+      <span
+        role="status"
+        aria-label={`Current time for ${columnName} set automatically on insert`}
+        className="flex h-full min-h-9 min-w-28 items-center px-3 text-xs text-muted-foreground"
+      >
+        Current time on insert
+      </span>
+    );
+  }
 
   if (isBoolean || enumValues.length > 0) {
     const options = isBoolean ? ["true", "false"] : enumValues;

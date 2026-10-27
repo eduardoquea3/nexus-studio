@@ -618,7 +618,7 @@ pub async fn get_routine_definition(
         database => Err(format!("Unsupported database type: {database}")),
     }
 }
-fn validate_table_name(table: &str) -> Result<(), String> {
+pub(crate) fn validate_table_name(table: &str) -> Result<(), String> {
     if table.is_empty()
         || !table
             .chars()
@@ -630,7 +630,7 @@ fn validate_table_name(table: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_schema_name(schema: Option<&str>) -> Result<(), String> {
+pub(crate) fn validate_schema_name(schema: Option<&str>) -> Result<(), String> {
     if let Some(schema) = schema {
         if schema.is_empty()
             || !schema
@@ -901,6 +901,46 @@ async fn get_table_data_with_manager(
     }
 }
 
+async fn postgres_primary_key_columns(
+    connection: &mut PgConnection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<HashSet<String>, String> {
+    let rows = sqlx::query(
+        "SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = COALESCE($1, current_schema()::text) AND tc.table_name = $2",
+    )
+    .bind(schema)
+    .bind(table)
+    .fetch_all(connection)
+    .await
+    .map_err(|error| format!("Could not load primary key: {error}"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("column_name"))
+        .collect())
+}
+
+async fn mysql_primary_key_columns(
+    connection: &mut MySqlConnection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<HashSet<String>, String> {
+    let rows = sqlx::query(
+        "SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON kcu.constraint_schema = tc.constraint_schema AND kcu.constraint_name = tc.constraint_name AND kcu.table_name = tc.table_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = COALESCE(?, DATABASE()) AND tc.table_name = ?",
+    )
+    .bind(schema)
+    .bind(table)
+    .fetch_all(connection)
+    .await
+    .map_err(|error| format!("Could not load primary key: {error}"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("column_name"))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1052,16 +1092,95 @@ mod tests {
             assert_eq!(diagram.relationships[0].target_column, "id");
         });
     }
+
+    #[test]
+    fn get_table_schema_reports_primary_key_columns() {
+        tauri::async_runtime::block_on(async {
+            let database_path = std::env::temp_dir().join(format!(
+                "nexus-studio-table-schema-{}-{}.sqlite",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock should be after the Unix epoch")
+                    .as_nanos()
+            ));
+            let database_path = database_path.to_string_lossy().into_owned();
+
+            let result = async {
+                let options = SqliteConnectOptions::new()
+                    .filename(&database_path)
+                    .create_if_missing(true);
+                let mut connection = SqliteConnection::connect_with(&options)
+                    .await
+                    .expect("test database should open");
+                sqlx::query(
+                    "CREATE TABLE memberships (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, label TEXT, PRIMARY KEY (tenant_id, user_id))",
+                )
+                .execute(&mut connection)
+                .await
+                .expect("test table should be created");
+                drop(connection);
+
+                get_table_schema_with_manager(
+                    TableSchemaRequest {
+                        request: ConnectionTestRequest {
+                            db_type: "sqlite".to_string(),
+                            host: None,
+                            port: None,
+                            database: None,
+                            username: None,
+                            password: None,
+                            sqlite_path: Some(database_path.clone()),
+                            ssh: None,
+                            ssh_password: None,
+                            connection_id: None,
+                            persist_ssh_tunnel: false,
+                        },
+                        table: "memberships".to_string(),
+                        schema: None,
+                    },
+                    &SshTunnelManager::default(),
+                )
+                .await
+            }
+            .await;
+
+            let _ = std::fs::remove_file(&database_path);
+            let schema = result.expect("table schema should load");
+            let primary_keys: Vec<&str> = schema
+                .columns
+                .iter()
+                .filter(|column| column.is_pk)
+                .map(|column| column.name.as_str())
+                .collect();
+            assert_eq!(primary_keys, ["tenant_id", "user_id"]);
+            assert!(
+                !schema
+                    .columns
+                    .iter()
+                    .find(|column| column.name == "label")
+                    .expect("label column should exist")
+                    .is_pk
+            );
+        });
+    }
 }
 #[tauri::command]
 pub async fn get_table_schema(
     request: TableSchemaRequest,
     tunnel_manager: State<'_, SshTunnelManager>,
 ) -> Result<TableSchemaResult, String> {
+    get_table_schema_with_manager(request, &tunnel_manager).await
+}
+
+async fn get_table_schema_with_manager(
+    request: TableSchemaRequest,
+    tunnel_manager: &SshTunnelManager,
+) -> Result<TableSchemaResult, String> {
     validate_table_name(&request.table)?;
     validate_schema_name(request.schema.as_deref())?;
     let (_temporary_tunnel, local_port) =
-        prepare_ssh_tunnel(&tunnel_manager, &request.request).await?;
+        prepare_ssh_tunnel(tunnel_manager, &request.request).await?;
     let default_port = if request.request.db_type == "mysql" {
         3306
     } else {
@@ -1101,19 +1220,28 @@ pub async fn get_table_schema(
                 .fetch_all(&mut connection)
                 .await
                 .map_err(|error| format!("Could not load table structure: {error}"))?;
+            let primary_key_columns = postgres_primary_key_columns(
+                &mut connection,
+                request.schema.as_deref(),
+                &request.table,
+            )
+            .await?;
 
             Ok(TableSchemaResult {
                 columns: rows
                     .into_iter()
-                    .map(|row| ColumnInfo {
-                        name: row.get("column_name"),
-                        data_type: row.get("data_type"),
-                        enum_values: row.get("enum_values"),
-                        nullable: row.get::<String, _>("is_nullable") == "YES",
-                        default: row.get("column_default"),
-                        is_pk: false,
-                        is_fk: false,
-                        is_unique: false,
+                    .map(|row| {
+                        let name: String = row.get("column_name");
+                        ColumnInfo {
+                            is_pk: primary_key_columns.contains(&name),
+                            name,
+                            data_type: row.get("data_type"),
+                            enum_values: row.get("enum_values"),
+                            nullable: row.get::<String, _>("is_nullable") == "YES",
+                            default: row.get("column_default"),
+                            is_fk: false,
+                            is_unique: false,
+                        }
                     })
                     .collect(),
                 indexes: Vec::new(),
@@ -1131,25 +1259,35 @@ pub async fn get_table_schema(
                 .await
                 .map_err(|error| format!("MySQL connection failed: {error}"))?;
             let rows = sqlx::query(
-                "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position",
+                "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ? ORDER BY ordinal_position",
             )
+            .bind(request.schema.as_deref())
             .bind(&request.table)
             .fetch_all(&mut connection)
             .await
             .map_err(|error| format!("Could not load table structure: {error}"))?;
+            let primary_key_columns = mysql_primary_key_columns(
+                &mut connection,
+                request.schema.as_deref(),
+                &request.table,
+            )
+            .await?;
 
             Ok(TableSchemaResult {
                 columns: rows
                     .into_iter()
-                    .map(|row| ColumnInfo {
-                        name: row.get("column_name"),
-                        data_type: row.get("data_type"),
-                        enum_values: Vec::new(),
-                        nullable: row.get::<String, _>("is_nullable") == "YES",
-                        default: row.get("column_default"),
-                        is_pk: false,
-                        is_fk: false,
-                        is_unique: false,
+                    .map(|row| {
+                        let name: String = row.get("column_name");
+                        ColumnInfo {
+                            is_pk: primary_key_columns.contains(&name),
+                            name,
+                            data_type: row.get("data_type"),
+                            enum_values: Vec::new(),
+                            nullable: row.get::<String, _>("is_nullable") == "YES",
+                            default: row.get("column_default"),
+                            is_fk: false,
+                            is_unique: false,
+                        }
                     })
                     .collect(),
                 indexes: Vec::new(),

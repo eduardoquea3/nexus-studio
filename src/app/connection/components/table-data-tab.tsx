@@ -5,15 +5,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile, ViewMode } from "@/shared/types/models";
 
+import { TableDataGrid } from "@/app/connection/components/table-data-grid";
 import {
   TableDataStructure,
   type StructureDraft,
 } from "@/app/connection/components/table-data-structure";
 import { TableDataToolbar } from "@/app/connection/components/table-data-toolbar";
-import { TableDataGrid } from "@/app/connection/components/table-data-grid";
-import { useTableData } from "@/app/connection/hooks/use-table-data";
+import { useInvalidateTableData, useTableData } from "@/app/connection/hooks/use-table-data";
 import { useTableSchema } from "@/app/connection/hooks/use-table-schema";
+import { deleteTableRows } from "@/app/connection/services/table-data-delete-service";
 import { exportTableDataJson } from "@/app/connection/services/table-data-export-service";
+import { insertTableRow } from "@/app/connection/services/table-data-insert-service";
+import {
+  buildRowIdentity,
+  serializeRowIdentity,
+} from "@/app/connection/services/table-data-row-identity";
 import { Tabs, TabsContent } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -51,12 +57,19 @@ export function TableDataTab({
     isActive,
   );
   const tableSchema = useTableSchema(profile, table, isActive, schema);
+  const invalidateTableData = useInvalidateTableData(profile, table, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
+  const [pendingDeletions, setPendingDeletions] = useState<Map<string, Record<string, unknown>>>(
+    () => new Map(),
+  );
+  const [selectionResetToken, setSelectionResetToken] = useState(0);
   const [isExportingRows, setIsExportingRows] = useState(false);
+  const [isInsertingRow, setIsInsertingRow] = useState(false);
+  const [isApplyingDeletions, setIsApplyingDeletions] = useState(false);
   const previousRefreshTokenRef = useRef(refreshToken);
   const schemaColumns = tableSchema.data?.columns;
   const columnNames = data?.columns.length
@@ -102,9 +115,108 @@ export function TableDataTab({
   );
   const canShowJson = Boolean(data && data.rows.length > 0 && data.columns.length > 0 && payload);
   const rowsToExport = selectedRows;
+  const primaryKeyColumns = useMemo(
+    () => (schemaColumns ?? []).filter((column) => column.is_pk),
+    [schemaColumns],
+  );
+  const canMarkSelectedForDeletion =
+    primaryKeyColumns.length > 0 &&
+    selectedRows.length > 0 &&
+    selectedRows.every((row) => buildRowIdentity(row, primaryKeyColumns) !== null);
+  const isRowPending = useCallback(
+    (row: Record<string, unknown>) => {
+      const identity = buildRowIdentity(row, primaryKeyColumns);
+      return identity !== null && pendingDeletions.has(serializeRowIdentity(identity));
+    },
+    [pendingDeletions, primaryKeyColumns],
+  );
+
+  const handleInsertRow = async () => {
+    if (!draftRow || isInsertingRow) return;
+
+    setIsInsertingRow(true);
+    try {
+      await insertTableRow(profile, table, schema, draftRow, schemaColumns ?? []);
+      setDraftRow(null);
+      toast.add({
+        title: "Row inserted",
+        type: "success",
+        description: `A row was added to ${table}.`,
+      });
+      void refetch();
+    } catch (error) {
+      toast.add({
+        title: "Could not insert row",
+        type: "error",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsInsertingRow(false);
+    }
+  };
+
+  const handleMarkSelectedForDeletion = () => {
+    if (!canMarkSelectedForDeletion) return;
+
+    setPendingDeletions((current) => {
+      const next = new Map(current);
+      for (const row of selectedRows) {
+        const identity = buildRowIdentity(row, primaryKeyColumns);
+        if (identity !== null) next.set(serializeRowIdentity(identity), identity);
+      }
+      return next;
+    });
+    setSelectedRows([]);
+    setSelectionResetToken((token) => token + 1);
+  };
+
+  const handleUndoPendingDeletion = () => {
+    setPendingDeletions((current) => {
+      if (current.size === 0) return current;
+      const keys = Array.from(current.keys());
+      const lastKey = keys[keys.length - 1];
+      if (lastKey === undefined) return current;
+      const next = new Map(current);
+      next.delete(lastKey);
+      return next;
+    });
+  };
+
+  const handleCancelPendingDeletions = () => {
+    setPendingDeletions((current) => (current.size === 0 ? current : new Map()));
+  };
+
+  const handleApplyPendingDeletions = async () => {
+    if (pendingDeletions.size === 0 || isApplyingDeletions) return;
+
+    const pkMaps = Array.from(pendingDeletions.values());
+    setIsApplyingDeletions(true);
+    try {
+      const affectedRows = await deleteTableRows(profile, table, schema, pkMaps);
+      setPendingDeletions(new Map());
+      setSelectedRows([]);
+      setSelectionResetToken((token) => token + 1);
+      toast.add({
+        title: `Deleted ${affectedRows} ${affectedRows === 1 ? "row" : "rows"}`,
+        type: "success",
+        description: `Deleted ${affectedRows} ${affectedRows === 1 ? "row" : "rows"} from ${table}.`,
+      });
+      invalidateTableData();
+    } catch (error) {
+      toast.add({
+        title: "Could not delete rows",
+        type: "error",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsApplyingDeletions(false);
+    }
+  };
 
   useEffect(() => {
     setPage(1);
+    setPendingDeletions((current) => (current.size === 0 ? current : new Map()));
+    setSelectedRows([]);
   }, [profile.id, table, schema]);
   useEffect(() => {
     setViewMode("table");
@@ -256,6 +368,8 @@ export function TableDataTab({
                   draftColumns={schemaColumns}
                   onSelectionChange={handleSelectionChange}
                   onDraftChange={handleDraftChange}
+                  isRowPending={isRowPending}
+                  selectionResetToken={selectionResetToken}
                 />
               )}
             </div>
@@ -288,12 +402,21 @@ export function TableDataTab({
         draftRow={draftRow}
         setDraftRow={setDraftRow}
         selectedRowCount={rowsToExport.length}
+        canMarkSelectedForDeletion={canMarkSelectedForDeletion}
+        pendingDeletionCount={pendingDeletions.size}
+        isApplyingDeletions={isApplyingDeletions}
+        onMarkSelectedForDeletion={handleMarkSelectedForDeletion}
+        onUndoPendingDeletion={handleUndoPendingDeletion}
+        onCancelPendingDeletions={handleCancelPendingDeletions}
+        onApplyPendingDeletions={() => void handleApplyPendingDeletions()}
         onExportRows={() => void handleExportRows()}
         isExportingRows={isExportingRows}
         onRefresh={() => void refetch()}
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
         isLoading={isFetching}
+        isInsertingRow={isInsertingRow}
+        onInsertRow={() => void handleInsertRow()}
         onPageChange={handlePageChange}
       />
     </Tabs>

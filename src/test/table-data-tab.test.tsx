@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
-import type { DataPage } from "@/shared/types/models";
+import type { ColumnInfo, DataPage } from "@/shared/types/models";
 
 import { serializeJson } from "@/shared/lib/json-serialization";
 
@@ -19,20 +19,30 @@ let tableLoading = false;
 let tableFetching = false;
 let tableError: Error | null = null;
 let requestedPage = 1;
+let additionalSchemaColumns: ColumnInfo[] = [];
+let schemaHasPrimaryKey = true;
 const refetchTable = mock(() => Promise.resolve());
 const exportTableDataJson = mock(async () => ({
   status: "success" as const,
   path: "~/Downloads/selected-row.json",
 }));
+const insertTableRow = mock(async () => {});
+const deleteTableRows = mock(async () => 2);
+const invalidateTableData = mock(() => {});
 const addToast = mock((_options: unknown) => "toast-1");
 
 mock.module("@/app/connection/services/table-data-export-service", () => ({
   exportTableDataJson,
 }));
 
+mock.module("@/app/connection/services/table-data-insert-service", () => ({ insertTableRow }));
+
+mock.module("@/app/connection/services/table-data-delete-service", () => ({ deleteTableRows }));
+
 mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
 
 mock.module("@/app/connection/hooks/use-table-data", () => ({
+  useInvalidateTableData: () => invalidateTableData,
   useTableData: (_profile: unknown, _table: string, _schema: string | undefined, page: number) => {
     requestedPage = page;
     return {
@@ -61,7 +71,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           enum_values: [],
           nullable: true,
           default: null,
-          is_pk: true,
+          is_pk: schemaHasPrimaryKey,
           is_fk: false,
           is_unique: false,
         },
@@ -85,6 +95,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           is_fk: false,
           is_unique: false,
         },
+        ...additionalSchemaColumns,
       ],
       indexes: [],
     },
@@ -145,12 +156,19 @@ describe("TableDataTab empty rows", () => {
     tableFetching = false;
     tableError = null;
     requestedPage = 1;
+    additionalSchemaColumns = [];
+    schemaHasPrimaryKey = true;
     refetchTable.mockClear();
     exportTableDataJson.mockClear();
     exportTableDataJson.mockImplementation(async () => ({
       status: "success",
       path: "~/Downloads/selected-row.json",
     }));
+    insertTableRow.mockClear();
+    insertTableRow.mockImplementation(async () => {});
+    deleteTableRows.mockClear();
+    deleteTableRows.mockImplementation(async () => 2);
+    invalidateTableData.mockClear();
     addToast.mockClear();
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: originalClipboard });
     Object.defineProperty(URL, "createObjectURL", {
@@ -361,6 +379,200 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
   });
 
+  test("toggles rows independently and keeps selected-row export in sync", () => {
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "first" }, { name: "second" }, { name: "third" }],
+      total: 3,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const firstRow = screen.getByRole("button", { name: "Select row 1" });
+    const secondRow = screen.getByRole("button", { name: "Select row 2" });
+    const clickRowSelector = (rowSelector: HTMLElement) => {
+      fireEvent.pointerDown(rowSelector, {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
+    };
+    clickRowSelector(firstRow);
+    clickRowSelector(secondRow);
+
+    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    const exportButton = screen.getByRole("button", { name: "Export 2 selected rows as JSON" });
+    const markButton = screen.getByRole("button", { name: "Mark 2 selected rows for deletion" });
+    expect(exportButton.textContent).toBe("");
+    expect(markButton.textContent).toBe("");
+
+    clickRowSelector(firstRow);
+
+    expect(firstRow.getAttribute("aria-pressed")).toBe("false");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Mark 1 selected row for deletion" })).not.toBeNull();
+  });
+
+  test("stages selected rows and deletes them in one batch on apply", async () => {
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "first" }, { name: "second" }],
+      total: 2,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select row 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select row 2" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark 2 selected rows for deletion" }));
+    });
+
+    expect(deleteTableRows).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toBe("2 pending");
+    expect(screen.getByRole("button", { name: "Apply 2 pending deletions" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Export 2 selected rows as JSON" })).toBeNull();
+
+    const firstRow = document.querySelector('[data-row-index="0"]');
+    const secondRow = document.querySelector('[data-row-index="1"]');
+    expect(firstRow?.getAttribute("data-row-pending-delete")).toBe("true");
+    expect(secondRow?.getAttribute("data-row-pending-delete")).toBe("true");
+    expect(firstRow?.querySelector("td:nth-child(2)")?.className).toContain("line-through");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Apply 2 pending deletions" }));
+    });
+
+    expect(deleteTableRows).toHaveBeenCalledWith(profile, "auth", undefined, [
+      { name: "first" },
+      { name: "second" },
+    ]);
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Deleted 2 rows",
+      type: "success",
+      description: "Deleted 2 rows from auth.",
+    });
+    expect(invalidateTableData).toHaveBeenCalledTimes(1);
+    expect(refetchTable).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.querySelector('[data-row-pending-delete="true"]')).toBeNull();
+  });
+
+  test("undoes the last marked row and cancels all pending deletions", async () => {
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "first" }, { name: "second" }],
+      total: 2,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select row 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select row 2" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark 2 selected rows for deletion" }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo last pending deletion" }));
+
+    expect(screen.getByRole("status").textContent).toBe("1 pending");
+    expect(
+      document.querySelector('[data-row-index="0"]')?.getAttribute("data-row-pending-delete"),
+    ).toBe("true");
+    expect(
+      document.querySelector('[data-row-index="1"]')?.getAttribute("data-row-pending-delete"),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel pending deletions" }));
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.querySelector('[data-row-pending-delete="true"]')).toBeNull();
+    expect(deleteTableRows).not.toHaveBeenCalled();
+  });
+
+  test("keeps pending rows marked when applying the batch fails", async () => {
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "first" }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    };
+    deleteTableRows.mockImplementation(async () => {
+      throw new Error("foreign key constraint");
+    });
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Select row 1" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark 1 selected row for deletion" }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Apply 1 pending deletion" }));
+    });
+
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Could not delete rows",
+      type: "error",
+      description: "foreign key constraint",
+    });
+    expect(invalidateTableData).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toBe("1 pending");
+    expect(
+      document.querySelector('[data-row-index="0"]')?.getAttribute("data-row-pending-delete"),
+    ).toBe("true");
+  });
+
+  test("keeps pending deletions when navigating to another page", async () => {
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "first" }],
+      total: 250,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Select row 1" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark 1 selected row for deletion" }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+
+    expect(requestedPage).toBe(2);
+    expect(screen.getByRole("status").textContent).toBe("1 pending");
+    expect(
+      document.querySelector('[data-row-index="0"]')?.getAttribute("data-row-pending-delete"),
+    ).toBe("true");
+  });
+
+  test("disables marking rows when the table has no primary key", () => {
+    schemaHasPrimaryKey = false;
+    currentTableData = {
+      columns: ["name"],
+      rows: [{ name: "duplicate" }],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Select row 1" }));
+
+    const markButton = screen.getByRole("button", {
+      name: "Mark 1 selected row for deletion",
+    });
+    expect(markButton.hasAttribute("disabled")).toBe(true);
+    expect(markButton.getAttribute("title")).toBe("Cannot delete rows without a primary key");
+  });
+
   test("drag-selects a contiguous row range from the index without a visible delay", () => {
     currentTableData = {
       columns: ["id"],
@@ -466,6 +678,95 @@ describe("TableDataTab empty rows", () => {
     expect(screen.queryByText("Draft row")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add row" })).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel add row" }).textContent).toBe("");
+  });
+
+  test("does not ask for required timestamp values and keeps nullable timestamps editable", () => {
+    additionalSchemaColumns = [
+      {
+        name: "created_at",
+        data_type: "timestamp with time zone",
+        enum_values: [],
+        nullable: false,
+        default: null,
+        is_pk: false,
+        is_fk: false,
+        is_unique: false,
+      },
+      {
+        name: "optional_at",
+        data_type: "timestamp without time zone",
+        enum_values: [],
+        nullable: true,
+        default: null,
+        is_pk: false,
+        is_fk: false,
+        is_unique: false,
+      },
+    ];
+
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+
+    expect(
+      screen.getByRole("status", {
+        name: "Current time for created_at set automatically on insert",
+      }),
+    ).not.toBeNull();
+    expect(screen.queryByRole("textbox", { name: "New created_at" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "New optional_at" })).not.toBeNull();
+  });
+
+  test("inserts the draft row, reports success, refreshes data, and clears the draft", async () => {
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ada" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Insert row" }));
+    });
+
+    expect(insertTableRow).toHaveBeenCalledWith(
+      profile,
+      "auth",
+      undefined,
+      {
+        name: "Ada",
+        active: "",
+        status: "",
+      },
+      expect.any(Array),
+    );
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Row inserted",
+      type: "success",
+      description: "A row was added to auth.",
+    });
+    expect(refetchTable).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Insert row" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
+  });
+
+  test("reports insert errors and preserves the draft row for correction", async () => {
+    insertTableRow.mockImplementation(async () => {
+      throw new Error("constraint violation");
+    });
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Insert row" }));
+    });
+
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Could not insert row",
+      type: "error",
+      description: "constraint violation",
+    });
+    expect(refetchTable).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Insert row" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel add row" })).not.toBeNull();
   });
 
   test("focuses the new row editor after adding a row", () => {

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 
 import { assertUniqueConnection } from "@/shared/lib/connection-identity";
+
 import type {
   ConnectionProfile,
   ConnectResult,
@@ -94,9 +95,10 @@ export function saveConnection(
     const store = await load("connections.json");
     const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
     assertUniqueConnection(profiles, profile, mode);
-    const nextProfiles = mode === "update" && profiles.some((item) => item.id === profile.id)
-      ? profiles.map((item) => (item.id === profile.id ? profile : item))
-      : [...profiles, profile];
+    const nextProfiles =
+      mode === "update" && profiles.some((item) => item.id === profile.id)
+        ? profiles.map((item) => (item.id === profile.id ? profile : item))
+        : [...profiles, profile];
 
     await store.set("profiles", nextProfiles);
     await store.save();
@@ -203,6 +205,17 @@ export async function getTableData(
   return invoke("get_table_data", {
     request: { request, table, schema, page, pageSize, sort, filter },
   });
+}
+
+export async function deleteRecords(
+  profile: ConnectionProfile,
+  table: string,
+  schema: string | undefined,
+  pkMaps: Record<string, unknown>[],
+): Promise<number> {
+  const request = connectionRequestForProfile(profile);
+
+  return invoke("delete_records", { request: { request, table, schema, pkMaps } });
 }
 
 export async function runQuery(profile: ConnectionProfile, sql: string): Promise<QueryResult> {

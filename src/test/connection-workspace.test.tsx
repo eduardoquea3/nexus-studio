@@ -203,6 +203,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 
 mock.module("@/shared/lib/tauriApi", () => ({
   closeSshTunnel,
+  deleteRecords: mock(async () => 0),
   deleteSshPassword: mock(async () => undefined),
   listSystemFonts: mock(async () => []),
   connect: mock(async () => ({ connected: true })),
