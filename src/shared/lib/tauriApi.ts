@@ -1,15 +1,21 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
+
+import { assertUniqueConnection } from "@/shared/lib/connection-identity";
+
 import type {
   ConnectionProfile,
   ConnectResult,
   DataPage,
+  ErDiagramSchema,
   ObjectMeta,
   QueryResult,
   SshTunnelConfig,
   TableRules,
   TableSchema,
 } from "../types/models";
+
+let connectionSaveQueue: Promise<void> = Promise.resolve();
 
 export interface ConnectionTestRequest {
   dbType: "postgres" | "mysql" | "sqlite";
@@ -20,6 +26,7 @@ export interface ConnectionTestRequest {
   password?: string;
   sqlitePath?: string;
   ssh?: SshTunnelConfig;
+  sshPassword?: string;
   connectionId?: string;
   persistSshTunnel?: boolean;
 }
@@ -37,6 +44,10 @@ export async function testConnectionFields(request: ConnectionTestRequest): Prom
 
 export async function createSqliteDatabase(path: string): Promise<void> {
   return invoke("create_sqlite_database", { path });
+}
+
+export async function writeJsonFile(path: string, contents: string): Promise<string> {
+  return invoke("write_json_file", { path, contents });
 }
 
 function connectionRequestForProfile(
@@ -76,15 +87,25 @@ export async function listDatabases(request: ListDatabasesRequest): Promise<stri
   return invoke("list_databases", { request });
 }
 
-export async function saveConnection(profile: ConnectionProfile): Promise<void> {
-  const store = await load("connections.json");
-  const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
-  const nextProfiles = profiles.some((item) => item.id === profile.id)
-    ? profiles.map((item) => (item.id === profile.id ? profile : item))
-    : [...profiles, profile];
+export function saveConnection(
+  profile: ConnectionProfile,
+  mode: "create" | "update",
+): Promise<void> {
+  const saveOperation = connectionSaveQueue.then(async () => {
+    const store = await load("connections.json");
+    const profiles = (await store.get<ConnectionProfile[]>("profiles")) ?? [];
+    assertUniqueConnection(profiles, profile, mode);
+    const nextProfiles =
+      mode === "update" && profiles.some((item) => item.id === profile.id)
+        ? profiles.map((item) => (item.id === profile.id ? profile : item))
+        : [...profiles, profile];
 
-  await store.set("profiles", nextProfiles);
-  await store.save();
+    await store.set("profiles", nextProfiles);
+    await store.save();
+  });
+
+  connectionSaveQueue = saveOperation.catch(() => undefined);
+  return saveOperation;
 }
 
 export async function connect(id: string): Promise<ConnectResult> {
@@ -97,6 +118,14 @@ export async function disconnect(id: string): Promise<void> {
 
 export async function closeSshTunnel(connectionId: string): Promise<void> {
   return invoke("close_ssh_tunnel", { connectionId });
+}
+
+export async function storeSshPassword(credentialRef: string, password: string): Promise<void> {
+  return invoke("store_ssh_password", { credentialRef, password });
+}
+
+export async function deleteSshPassword(credentialRef: string): Promise<void> {
+  return invoke("delete_ssh_password", { credentialRef });
 }
 
 export async function listTables(id: string): Promise<ObjectMeta[]> {
@@ -150,6 +179,14 @@ export async function getTableSchema(
   return invoke("get_table_schema", { request: { request, table, schema } });
 }
 
+export async function getErDiagram(
+  profile: ConnectionProfile,
+  database?: string,
+): Promise<ErDiagramSchema> {
+  const request = connectionRequestForProfile(profile, database);
+  return invoke("get_er_diagram", { request });
+}
+
 export async function getTableRules(id: string, table: string): Promise<TableRules> {
   return invoke("get_table_rules", { id, table });
 }
@@ -168,6 +205,17 @@ export async function getTableData(
   return invoke("get_table_data", {
     request: { request, table, schema, page, pageSize, sort, filter },
   });
+}
+
+export async function deleteRecords(
+  profile: ConnectionProfile,
+  table: string,
+  schema: string | undefined,
+  pkMaps: Record<string, unknown>[],
+): Promise<number> {
+  const request = connectionRequestForProfile(profile);
+
+  return invoke("delete_records", { request: { request, table, schema, pkMaps } });
 }
 
 export async function runQuery(profile: ConnectionProfile, sql: string): Promise<QueryResult> {
@@ -190,7 +238,26 @@ type LocalFontWindow = Window & {
   queryLocalFonts?: () => Promise<LocalFont[]>;
 };
 
-export async function listSystemFonts(): Promise<string[]> {
+let systemFontsRequest: Promise<string[]> | undefined;
+
+export function listSystemFonts(): Promise<string[]> {
+  // Retain successful discovery for this app session and share pending requests.
+  systemFontsRequest ??= fetchSystemFonts().catch((error: unknown) => {
+    systemFontsRequest = undefined;
+    throw error;
+  });
+  return systemFontsRequest;
+}
+
+export function preloadSystemFonts(): void {
+  // Browser font access can require a user gesture; only warm native discovery.
+  if (isTauri()) {
+    // A failed preload must not block startup; Settings can retry later.
+    void listSystemFonts().catch(() => undefined);
+  }
+}
+
+async function fetchSystemFonts(): Promise<string[]> {
   try {
     return await invoke<string[]>("list_system_fonts");
   } catch (error) {

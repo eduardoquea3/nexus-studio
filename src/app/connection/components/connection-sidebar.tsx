@@ -153,7 +153,7 @@ export function ConnectionSidebar({
           />
         </div>
       </ScrollArea>
-      <div className="h-9 min-h-9 max-h-9 shrink-0 border-t border-border/70 p-0">
+      <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
         <ConnectionSwitcherMenu profile={profile} connections={connections} openModal={openModal} />
       </div>
     </aside>

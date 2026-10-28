@@ -2,6 +2,8 @@ import { load } from "@tauri-apps/plugin-store";
 
 import type { ConnectionProfile } from "@/shared/types/models";
 
+import { deleteSshPassword } from "@/shared/lib/tauriApi";
+
 export async function getConnections(): Promise<ConnectionProfile[]> {
   const store = await load("connections.json");
   return (await store.get<ConnectionProfile[]>("profiles")) ?? [];
@@ -15,11 +17,21 @@ export async function getConnection(id: string): Promise<ConnectionProfile | nul
 export async function deleteConnection(id: string): Promise<void> {
   const store = await load("connections.json");
   const profiles = await getConnections();
+  const profileToDelete = profiles.find((profile) => profile.id === id);
   await store.set(
     "profiles",
     profiles.filter((profile) => profile.id !== id),
   );
   await store.save();
+
+  const auth = profileToDelete?.ssh_tunnel?.auth;
+  if (auth?.type === "password" && auth.credential_ref) {
+    try {
+      await deleteSshPassword(auth.credential_ref);
+    } catch (error) {
+      console.warn("Could not remove the deleted connection's SSH credential", error);
+    }
+  }
 }
 
 export async function markConnectionOpened(id: string): Promise<void> {

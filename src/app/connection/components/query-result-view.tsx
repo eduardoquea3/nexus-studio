@@ -6,16 +6,19 @@ import {
   RiDownloadLine,
   RiFileCopyLine,
 } from "@remixicon/react";
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import type { QueryResult, ViewMode } from "@/shared/types/models";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { DataTable } from "@/shared/components/data-table";
 import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import { useDataTable } from "@/shared/hooks/use-data-table";
-import { copyJsonToClipboard, exportJsonFile } from "@/shared/lib/json-actions";
+import { copyJsonToClipboard } from "@/shared/lib/json-actions";
 import { serializeJson } from "@/shared/lib/json-serialization";
+
+import { exportTableDataJson } from "../services/table-data-export-service";
 
 const QUERY_RESULT_PAGE_SIZE = 100;
 
@@ -23,12 +26,15 @@ export function QueryResultView({
   result,
   viewMode,
   onViewModeChange,
+  toolbarActions,
 }: {
   result: QueryResult;
   viewMode: ViewMode;
   onViewModeChange: (viewMode: ViewMode) => void;
+  toolbarActions?: ReactNode;
 }) {
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const pageCount = Math.ceil(result.rows.length / QUERY_RESULT_PAGE_SIZE);
   const currentPageIndex = Math.min(pageIndex, Math.max(pageCount - 1, 0));
@@ -73,15 +79,22 @@ export function QueryResultView({
         ? "JSON copied to clipboard."
         : "Could not copy JSON.",
     );
-  const exportJson = () => {
-    const status = exportJsonFile(payload.text, "sql-result.json");
-    setFeedback(
-      status === "success"
-        ? "JSON export started."
-        : status === "cancelled"
-          ? "JSON export cancelled."
-          : "Could not export JSON.",
-    );
+  const exportJson = async () => {
+    setIsExporting(true);
+    try {
+      const outcome = await exportTableDataJson(payload.text, "sql-result.json");
+      if (outcome.status === "success") {
+        setFeedback(`JSON exported to ${outcome.path}.`);
+        toast.add({ title: "JSON exported", type: "success", description: outcome.path });
+      } else if (outcome.status === "error") {
+        setFeedback("Could not export JSON.");
+        toast.add({ title: "Could not export JSON", type: "error", description: outcome.message });
+      } else {
+        setFeedback("JSON export cancelled.");
+      }
+    } finally {
+      setIsExporting(false);
+    }
   };
   const activateViewMode = (event: KeyboardEvent<HTMLButtonElement>, mode: ViewMode) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -91,43 +104,60 @@ export function QueryResultView({
   };
   return (
     <div className="flex h-full min-w-0 w-full flex-col gap-0">
+      <div
+        role="toolbar"
+        aria-label="SQL result toolbar"
+        className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1"
+      >
+        <div
+          aria-label="Query result statistics"
+          className="flex min-w-0 flex-wrap items-center gap-x-3 text-[0.65rem] text-muted-foreground"
+        >
+          <span>
+            {hasPagination
+              ? `Rows ${firstVisibleRow}-${lastVisibleRow} of ${result.rows.length}`
+              : `${result.rows.length} rows`}
+          </span>
+          <span>{result.columns.length} columns</span>
+          <span>{result.duration_ms} ms</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {isJson ? (
+            <>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => void copyJson()}
+                aria-label="Copy SQL result JSON"
+              >
+                <RiFileCopyLine data-icon="inline-start" />
+                Copy
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => void exportJson()}
+                disabled={isExporting}
+                aria-label="Export SQL result JSON"
+              >
+                <RiDownloadLine data-icon="inline-start" />
+                {isExporting ? "Exporting..." : "Export"}
+              </Button>
+            </>
+          ) : null}
+          {toolbarActions}
+        </div>
+      </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden">
           {isJson ? (
             <JsonCodePanel
               ariaLabel="SQL result JSON"
               text={payload.text}
-              meta={
-                hasPagination
-                  ? `Rows ${firstVisibleRow}-${lastVisibleRow} of ${result.rows.length} · ${result.duration_ms} ms`
-                  : `${result.rows.length} rows · ${result.duration_ms} ms`
-              }
               fontScope="results"
               issues={payload.issues.length > 0}
-              actions={
-                <>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => void copyJson()}
-                    aria-label="Copy SQL result JSON"
-                  >
-                    <RiFileCopyLine data-icon="inline-start" />
-                    Copy
-                  </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    onClick={exportJson}
-                    aria-label="Export SQL result JSON"
-                  >
-                    <RiDownloadLine data-icon="inline-start" />
-                    Export
-                  </Button>
-                </>
-              }
             />
           ) : (
             <DataTable
@@ -139,7 +169,7 @@ export function QueryResultView({
           )}
         </div>
       </div>
-      <div className="grid h-9 min-h-9 max-h-9 w-full shrink-0 grid-cols-[1fr_auto] items-center border-t border-border/70 bg-background/80 px-2 py-1">
+      <div className="grid h-10 min-h-9 max-h-10 w-full shrink-0 grid-cols-[1fr_auto] items-center border-t border-border/70 bg-background/80 px-2">
         <div
           className="flex h-6 items-center justify-self-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
           role="group"
@@ -173,9 +203,6 @@ export function QueryResultView({
             aria-label="SQL result pagination"
             className="flex h-7 items-center gap-1 text-[0.65rem] text-muted-foreground"
           >
-            <span className="hidden sm:inline">
-              Rows {firstVisibleRow}-{lastVisibleRow} of {result.rows.length}
-            </span>
             <Button
               type="button"
               size="xs"

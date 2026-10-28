@@ -1,22 +1,29 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import type { Row } from "@tanstack/react-table";
 
 import { RiFileCopyLine, RiDownloadLine, RiRefreshLine } from "@remixicon/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile, ViewMode } from "@/shared/types/models";
 
+import { TableDataGrid } from "@/app/connection/components/table-data-grid";
 import {
   TableDataStructure,
   type StructureDraft,
 } from "@/app/connection/components/table-data-structure";
 import { TableDataToolbar } from "@/app/connection/components/table-data-toolbar";
-import { useTableData } from "@/app/connection/hooks/use-table-data";
+import { useInvalidateTableData, useTableData } from "@/app/connection/hooks/use-table-data";
 import { useTableSchema } from "@/app/connection/hooks/use-table-schema";
+import { deleteTableRows } from "@/app/connection/services/table-data-delete-service";
+import { exportTableDataJson } from "@/app/connection/services/table-data-export-service";
+import { insertTableRow } from "@/app/connection/services/table-data-insert-service";
+import {
+  buildRowIdentity,
+  serializeRowIdentity,
+} from "@/app/connection/services/table-data-row-identity";
 import { Tabs, TabsContent } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
-import { DataTable } from "@/shared/components/data-table";
+import { toast } from "@/components/ui/toast";
 import { JsonCodePanel } from "@/shared/components/json-code-panel";
-import { useDataTable } from "@/shared/hooks/use-data-table";
 import {
   copyJsonToClipboard,
   exportJsonFile,
@@ -28,6 +35,7 @@ type TableDataTabProps = {
   profile: ConnectionProfile;
   table: string;
   schema?: string;
+  isActive?: boolean;
   refreshToken?: number;
   exportJson?: (text: string, filename: string) => JsonActionResult;
 };
@@ -36,16 +44,32 @@ export function TableDataTab({
   profile,
   table,
   schema,
+  isActive = true,
   refreshToken = 0,
   exportJson: exportJsonAction = exportJsonFile,
 }: TableDataTabProps) {
-  const { data, error, isLoading, refetch } = useTableData(profile, table, schema);
-  const tableSchema = useTableSchema(profile, table, true, schema);
+  const [page, setPage] = useState(1);
+  const { data, error, isLoading, isFetching, refetch } = useTableData(
+    profile,
+    table,
+    schema,
+    page,
+    isActive,
+  );
+  const tableSchema = useTableSchema(profile, table, isActive, schema);
+  const invalidateTableData = useInvalidateTableData(profile, table, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
   const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
+  const [pendingDeletions, setPendingDeletions] = useState<Map<string, Record<string, unknown>>>(
+    () => new Map(),
+  );
+  const [selectionResetToken, setSelectionResetToken] = useState(0);
+  const [isExportingRows, setIsExportingRows] = useState(false);
+  const [isInsertingRow, setIsInsertingRow] = useState(false);
+  const [isApplyingDeletions, setIsApplyingDeletions] = useState(false);
   const previousRefreshTokenRef = useRef(refreshToken);
   const schemaColumns = tableSchema.data?.columns;
   const columnNames = data?.columns.length
@@ -66,43 +90,151 @@ export function TableDataTab({
         .join("|")
     : "";
   const lastStructureSignatureRef = useRef<string | null>(null);
-  const columns = useMemo<ColumnDef<Record<string, unknown>, unknown>[]>(
-    () =>
-      columnNames.map((column) => ({
-        accessorKey: column,
-        header: column,
-        cell: (context) => formatCell(context.getValue()),
-      })),
-    [columnNames],
+  const handleSelectionChange = useCallback((rows: Row<Record<string, unknown>>[]) => {
+    setSelectedRows(rows.map((row) => row.original));
+  }, []);
+  const handleDraftChange = useCallback((column: string, value: string) => {
+    setDraftRow((row) => (row ? { ...row, [column]: value } : row));
+  }, []);
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      if (nextPage !== page) setDraftRow(null);
+      setPage(nextPage);
+    },
+    [page],
   );
-  const dataTable = useDataTable({ columns, data: data?.rows ?? [] });
   const payload = useMemo(
     () =>
       data
-        ? serializeJson(data.columns, data.rows, { page: data.page, pageSize: data.page_size })
+        ? serializeJson(data.columns, selectedRows.length > 0 ? selectedRows : data.rows, {
+            page: data.page,
+            pageSize: data.page_size,
+          })
         : null,
-    [data],
+    [data, selectedRows],
   );
   const canShowJson = Boolean(data && data.rows.length > 0 && data.columns.length > 0 && payload);
-  const selectedRow = selectedRowIndex === null ? null : (data?.rows[selectedRowIndex] ?? null);
-  const selectedRowPayload = useMemo(
-    () => (selectedRow && data ? serializeJson(data.columns, [selectedRow]) : null),
-    [data, selectedRow],
+  const rowsToExport = selectedRows;
+  const primaryKeyColumns = useMemo(
+    () => (schemaColumns ?? []).filter((column) => column.is_pk),
+    [schemaColumns],
+  );
+  const canMarkSelectedForDeletion =
+    primaryKeyColumns.length > 0 &&
+    selectedRows.length > 0 &&
+    selectedRows.every((row) => buildRowIdentity(row, primaryKeyColumns) !== null);
+  const isRowPending = useCallback(
+    (row: Record<string, unknown>) => {
+      const identity = buildRowIdentity(row, primaryKeyColumns);
+      return identity !== null && pendingDeletions.has(serializeRowIdentity(identity));
+    },
+    [pendingDeletions, primaryKeyColumns],
   );
 
+  const handleInsertRow = async () => {
+    if (!draftRow || isInsertingRow) return;
+
+    setIsInsertingRow(true);
+    try {
+      await insertTableRow(profile, table, schema, draftRow, schemaColumns ?? []);
+      setDraftRow(null);
+      toast.add({
+        title: "Row inserted",
+        type: "success",
+        description: `A row was added to ${table}.`,
+      });
+      void refetch();
+    } catch (error) {
+      toast.add({
+        title: "Could not insert row",
+        type: "error",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsInsertingRow(false);
+    }
+  };
+
+  const handleMarkSelectedForDeletion = () => {
+    if (!canMarkSelectedForDeletion) return;
+
+    setPendingDeletions((current) => {
+      const next = new Map(current);
+      for (const row of selectedRows) {
+        const identity = buildRowIdentity(row, primaryKeyColumns);
+        if (identity !== null) next.set(serializeRowIdentity(identity), identity);
+      }
+      return next;
+    });
+    setSelectedRows([]);
+    setSelectionResetToken((token) => token + 1);
+  };
+
+  const handleUndoPendingDeletion = () => {
+    setPendingDeletions((current) => {
+      if (current.size === 0) return current;
+      const keys = Array.from(current.keys());
+      const lastKey = keys[keys.length - 1];
+      if (lastKey === undefined) return current;
+      const next = new Map(current);
+      next.delete(lastKey);
+      return next;
+    });
+  };
+
+  const handleCancelPendingDeletions = () => {
+    setPendingDeletions((current) => (current.size === 0 ? current : new Map()));
+  };
+
+  const handleApplyPendingDeletions = async () => {
+    if (pendingDeletions.size === 0 || isApplyingDeletions) return;
+
+    const pkMaps = Array.from(pendingDeletions.values());
+    setIsApplyingDeletions(true);
+    try {
+      const affectedRows = await deleteTableRows(profile, table, schema, pkMaps);
+      setPendingDeletions(new Map());
+      setSelectedRows([]);
+      setSelectionResetToken((token) => token + 1);
+      toast.add({
+        title: `Deleted ${affectedRows} ${affectedRows === 1 ? "row" : "rows"}`,
+        type: "success",
+        description: `Deleted ${affectedRows} ${affectedRows === 1 ? "row" : "rows"} from ${table}.`,
+      });
+      invalidateTableData();
+    } catch (error) {
+      toast.add({
+        title: "Could not delete rows",
+        type: "error",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsApplyingDeletions(false);
+    }
+  };
+
+  useEffect(() => {
+    setPage(1);
+    setPendingDeletions((current) => (current.size === 0 ? current : new Map()));
+    setSelectedRows([]);
+  }, [profile.id, table, schema]);
   useEffect(() => {
     setViewMode("table");
     setFeedback(null);
-    setSelectedRowIndex(null);
+    setSelectedRows([]);
   }, [table]);
   useEffect(() => {
-    setSelectedRowIndex(null);
-  }, [data]);
+    setSelectedRows([]);
+  }, [data?.rows]);
   useEffect(() => {
+    if (!isActive) {
+      previousRefreshTokenRef.current = refreshToken;
+      return;
+    }
     if (previousRefreshTokenRef.current === refreshToken) return;
     previousRefreshTokenRef.current = refreshToken;
     void refetch();
-  }, [refreshToken, refetch]);
+  }, [isActive, refreshToken, refetch]);
   useEffect(() => {
     if (!schemaColumns || lastStructureSignatureRef.current === structureSignature) return;
     lastStructureSignatureRef.current = structureSignature;
@@ -118,13 +250,44 @@ export function TableDataTab({
     );
   }, [schemaColumns, structureSignature]);
 
+  const handleExportRows = async () => {
+    if (!data || rowsToExport.length === 0) return;
+
+    setIsExportingRows(true);
+    const rowCount = rowsToExport.length;
+    const filename = rowCount === 1 ? "selected-row.json" : "selected-rows.json";
+    try {
+      const json = serializeJson(data.columns, rowsToExport).text;
+      const result = await exportTableDataJson(json, filename);
+      if (result.status === "success") {
+        const noun = rowCount === 1 ? "row" : "rows";
+        toast.add({
+          title: `Exported ${rowCount} ${noun}`,
+          type: "success",
+          description: result.path,
+        });
+        setFeedback(`Exported ${rowCount} ${noun} to ${result.path}.`);
+      } else if (result.status === "error") {
+        toast.add({
+          title: "Could not export rows",
+          type: "error",
+          description: result.message,
+        });
+      } else {
+        setFeedback("JSON export cancelled.");
+      }
+    } finally {
+      setIsExportingRows(false);
+    }
+  };
+
   if (isLoading)
     return (
       <div className="flex h-full min-h-0 flex-col">
         <p role="status" className="sr-only">
           Loading data...
         </p>
-        <DataTable table={dataTable} isLoading />
+        <TableDataGrid data={data} draftColumns={schemaColumns} isLoading withShell />
       </div>
     );
   if (error)
@@ -148,14 +311,19 @@ export function TableDataTab({
       }}
     >
       <div className="min-h-0 flex-1 overflow-hidden">
-        <TabsContent value="data" className="h-full min-h-0 overflow-hidden p-0 m-0">
+        <TabsContent
+          value="data"
+          className="h-full min-h-0 overflow-hidden p-0 m-0"
+          transition={{ duration: 0 }}
+        >
           <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-b-xl">
             <div className="min-h-0 flex-1 overflow-hidden">
               {viewMode === "json" && canShowJson && payload ? (
                 <JsonCodePanel
                   ariaLabel="Table data JSON"
                   text={payload.text}
-                  meta={`Page ${data?.page ?? 0} · ${data?.rows.length ?? 0} loaded`}
+                  fontScope="results"
+                  meta={`Page ${data?.page ?? 0} · ${payload.rowCount} ${selectedRows.length > 0 ? "selected" : "loaded"}`}
                   issues={payload.issues.length > 0}
                   largeMessage={
                     exceedsJsonRenderThreshold(payload.rowCount)
@@ -188,18 +356,20 @@ export function TableDataTab({
                   }
                 />
               ) : (
-                <DataTable
-                  table={dataTable}
-                  isLoading={isLoading || (columnNames.length === 0 && tableSchema.isLoading)}
+                <TableDataGrid
+                  data={data}
+                  isLoading={
+                    isLoading || isFetching || (columnNames.length === 0 && tableSchema.isLoading)
+                  }
                   withShell={false}
-                  className="h-full"
+                  className="h-full [&_tr>:first-child]:w-px [&_tr>:first-child]:text-center [&_[data-row-selector]]:justify-center [&_[data-row-selector]]:text-center"
+                  rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
                   draftRow={draftRow}
                   draftColumns={schemaColumns}
-                  selectedRowId={selectedRowIndex === null ? null : String(selectedRowIndex)}
-                  onRowClick={(row) => setSelectedRowIndex(row.index)}
-                  onDraftChange={(column, value) =>
-                    setDraftRow((row) => (row ? { ...row, [column]: value } : row))
-                  }
+                  onSelectionChange={handleSelectionChange}
+                  onDraftChange={handleDraftChange}
+                  isRowPending={isRowPending}
+                  selectionResetToken={selectionResetToken}
                 />
               )}
             </div>
@@ -208,7 +378,11 @@ export function TableDataTab({
             </p>
           </div>
         </TabsContent>
-        <TabsContent value="structure" className="min-h-0 max-h-full overflow-auto p-4 m-0">
+        <TabsContent
+          value="structure"
+          className="min-h-0 max-h-full overflow-auto p-4 m-0"
+          transition={{ duration: 0 }}
+        >
           <TableDataStructure
             structureDraft={structureDraft}
             setStructureDraft={setStructureDraft}
@@ -220,17 +394,30 @@ export function TableDataTab({
       <TableDataToolbar
         canShowJson={canShowJson}
         viewMode={viewMode}
-        setViewMode={setViewMode}
+        setViewMode={(nextViewMode) => {
+          if (viewMode === "json" && nextViewMode === "table") setSelectedRows([]);
+          setViewMode(nextViewMode);
+        }}
         columnNames={columnNames}
         draftRow={draftRow}
         setDraftRow={setDraftRow}
-        selectedRowIndex={selectedRowIndex}
-        selectedRowPayload={selectedRowPayload}
-        setFeedback={(value) => setFeedback(value)}
-        exportJson={exportJson}
-        exportJsonAction={exportJsonAction}
-        total={data?.total ?? 0}
-        loaded={data?.rows.length ?? 0}
+        selectedRowCount={rowsToExport.length}
+        canMarkSelectedForDeletion={canMarkSelectedForDeletion}
+        pendingDeletionCount={pendingDeletions.size}
+        isApplyingDeletions={isApplyingDeletions}
+        onMarkSelectedForDeletion={handleMarkSelectedForDeletion}
+        onUndoPendingDeletion={handleUndoPendingDeletion}
+        onCancelPendingDeletions={handleCancelPendingDeletions}
+        onApplyPendingDeletions={() => void handleApplyPendingDeletions()}
+        onExportRows={() => void handleExportRows()}
+        isExportingRows={isExportingRows}
+        onRefresh={() => void refetch()}
+        page={page}
+        pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
+        isLoading={isFetching}
+        isInsertingRow={isInsertingRow}
+        onInsertRow={() => void handleInsertRow()}
+        onPageChange={handlePageChange}
       />
     </Tabs>
   );
@@ -252,11 +439,6 @@ function exportJson(
     : result === "cancelled"
       ? "JSON export cancelled."
       : "Could not export JSON.";
-}
-function formatCell(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);

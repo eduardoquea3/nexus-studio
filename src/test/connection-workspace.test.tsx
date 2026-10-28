@@ -1,8 +1,15 @@
 import "./setup";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import {
+  createFileRoute,
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, StrictMode, useEffect } from "react";
 
+import type { TableDataExportResult } from "@/app/connection/services/table-data-export-service";
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
@@ -31,9 +38,45 @@ const getTableSchema = mock(async () => ({
   columns: [],
   indexes: [],
 }));
+const listDatabases = mock(async () => ["development", "analytics"]);
 const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
+const exportTableDataJson = mock(
+  async (_text: string, _filename: string): Promise<TableDataExportResult> => ({
+    status: "success",
+    path: "~/Downloads/sql-result.json",
+  }),
+);
+mock.module("@/app/connection/services/table-data-export-service", () => ({
+  exportTableDataJson,
+}));
 const availableConnections: ConnectionProfile[] = [];
+const closeSshTunnel = mock(async (_connectionId: string) => undefined);
+const getConnectionProfile = mock(async (id: string) =>
+  availableConnections.find((connection) => connection.id === id),
+);
+
+mock.module("@/routes/index", () => ({
+  Route: createFileRoute("/")({ component: () => <div>Saved connections</div> }),
+}));
+mock.module("@/shared/keymaps/global-keymaps", () => ({ GlobalKeymaps: () => null }));
+const themeState = {
+  theme: { mode: "dark", variantId: "default" },
+  interfaceFontFamily: "Inter",
+  sqlEditorFontFamily: "monospace",
+  resultFontFamily: "monospace",
+  interfaceFontSize: 14,
+  sqlEditorFontSize: 14,
+  resultFontSize: 14,
+  toggle: async () => undefined,
+};
+mock.module("@/shared/store/theme-store", () => ({
+  THEME_VARIANTS: [],
+  FONT_SIZE_MIN: 10,
+  FONT_SIZE_MAX: 24,
+  useThemeStore: (select?: (state: typeof themeState) => unknown) =>
+    select ? select(themeState) : themeState,
+}));
 
 mock.module("@uiw/react-codemirror", () => ({
   default: ({
@@ -98,10 +141,12 @@ mock.module("react-resizable-panels", () => ({
 
 mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: ({
+    selectedDatabase,
     onDatabaseChange,
     onTableSelect,
     onRoutineSelect,
   }: {
+    selectedDatabase: string;
     onDatabaseChange: (database: string) => void;
     onTableSelect: (table: string) => void;
     onRoutineSelect: (routine: {
@@ -111,6 +156,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
     }) => void;
   }) => (
     <aside data-testid="connection-sidebar">
+      <span data-testid="selected-database">{selectedDatabase}</span>
       <button type="button" onClick={() => onDatabaseChange("development")}>
         Select development
       </button>
@@ -156,8 +202,13 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 }));
 
 mock.module("@/shared/lib/tauriApi", () => ({
+  closeSshTunnel,
+  deleteRecords: mock(async () => 0),
+  deleteSshPassword: mock(async () => undefined),
+  listSystemFonts: mock(async () => []),
   connect: mock(async () => ({ connected: true })),
   disconnect: mock(async () => undefined),
+  getErDiagram: mock(async () => ({ tables: [], relationships: [] })),
   getTableData,
   getTableRules: mock(async () => ({
     primary_key: null,
@@ -167,7 +218,7 @@ mock.module("@/shared/lib/tauriApi", () => ({
   getTableSchema,
   getRoutineDefinition,
   listConnections: mock(async () => []),
-  listDatabases: mock(async () => []),
+  listDatabases,
   listFunctions: mock(async () => []),
   listOtherObjects: mock(async () => []),
   listSchemaObjects,
@@ -178,10 +229,16 @@ mock.module("@/shared/lib/tauriApi", () => ({
   saveConnection: mock(async () => undefined),
   testConnectionFields: mock(async () => "ok"),
   testSavedConnection,
+  writeJsonFile: mock(async () => "export.json"),
 }));
 
 mock.module("@/app/home/hooks/use-connections", () => ({
   useConnections: () => ({ data: availableConnections }),
+  useConnection: (id: string) =>
+    useQuery({
+      queryKey: ["connections", id],
+      queryFn: () => getConnectionProfile(id),
+    }),
 }));
 
 mock.module("@/app/connection/hooks/use-schema-objects", () => ({
@@ -190,16 +247,21 @@ mock.module("@/app/connection/hooks/use-schema-objects", () => ({
     connectionId,
     database,
   ],
-  useSchemaObjects: () => ({ data: [], isLoading: false, isFetching: false }),
+  useSchemaObjects: (connectionProfile: ConnectionProfile, database: string) =>
+    useQuery({
+      queryKey: ["schema", connectionProfile.id, database],
+      queryFn: () => listSchemaObjects(),
+    }),
 }));
 
-mock.module("@/components/ui/toast", () => ({ toast: { add: addToast } }));
+mock.module("@/components/ui/toast", () => ({ toast: { add: addToast }, Toaster: () => null }));
 
 const { ConnectionWorkspace, getQuerySegment } =
   await import("../app/connection/components/connection-workspace");
 const { splitSqlStatements } =
   await import("../app/connection/components/connection-workspace-utils");
-const { act, cleanup, fireEvent, render, screen, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } =
+  await import("@testing-library/react");
 
 const profile = {
   id: "connection-1",
@@ -247,6 +309,259 @@ function setEditorQuery(query = "select 1;") {
   });
 }
 
+describe("Connection workspace route sessions", () => {
+  const clients: QueryClient[] = [];
+
+  beforeEach(() => {
+    globalThis.scrollTo = () => undefined;
+    availableConnections.splice(0, availableConnections.length, {
+      ...fieldsProfile,
+      password: "test-password",
+    });
+    useWorkspaceStore.setState({ ...useWorkspaceStore.getInitialState(), isHydrated: true });
+    closeSshTunnel.mockClear();
+    getConnectionProfile.mockClear();
+    listDatabases.mockClear();
+    listSchemaObjects.mockClear();
+    getTableData.mockClear();
+    runQuery.mockReset();
+    runQuery.mockImplementation(defaultRunQuery);
+  });
+
+  afterEach(() => {
+    cleanup();
+    clients.splice(0).forEach((client) => client.clear());
+    useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+    availableConnections.splice(0);
+  });
+
+  async function openConnection(strictMode = true) {
+    const { routeTree } = await import("../routeTree.gen");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    clients.push(queryClient);
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ["/connections/connection-1"] }),
+      defaultPendingMs: 0,
+    });
+    const app = (
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+    render(strictMode ? <StrictMode>{app}</StrictMode> : app);
+    await screen.findByTestId("selected-database");
+    await waitFor(() => expect(listDatabases).toHaveBeenCalled());
+    return { router, queryClient };
+  }
+
+  for (const sshEnabled of [false, true]) {
+    test(`keeps the live workspace through Settings ${sshEnabled ? "with" : "without"} SSH`, async () => {
+      if (sshEnabled) {
+        availableConnections[0] = {
+          ...fieldsProfile,
+          password: "test-password",
+          ssh_tunnel: {
+            source: { type: "from_ssh_config", alias: "test-host" },
+            auth: { type: "key_file", path: "test-key", passphrase_ref: null },
+            remote_bind_host: "localhost",
+            remote_bind_port: 5432,
+          },
+        };
+      }
+      const { router } = await openConnection();
+      fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+      runQuery.mockResolvedValueOnce({
+        columns: ["value"],
+        rows: [{ value: "retained-result" }],
+        affected: 0,
+        duration_ms: 1,
+      });
+      setEditorQuery("select 'retained-result';");
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), {
+          key: "Enter",
+          ctrlKey: true,
+        });
+      });
+      await screen.findByText("retained-result", { selector: "td" });
+      fireEvent.doubleClick(screen.getByText("Open company"));
+      await waitFor(() => expect(getTableData).toHaveBeenCalled());
+      const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+      const databaseReads = listDatabases.mock.calls.length;
+      const tableReads = getTableData.mock.calls.length;
+      const schemaReads = listSchemaObjects.mock.calls.length;
+      const profileReads = getConnectionProfile.mock.calls.length;
+      closeSshTunnel.mockClear();
+
+      fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+      const backButton = await screen.findByRole("button", { name: "Back to app" });
+      fireEvent.keyDown(document.body, { key: "p", ctrlKey: true });
+      expect(screen.queryByRole("dialog", { name: "Command palette", hidden: true })).toBeNull();
+      fireEvent.click(backButton);
+      await waitFor(() => expect(router.state.location.pathname).toBe("/connections/connection-1"));
+
+      expect(screen.getByRole("region", { name: "SQL editor workspace" }) === workspace).toBe(true);
+      expect(screen.getByTestId("selected-database").textContent).toBe("development");
+      expect(closeSshTunnel).not.toHaveBeenCalled();
+      expect(listDatabases.mock.calls.length).toBe(databaseReads);
+      expect(getTableData.mock.calls.length).toBe(tableReads);
+      expect(listSchemaObjects.mock.calls.length).toBe(schemaReads);
+      expect(getConnectionProfile.mock.calls.length).toBe(profileReads);
+      fireEvent.click(screen.getByRole("tab", { name: /Query 1/ }));
+      expect(screen.getByText("retained-result", { selector: "td" })).not.toBeNull();
+      expect(runQuery).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  test("does not reset the selected database when the saved profile is refreshed", async () => {
+    const { queryClient } = await openConnection();
+    fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+    await act(async () => {
+      queryClient.setQueryData(["connections", fieldsProfile.id], {
+        ...availableConnections[0],
+        last_opened_at: 123,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByTestId("selected-database").textContent).toBe("development");
+  });
+
+  test("opens a fresh session with the configured database and restores saved tabs", async () => {
+    useWorkspaceStore.getState().setConnectionWorkspace({
+      connectionId: fieldsProfile.id,
+      activeTabId: "sql-1",
+      tabs: [
+        {
+          id: "sql-1",
+          type: "query",
+          connectionId: fieldsProfile.id,
+          database: "development",
+          title: "Query 1",
+          query: "select 'saved query';",
+          isDirty: false,
+          queryResult: null,
+          queryError: null,
+          viewMode: "table",
+        },
+        {
+          id: "table-development-company",
+          type: "datatable",
+          connectionId: fieldsProfile.id,
+          database: "development",
+          tableName: "company",
+        },
+      ],
+    });
+    await openConnection(false);
+    expect(screen.getByTestId("selected-database").textContent).toBe("master");
+    expect(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }).textContent).toBe(
+      "select 'saved query';",
+    );
+    expect(screen.getByRole("tab", { name: /company/ })).not.toBeNull();
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  test("closes a disconnected session once and reopens it with the configured database", async () => {
+    const { router } = await openConnection();
+    expect(closeSshTunnel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+    await act(async () => {
+      await router.navigate({ to: "/" });
+    });
+    expect(closeSshTunnel).toHaveBeenCalledTimes(1);
+    expect(closeSshTunnel).toHaveBeenCalledWith(fieldsProfile.id);
+    await act(async () => {
+      await router.navigate({
+        to: "/connections/$connectionId",
+        params: { connectionId: fieldsProfile.id },
+      });
+    });
+    expect(screen.getByTestId("selected-database").textContent).toBe("master");
+  });
+
+  test("closes the retained connection when leaving Settings for home", async () => {
+    const { router } = await openConnection();
+    closeSshTunnel.mockClear();
+    await act(async () => {
+      await router.navigate({ to: "/settings" });
+    });
+    expect(closeSshTunnel).not.toHaveBeenCalled();
+    await act(async () => {
+      await router.navigate({ to: "/" });
+    });
+    expect(closeSshTunnel).toHaveBeenCalledWith(fieldsProfile.id);
+  });
+
+  test("closes only the old session when switching from Settings to another connection", async () => {
+    availableConnections.push({
+      ...fieldsProfile,
+      id: "connection-2",
+      password: "test-password",
+      connect_mode: { ...fieldsProfile.connect_mode, database: "analytics" },
+    });
+    const { router } = await openConnection();
+    await act(async () => {
+      await router.navigate({ to: "/settings" });
+    });
+    expect(closeSshTunnel).not.toHaveBeenCalled();
+    await act(async () => {
+      await router.navigate({
+        to: "/connections/$connectionId",
+        params: { connectionId: "connection-2" },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("selected-database").textContent).toBe("analytics"),
+    );
+    expect(closeSshTunnel).toHaveBeenCalledTimes(1);
+    expect(closeSshTunnel).toHaveBeenCalledWith(fieldsProfile.id);
+    await act(async () => {
+      await router.navigate({ to: "/" });
+    });
+    expect(closeSshTunnel).toHaveBeenCalledTimes(2);
+    expect(closeSshTunnel).toHaveBeenLastCalledWith("connection-2");
+  });
+
+  test("keeps an in-flight query alive while Settings is visible", async () => {
+    const { router } = await openConnection();
+    let finishQuery: (result: QueryResult) => void = () => undefined;
+    runQuery.mockImplementationOnce(
+      () =>
+        new Promise<QueryResult>((resolve) => {
+          finishQuery = resolve;
+        }),
+    );
+    setEditorQuery("select 'finished-in-settings';");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 1 SQL query editor" }), {
+      key: "Enter",
+      ctrlKey: true,
+    });
+    await act(async () => {
+      await router.navigate({ to: "/settings" });
+    });
+    await act(async () => {
+      finishQuery({
+        columns: ["value"],
+        rows: [{ value: "finished-in-settings" }],
+        affected: 0,
+        duration_ms: 1,
+      });
+    });
+    await act(async () => {
+      await router.navigate({
+        to: "/connections/$connectionId",
+        params: { connectionId: fieldsProfile.id },
+      });
+    });
+    expect(screen.getByText("finished-in-settings", { selector: "td" })).not.toBeNull();
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(closeSshTunnel).not.toHaveBeenCalled();
+  });
+});
+
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -255,6 +570,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
     runQuery.mockImplementation(defaultRunQuery);
     getRoutineDefinition.mockClear();
     addToast.mockClear();
+    exportTableDataJson.mockReset();
+    exportTableDataJson.mockResolvedValue({
+      status: "success",
+      path: "~/Downloads/sql-result.json",
+    });
     testSavedConnection.mockReset();
     testSavedConnection.mockResolvedValue("ok");
     availableConnections.splice(0);
@@ -264,6 +584,141 @@ describe("ConnectionWorkspace SQL tabs", () => {
   afterEach(() => {
     cleanup();
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+  });
+
+  test("keeps the saved connection database selected and blocks a table tab from another database", () => {
+    getTableData.mockClear();
+    useWorkspaceStore.setState({
+      isHydrated: true,
+      activeConnectionId: "connection-1",
+      connections: {
+        "connection-1": {
+          connectionId: "connection-1",
+          activeTabId: "table-sales-public-company",
+          tabs: [
+            {
+              id: "query-sales",
+              type: "query",
+              connectionId: "connection-1",
+              database: "sales",
+              title: "Sales query",
+              query: "select 1",
+              isDirty: false,
+              queryResult: null,
+              queryError: null,
+              viewMode: "table",
+            },
+            {
+              id: "table-sales-public-company",
+              type: "datatable",
+              connectionId: "connection-1",
+              database: "sales",
+              schema: "public",
+              tableName: "company",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWorkspace(fieldsProfile);
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("master");
+    expect(screen.getByRole("heading", { name: "Database mismatch" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to sales" })).not.toBeNull();
+    expect(getTableData).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to sales" }));
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("sales");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("development");
+    expect(screen.getByRole("heading", { name: "Database mismatch" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to sales" })).not.toBeNull();
+  });
+
+  test("starts a replacement workspace with the configured database and saved tabs", () => {
+    useWorkspaceStore.setState({
+      isHydrated: true,
+      activeConnectionId: null,
+      connections: {},
+    });
+    const workspace = renderWorkspace(fieldsProfile);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select development" }));
+    fireEvent.doubleClick(screen.getByText("Open company"));
+    workspace.unmount();
+
+    renderWorkspace(fieldsProfile);
+
+    expect(screen.getByTestId("selected-database").textContent).toBe("master");
+    expect(screen.getByRole("tab", { name: /company/ })).not.toBeNull();
+  });
+
+  test("keeps an opened table view mounted when switching workspace tabs", async () => {
+    getTableData.mockClear();
+    useWorkspaceStore.setState({
+      isHydrated: true,
+      activeConnectionId: "connection-1",
+      connections: {
+        "connection-1": {
+          connectionId: "connection-1",
+          activeTabId: "query-1",
+          tabs: [
+            {
+              id: "query-1",
+              type: "query",
+              connectionId: "connection-1",
+              database: "master",
+              title: "Query 1",
+              query: "select 1",
+              isDirty: false,
+              queryResult: null,
+              queryError: null,
+              viewMode: "table",
+            },
+            {
+              id: "table-company",
+              type: "datatable",
+              connectionId: "connection-1",
+              database: "master",
+              schema: "public",
+              tableName: "company",
+            },
+          ],
+        },
+      },
+    });
+
+    renderWorkspace(fieldsProfile);
+    fireEvent.click(screen.getByRole("tab", { name: /company/ }));
+    await screen.findByRole("tab", { name: "Structure" });
+    await waitFor(() => expect(getTableData).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Structure" }));
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe(
+      "active",
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Query 1/ }));
+    expect(screen.queryByRole("tab", { name: "Structure" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /company/ }));
+
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe(
+      "active",
+    );
+    expect(getTableData).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.queryByRole("tab", { name: "Structure" })).toBeNull();
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    fireEvent.keyUp(window, { key: "Control" });
+    expect(screen.getByRole("tab", { name: "Structure" }).getAttribute("data-state")).toBe(
+      "active",
+    );
+    expect(getTableData).toHaveBeenCalledTimes(1);
   });
 
   test("renders one editor and keeps one editor when tabs are added", () => {
@@ -471,12 +926,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     expect(viewGroup.className).toContain("bg-muted/30");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("bg-primary/15");
+    expect(screen.queryByRole("button", { name: "Copy SQL result JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export SQL result JSON" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const toolbar = screen.getByRole("toolbar", { name: "SQL result toolbar" });
+    expect(within(toolbar).getByRole("button", { name: "Copy SQL result JSON" })).not.toBeNull();
+    expect(within(toolbar).getByRole("button", { name: "Export SQL result JSON" })).not.toBeNull();
+    expect(within(toolbar).getByRole("button", { name: "Run all queries" })).not.toBeNull();
+    expect(within(toolbar).getByLabelText("Query result statistics")).not.toBeNull();
+    expect(screen.queryByText("1 rows · 2 ms")).toBeNull();
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"name": "Ada"');
     expect(screen.getByRole("button", { name: "JSON" }).className).toContain("bg-primary/15");
     expect(runQuery).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.queryByLabelText("SQL result JSON")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy SQL result JSON" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export SQL result JSON" })).toBeNull();
   });
 
   test("paginates SQL results in pages of 100 rows", async () => {
@@ -492,18 +957,24 @@ describe("ConnectionWorkspace SQL tabs", () => {
 
     const table = screen.getByRole("table");
     expect(screen.getByRole("navigation", { name: "SQL result pagination" })).not.toBeNull();
-    expect(screen.getByText("Rows 1-100 of 205")).not.toBeNull();
     expect(screen.getByText("Page 1 of 3")).not.toBeNull();
+    expect(
+      screen.getByRole("navigation", { name: "SQL result pagination" }).textContent,
+    ).not.toContain("Rows");
     expect(table.querySelectorAll("tbody tr").length).toBe(100);
 
     fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
-    expect(screen.getByText("Rows 101-200 of 205")).not.toBeNull();
     expect(screen.getByText("Page 2 of 3")).not.toBeNull();
+    expect(
+      screen.getByRole("navigation", { name: "SQL result pagination" }).textContent,
+    ).not.toContain("Rows");
     expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(100);
 
     fireEvent.click(screen.getByRole("button", { name: "Next result page" }));
-    expect(screen.getByText("Rows 201-205 of 205")).not.toBeNull();
     expect(screen.getByText("Page 3 of 3")).not.toBeNull();
+    expect(
+      screen.getByRole("navigation", { name: "SQL result pagination" }).textContent,
+    ).not.toContain("Rows");
     expect(screen.getByRole("table").querySelectorAll("tbody tr").length).toBe(5);
     expect(screen.getByRole("button", { name: "Next result page" }).getAttribute("disabled")).toBe(
       "",
@@ -513,6 +984,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 200');
     expect(screen.getByLabelText("SQL result JSON").textContent).toContain('"id": 204');
     expect(screen.getByLabelText("SQL result JSON").textContent).not.toContain('"id": 199');
+    expect(screen.getByText("Rows 201-205 of 205")).not.toBeNull();
   });
 
   test("hides the previous result and JSON actions while a new query is running", async () => {
@@ -615,78 +1087,105 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(tableButton.getAttribute("aria-pressed")).toBe("false");
   });
 
-  test("announces export success and sends the exact displayed payload", async () => {
+  test("announces the saved path only after JSON export finishes", async () => {
+    let finishExport!: (result: TableDataExportResult) => void;
+    exportTableDataJson.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishExport = resolve;
+        }),
+    );
     runQuery.mockResolvedValueOnce({
       columns: ["id"],
       rows: [{ id: 1 }],
       affected: 0,
       duration_ms: 1,
     });
-    const createObjectURL = mock((value: Blob) => {
-      void value;
-      return "blob:sql-result";
-    });
-    const revokeObjectURL = mock(() => undefined);
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
-    const click = mock(() => undefined);
-    const originalCreateElement = document.createElement.bind(document);
-    document.createElement = ((tagName: string) => {
-      const element = originalCreateElement(tagName);
-      if (tagName === "a") element.click = click;
-      return element;
-    }) as typeof document.createElement;
-
     renderWorkspace();
     setEditorQuery();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
-      await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+
+    expect(exportTableDataJson).toHaveBeenCalledWith(
+      '[\n  {\n    "id": 1\n  }\n]',
+      "sql-result.json",
+    );
+    expect(addToast).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Export SQL result JSON" }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+    expect(exportTableDataJson).toHaveBeenCalledTimes(1);
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
-      await Promise.resolve();
+      finishExport({ status: "success", path: "/tmp/custom folder/query-output.json" });
     });
 
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
-    const blob = createObjectURL.mock.calls[0]?.[0];
-    expect(blob).toBeInstanceOf(Blob);
-    if (!(blob instanceof Blob)) throw new Error("Expected an exported JSON Blob");
-    expect(await blob.text()).toBe('[\n  {\n    "id": 1\n  }\n]');
-    expect(screen.getByText("JSON export started.")).not.toBeNull();
+    expect(addToast).toHaveBeenCalledWith({
+      title: "JSON exported",
+      type: "success",
+      description: "/tmp/custom folder/query-output.json",
+    });
+    expect(
+      screen.getByText("JSON exported to /tmp/custom folder/query-output.json."),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Export SQL result JSON" }).hasAttribute("disabled"),
+    ).toBe(false);
     expect(runQuery).toHaveBeenCalledTimes(1);
-    expect(click).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   test("announces an actual export failure without mutating database state", async () => {
+    exportTableDataJson.mockResolvedValueOnce({ status: "error", message: "permission denied" });
     runQuery.mockResolvedValueOnce({
       columns: ["id"],
       rows: [{ id: 1 }],
       affected: 0,
       duration_ms: 1,
     });
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: mock(() => {
-        throw new Error("blocked");
-      }),
+    renderWorkspace();
+    setEditorQuery();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
+    });
+
+    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(addToast).toHaveBeenCalledWith({
+      title: "Could not export JSON",
+      type: "error",
+      description: "permission denied",
+    });
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  test("does not announce success when the export dialog is cancelled", async () => {
+    exportTableDataJson.mockResolvedValueOnce({ status: "cancelled" });
+    runQuery.mockResolvedValueOnce({
+      columns: ["id"],
+      rows: [{ id: 1 }],
+      affected: 0,
+      duration_ms: 1,
     });
     renderWorkspace();
     setEditorQuery();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run all queries" }));
-      await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Export SQL result JSON" }));
-      await Promise.resolve();
     });
-
-    expect(screen.getByText("Could not export JSON.")).not.toBeNull();
+    expect(screen.getByText("JSON export cancelled.")).not.toBeNull();
+    expect(addToast).not.toHaveBeenCalled();
     expect(runQuery).toHaveBeenCalledTimes(1);
-    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   test("paginates large SQL results without rendering every row at once", async () => {
@@ -700,8 +1199,11 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
 
-    expect(screen.getByText("Rows 1-100 of 10001")).not.toBeNull();
     expect(screen.getByText("Page 1 of 101")).not.toBeNull();
+    expect(
+      screen.getByRole("navigation", { name: "SQL result pagination" }).textContent,
+    ).not.toContain("Rows");
+    expect(screen.getByText("Rows 1-100 of 10001")).not.toBeNull();
     expect(runQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -1059,6 +1561,95 @@ describe("ConnectionWorkspace SQL tabs", () => {
     );
   });
 
+  test.each([1, -1] as const)(
+    "counts every shortcut event before React commits (direction %s)",
+    async (direction) => {
+      renderWorkspace();
+      fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+
+      act(() => {
+        for (let index = 0; index < 8; index += 1) {
+          window.dispatchEvent(
+            new window.KeyboardEvent("keydown", {
+              key: "Tab",
+              ctrlKey: true,
+              shiftKey: direction === -1,
+              bubbles: true,
+            }),
+          );
+        }
+        window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Control", bubbles: true }));
+      });
+
+      const expectedTab = direction === 1 ? "Query 3" : "Query 2";
+      expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+      expect(screen.getByRole("tab", { name: expectedTab }).getAttribute("data-state")).toBe(
+        "active",
+      );
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(screen.getByRole("tab", { name: expectedTab }).getAttribute("data-state")).toBe(
+        "active",
+      );
+    },
+  );
+
+  test("previews every shortcut step and cancels back to its origin with Escape", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "ArrowDown" });
+    expect(screen.getByRole("tab", { name: "Query 1" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Open tabs" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Query 1" }).getAttribute("data-state")).toBe("active");
+  });
+
+  test("continues from the latest tab across shortcut sessions before the next render", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    act(() => {
+      for (let session = 0; session < 2; session += 1) {
+        window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", ctrlKey: true }));
+        window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Control" }));
+      }
+    });
+    expect(screen.getByRole("tab", { name: "Query 3" }).getAttribute("data-state")).toBe("active");
+    expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+  });
+
+  test("keeps live preview aligned with separate-task presses and stops after release", async () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Query 1" }));
+    let index = 0;
+    for (const direction of [1, 1, -1, 1, -1, -1, 1, 1]) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: direction === -1 });
+      });
+      index = (index + direction + 3) % 3;
+      expect(
+        screen.getByRole("tab", { name: `Query ${index + 1}` }).getAttribute("data-state"),
+      ).toBe("active");
+    }
+    fireEvent.keyUp(window, { key: "Control" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(screen.queryByRole("dialog", { name: "Open tabs" }) === null).toBe(true);
+    expect(screen.getByRole("tab", { name: `Query ${index + 1}` }).getAttribute("data-state")).toBe(
+      "active",
+    );
+  });
+
   test("cycles backward with repeated Ctrl+Shift+Tab and confirms on Ctrl release", () => {
     renderWorkspace();
     fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
@@ -1130,6 +1721,43 @@ describe("ConnectionWorkspace SQL tabs", () => {
       shiftKey: true,
     });
     expect(screen.getByRole("button", { name: /Disconnect/ })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Generate ER diagram/ })).not.toBeNull();
+  });
+
+  test("lists and switches databases from the Ctrl+P palette", async () => {
+    renderWorkspace({ ...fieldsProfile, password: "test-password" });
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, { key: "p", code: "KeyP", ctrlKey: true });
+
+    const palette = within(screen.getByRole("dialog", { name: "Command palette" }));
+    const developmentDatabase = await palette.findByRole("button", { name: /development/ });
+    expect(palette.getByRole("heading", { name: "Databases" })).not.toBeNull();
+    expect(palette.getByRole("button", { name: /master.*Current/ })).not.toBeNull();
+    fireEvent.click(developmentDatabase);
+
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+    expect(screen.getByTestId("selected-database").textContent).toBe("development");
+  });
+
+  test("opens the ER diagram tab from the Ctrl+Shift+P command after the exit animation", async () => {
+    renderWorkspace(fieldsProfile);
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+
+    fireEvent.keyDown(workspace, {
+      key: "p",
+      code: "KeyP",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Generate ER diagram/ }));
+
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(screen.getByRole("tab", { name: "ER diagram tab" })).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "ER diagram tab" }).getAttribute("data-state")).toBe(
+      "active",
+    );
   });
 
   test("creates another editor when Ctrl+T is pressed on the focused empty section", () => {

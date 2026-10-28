@@ -13,6 +13,7 @@ export function useTableSchema(profile: ConnectionProfile, table: string, enable
     queryKey: tableSchemaQueryKey(profile.id, database, schema, table),
     queryFn: () => getTableSchema(profile, table, schema),
     enabled,
+    staleTime: Infinity,
     retry: false,
   });
 }

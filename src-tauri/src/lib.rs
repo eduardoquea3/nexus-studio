@@ -12,14 +12,19 @@ pub fn run() {
             commands::system::greet,
             commands::system::list_system_fonts,
             commands::system::list_ssh_config_hosts,
+            commands::system::write_json_file,
+            commands::ssh_russh::store_ssh_password,
+            commands::ssh_russh::delete_ssh_password,
             commands::connection::test_connection,
             commands::connection::close_ssh_tunnel,
             commands::connection::create_sqlite_database,
             commands::connection::list_databases,
             commands::schema::list_schema_objects,
+            commands::schema::get_er_diagram,
             commands::schema::get_routine_definition,
             commands::schema::get_table_data,
             commands::schema::get_table_schema,
+            commands::table_data::delete_records,
             commands::query::run_query
         ])
         .run(tauri::generate_context!())

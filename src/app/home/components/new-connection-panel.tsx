@@ -13,6 +13,7 @@ import {
 } from "@remixicon/react";
 import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { SVGProps, useEffect, useRef, useState } from "react";
 
@@ -27,6 +28,7 @@ import {
 } from "@/app/home/lib/connection-panel-state";
 import { parseConnectionString } from "@/app/home/lib/connection-string-parser";
 import { getConnection } from "@/app/home/services/connection-service";
+import { createConnectionId, DuplicateConnectionError } from "@/shared/lib/connection-identity";
 import {
   Accordion,
   AccordionContent,
@@ -34,6 +36,7 @@ import {
   AccordionTrigger,
 } from "@/components/animate-ui/components/radix/accordion";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { Panel } from "@/shared/components/panel";
 import { Field } from "@/shared/components/ui/field";
@@ -45,12 +48,13 @@ import {
   createSqliteDatabase,
   testConnectionFields,
   listSshConfigHosts,
+  storeSshPassword,
+  deleteSshPassword,
   type SshConfigHost,
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
 import { useConnectionStore } from "@/shared/store/connectionStore";
 import { useModalStore } from "@/shared/store/modalStore";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { HomePanels } from "../lib/home-panels";
 
@@ -91,6 +95,7 @@ type ManualSshValues = {
   user: string;
   keyFile: string;
   password: string;
+  credentialRef: string | null;
 };
 
 type ConnectionFeedback = {
@@ -116,9 +121,11 @@ const initialManualSshValues: ManualSshValues = {
   user: "",
   keyFile: "",
   password: "",
+  credentialRef: null,
 };
 
 export function NewConnectionPanel() {
+  const navigate = useNavigate();
   const isOpen = useModalStore((state) => state.modals.includes(HomePanels.NewConnection));
   const closeModal = useModalStore((state) => state.closeModal);
   const modalPayload = useModalStore(
@@ -140,15 +147,15 @@ export function NewConnectionPanel() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [feedback, setFeedback] = useState<ConnectionFeedback | null>(null);
   const [unsupportedLegacyProfileId, setUnsupportedLegacyProfileId] = useState<string>();
+  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
   const sessionKey = getConnectionSessionKey(isOpen, editingId);
   const sessionKeyRef = useRef<string | null>(null);
   const loadedProfileSessionKeyRef = useRef<string | null>(null);
   const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
+  const isConnectingRef = useRef(false);
   const isCurrentSession = sessionKeyRef.current === sessionKey;
   const isUnsupportedLegacyProfile =
-    isCurrentSession &&
-    editingId !== undefined &&
-    unsupportedLegacyProfileId === editingId;
+    isCurrentSession && editingId !== undefined && unsupportedLegacyProfileId === editingId;
   const displayedForm = isCurrentSession ? form : initialFormValues;
 
   const clearImportedFormValues = () => {
@@ -168,6 +175,7 @@ export function NewConnectionPanel() {
   useEffect(() => {
     if (!isOpen) {
       setConnectionString("");
+      setManualSshValues(initialManualSshValues);
       clearImportedFormValues();
       sessionKeyRef.current = null;
       loadedProfileSessionKeyRef.current = null;
@@ -189,6 +197,23 @@ export function NewConnectionPanel() {
       importedFieldsRef.current = [];
     }
   }, [isOpen, sessionKey]);
+
+  useEffect(() => {
+    if (isOpen || pendingConnectionId === null) return;
+
+    const connectionId = pendingConnectionId;
+    setPendingConnectionId(null);
+    void navigate({
+      to: "/connections/$connectionId",
+      params: { connectionId },
+    }).catch((error: unknown) => {
+      toast.add({
+        title: "Connection saved but could not be opened",
+        type: "error",
+        description: String(error),
+      });
+    });
+  }, [isOpen, navigate, pendingConnectionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,7 +253,12 @@ export function NewConnectionPanel() {
               }));
             }
             setSshAuthType(auth.type === "password" ? "password" : "key-file");
-            if (auth.type === "key_file") {
+            if (auth.type === "password") {
+              setManualSshValues((current) => ({
+                ...current,
+                credentialRef: auth.credential_ref ?? null,
+              }));
+            } else {
               setManualSshValues((current) => ({
                 ...current,
                 keyFile: auth.path,
@@ -294,7 +324,7 @@ export function NewConnectionPanel() {
           : { type: "from_ssh_config", alias: sshSource.alias },
       auth:
         sshAuthType === "password"
-          ? { type: "password" }
+          ? { type: "password", credential_ref: manualSshValues.credentialRef }
           : { type: "key_file", path: manualSshValues.keyFile, passphrase_ref: null },
       remote_bind_host: form.host,
       remote_bind_port: Number(form.port),
@@ -311,6 +341,11 @@ export function NewConnectionPanel() {
       password: form.password,
       sqlitePath: form.sqlitePath,
       ssh: getSshTunnelConfig(),
+      sshPassword:
+        sshSource === "manual" && sshAuthType === "password"
+          ? manualSshValues.password || undefined
+          : undefined,
+      connectionId: editingId,
     }) as const;
 
   const handleTest = async () => {
@@ -391,6 +426,8 @@ export function NewConnectionPanel() {
   };
 
   const handleConnect = async () => {
+    if (isConnectingRef.current) return;
+
     if (!form.name.trim()) {
       setFeedback({
         type: "error",
@@ -407,6 +444,29 @@ export function NewConnectionPanel() {
       });
       return;
     }
+    if (connectionTab === "ssh" && sshSource !== "manual" && sshAuthType === "password") {
+      setFeedback({
+        type: "error",
+        title: "Choose a manual SSH destination",
+        description:
+          "SSH password authentication is available for manual destinations. Use a key or agent for SSH config aliases.",
+      });
+      return;
+    }
+    if (
+      connectionTab === "ssh" &&
+      sshSource === "manual" &&
+      sshAuthType === "password" &&
+      !manualSshValues.password &&
+      !manualSshValues.credentialRef
+    ) {
+      setFeedback({
+        type: "error",
+        title: "SSH password is required",
+        description: "Enter an SSH password before saving this connection.",
+      });
+      return;
+    }
     if (isUnsupportedLegacyProfile) {
       setFeedback({
         type: "error",
@@ -416,34 +476,91 @@ export function NewConnectionPanel() {
       return;
     }
 
+    isConnectingRef.current = true;
     setIsTesting(true);
+    let newCredentialRef: string | null = null;
+    let profileSaved = false;
     try {
       await testConnectionFields(getTestRequest());
-      const profile = createConnectionProfile(form, editingId, {
-        enabled: connectionTab === "ssh",
-        source: sshSource ?? "manual",
-        authType: sshAuthType,
-        manual: manualSshValues,
-      });
-      await saveConnection(profile);
-      if (editingId) {
-        updateProfile(profile);
+
+      let credentialRef = manualSshValues.credentialRef;
+      if (connectionTab === "ssh" && sshSource === "manual" && sshAuthType === "password") {
+        if (manualSshValues.password) {
+          credentialRef = crypto.randomUUID();
+          newCredentialRef = credentialRef;
+          await storeSshPassword(credentialRef, manualSshValues.password);
+        }
       } else {
-        addProfile(profile);
+        credentialRef = null;
       }
-      await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-      setFeedback({
-        type: "success",
-        title: editingId ? "Connection updated" : "Connection saved",
-        description: "The connection profile and its credentials were saved locally.",
-      });
+
+      const profileDraft = createConnectionProfile(
+        form,
+        editingId ?? "",
+        {
+          enabled: connectionTab === "ssh",
+          source: sshSource ?? "manual",
+          authType: sshAuthType,
+          manual: manualSshValues,
+        },
+        credentialRef,
+      );
+      const profile = editingId
+        ? profileDraft
+        : { ...profileDraft, id: await createConnectionId(profileDraft) };
+      const profileToSave = editingId ? profile : { ...profile, last_opened_at: Date.now() };
+      await saveConnection(profileToSave, editingId ? "update" : "create");
+      profileSaved = true;
+      setManualSshValues((current) => ({
+        ...current,
+        password: "",
+        credentialRef,
+      }));
+
+      if (manualSshValues.credentialRef && manualSshValues.credentialRef !== credentialRef) {
+        try {
+          await deleteSshPassword(manualSshValues.credentialRef);
+        } catch (cleanupError) {
+          console.warn("Could not remove a replaced SSH credential", cleanupError);
+        }
+      }
+
+      if (editingId) {
+        updateProfile(profileToSave);
+        await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
+        setFeedback({
+          type: "success",
+          title: "Connection updated",
+          description: "The connection profile and its credentials were saved locally.",
+        });
+      } else {
+        addProfile(profileToSave);
+        setPendingConnectionId(profileToSave.id);
+        closeModal(HomePanels.NewConnection);
+        void queryClient
+          .invalidateQueries({ queryKey: connectionsQueryKey })
+          .catch((error: unknown) => {
+            console.warn("Could not refresh saved connections", error);
+          });
+      }
     } catch (error) {
+      if (newCredentialRef && !profileSaved) {
+        try {
+          await deleteSshPassword(newCredentialRef);
+        } catch (cleanupError) {
+          console.warn("Could not clean up an unsaved SSH credential", cleanupError);
+        }
+      }
+      const isDuplicateConnection = error instanceof DuplicateConnectionError;
       setFeedback({
         type: "error",
-        title: "Could not save connection",
-        description: String(error),
+        title: isDuplicateConnection ? "Connection already exists" : "Could not save connection",
+        description: isDuplicateConnection
+          ? error.message
+          : String(error),
       });
     } finally {
+      isConnectingRef.current = false;
       setIsTesting(false);
     }
   };
@@ -488,17 +605,17 @@ export function NewConnectionPanel() {
                 Test
               </Button>
               {!isUnsupportedLegacyProfile && (
-              <Button
-                onClick={() => void handleConnect()}
-                disabled={
-                  isTesting ||
-                  isCreatingSqlite ||
-                  isLoadingProfile ||
-                  (connectionTab === "ssh" && sshSource === null)
-                }
-              >
-                {editingId ? "Save changes" : "Connect"}
-              </Button>
+                <Button
+                  onClick={() => void handleConnect()}
+                  disabled={
+                    isTesting ||
+                    isCreatingSqlite ||
+                    isLoadingProfile ||
+                    (connectionTab === "ssh" && sshSource === null)
+                  }
+                >
+                  {editingId ? "Save changes" : "Connect"}
+                </Button>
               )}
             </div>
           </div>
@@ -651,7 +768,6 @@ export function NewConnectionPanel() {
 
         <ConnectionFeedbackMessage feedback={feedback} />
       </div>
-
     </Panel>
   );
 }
@@ -691,18 +807,19 @@ function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
 
 function createConnectionProfile(
   values: ConnectionFormValues,
-  id: string | undefined,
+  id: string,
   ssh: {
     enabled: boolean;
     source: SshSource;
     authType: string;
     manual: ManualSshValues;
   },
+  credentialRef: string | null,
 ): ConnectionProfile {
   const dbType: DbType = values.dbType === "postgresql" ? "postgres" : values.dbType;
 
   return {
-    id: id ?? crypto.randomUUID(),
+    id,
     name: values.name.trim() || `${dbType} connection`,
     db_type: dbType,
     password: values.password,
@@ -730,7 +847,7 @@ function createConnectionProfile(
               : { type: "from_ssh_config", alias: ssh.source.alias },
           auth:
             ssh.authType === "password"
-              ? { type: "password" }
+              ? { type: "password", credential_ref: credentialRef }
               : { type: "key_file", path: ssh.manual.keyFile, passphrase_ref: null },
           remote_bind_host: values.host,
           remote_bind_port: Number(values.port),
@@ -813,7 +930,7 @@ function SshDestinationPicker({
           Choose a host from your SSH config or enter its details manually.
         </p>
       </div>
-          <div className="grid gap-2">
+      <div className="grid gap-2">
         {hosts.map((host) => {
           return (
             <button
@@ -914,14 +1031,19 @@ function ManualSshFields({
           onPathChange={(path) => onChange("keyFile", path)}
         />
       ) : (
-        <Field label="SSH password">
-          <PasswordInput
-            iconLeft={RiLockPasswordLine}
-            value={values.password}
-            onChange={(event) => onChange("password", event.target.value)}
-            placeholder="SSH password"
-          />
-        </Field>
+        <div className="grid gap-1">
+          <Field label="SSH password">
+            <PasswordInput
+              iconLeft={RiLockPasswordLine}
+              value={values.password}
+              onChange={(event) => onChange("password", event.target.value)}
+              placeholder="SSH password"
+            />
+          </Field>
+          {values.credentialRef && !values.password ? (
+            <p className="text-xs text-muted-foreground">Leave blank to keep the saved password.</p>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -1010,7 +1132,6 @@ function DatabaseConnectionFields({
           placeholder="Database name"
         />
       </Field>
-
     </>
   );
 }

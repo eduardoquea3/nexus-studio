@@ -14,6 +14,14 @@ export type CommandBarItem =
     }
   | {
       id: string;
+      kind: "database";
+      label: string;
+      detail: string;
+      isActive: boolean;
+      database: string;
+    }
+  | {
+      id: string;
       kind: "table";
       label: string;
       detail: string;
@@ -34,7 +42,7 @@ export type CommandBarItem =
       label: string;
       detail: string;
       isActive: false;
-      command: "disconnect" | "new-connection";
+      command: "disconnect" | "new-connection" | "generate-er-diagram";
     };
 
 export function filterCommandBarItems(
@@ -85,7 +93,7 @@ export function describeConnection(profile: ConnectionProfile): string {
 
 export function describeTab(tab: WorkspaceTab): { label: string; detail: string } {
   if (tab.type === "datatable") {
-    return { label: tab.tableName, detail: `${tab.schema ?? "public"} · table` };
+    return { label: tab.tableName, detail: `${tab.schema ?? "public"} · ${tab.database} · table` };
   }
 
   if (tab.type === "routine") {

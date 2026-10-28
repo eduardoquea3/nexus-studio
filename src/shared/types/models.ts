@@ -33,7 +33,7 @@ export type SshSource =
   | { type: "from_ssh_config"; alias: string };
 
 export type SshAuth =
-  | { type: "password" }
+  | { type: "password"; credential_ref: string | null }
   | { type: "key_file"; path: string; passphrase_ref: string | null };
 
 export interface ObjectMeta {
@@ -58,6 +58,34 @@ export interface ColumnInfo {
 export interface TableSchema {
   columns: ColumnInfo[];
   indexes: string[];
+}
+
+export interface ErDiagramColumn {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+}
+
+export interface ErDiagramTable {
+  name: string;
+  schema?: string;
+  columnCount: number;
+  columns: ErDiagramColumn[];
+}
+
+export interface ErDiagramRelationship {
+  sourceTable: string;
+  sourceSchema?: string;
+  sourceColumn: string;
+  targetTable: string;
+  targetSchema?: string;
+  targetColumn: string;
+}
+
+export interface ErDiagramSchema {
+  tables: ErDiagramTable[];
+  relationships: ErDiagramRelationship[];
 }
 
 export interface TableRules {

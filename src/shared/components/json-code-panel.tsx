@@ -1,8 +1,19 @@
-import { json } from "@codemirror/lang-json";
-import CodeMirror from "@uiw/react-codemirror";
 import type { CSSProperties, ReactNode } from "react";
 
+import { json } from "@codemirror/lang-json";
+import { foldGutter, foldKeymap } from "@codemirror/language";
+import { keymap, lineNumbers } from "@codemirror/view";
+import CodeMirror from "@uiw/react-codemirror";
+
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
+
+const jsonEditorExtensions = [
+  json(),
+  lineNumbers(),
+  foldGutter(),
+  keymap.of(foldKeymap),
+  ...sqlEditorTheme,
+];
 
 type JsonCodePanelProps = {
   ariaLabel: string;
@@ -24,7 +35,8 @@ export function JsonCodePanel({
   fontScope = "interface",
 }: JsonCodePanelProps) {
   const fontVariable = fontScope === "results" ? "var(--font-results)" : "var(--font-sans)";
-  const fontSizeVariable = fontScope === "results" ? "var(--font-size-results)" : "var(--font-size-interface)";
+  const fontSizeVariable =
+    fontScope === "results" ? "var(--font-size-results)" : "var(--font-size-interface)";
   const codeStyle = {
     "--code-font-family": fontVariable,
     "--code-font-size": fontSizeVariable,
@@ -33,22 +45,33 @@ export function JsonCodePanel({
   } as CSSProperties;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background" style={codeStyle}>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-card/70 px-3 py-1.5 text-[0.65rem] text-muted-foreground">
-        <span>{meta}</span>
-        <div className="flex items-center gap-1">{actions}</div>
-      </div>
-      <div aria-label={ariaLabel} className="min-h-0 flex-1 overflow-auto bg-card/25">
+    <div
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
+      style={codeStyle}
+    >
+      {meta || actions ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-card/70 px-3 py-1.5 text-[0.65rem] text-muted-foreground">
+          <span>{meta}</span>
+          <div className="flex items-center gap-1">{actions}</div>
+        </div>
+      ) : null}
+      <div aria-label={ariaLabel} className="min-h-0 min-w-0 flex-1 overflow-hidden bg-card/25">
         {largeMessage ? (
-          <pre className="whitespace-pre-wrap px-4 py-3 text-xs text-foreground">{text}</pre>
+          <pre
+            className="h-full overflow-auto whitespace-pre-wrap px-4 py-3 text-foreground"
+            style={{ fontFamily: "inherit", fontSize: "inherit" }}
+          >
+            {text}
+          </pre>
         ) : (
           <CodeMirror
             value={text}
-            extensions={[json(), ...sqlEditorTheme]}
+            extensions={jsonEditorExtensions}
+            height="100%"
             readOnly
             basicSetup={false}
             theme="none"
-            className="min-h-full w-full [&_.cm-editor]:min-h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:hidden [&_.cm-scroller]:overflow-visible [&_.cm-content]:px-4 [&_.cm-content]:py-3 [&_.cm-line]:text-xs"
+            className="h-full min-h-0 w-full [&_.cm-editor]:bg-transparent [&_.cm-scroller]:overflow-auto [&_.cm-content]:py-3"
           />
         )}
       </div>

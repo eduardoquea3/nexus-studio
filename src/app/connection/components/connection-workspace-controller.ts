@@ -2,7 +2,7 @@ import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DataTableTab, QueryTab, WorkspaceTab } from "@/shared/types/connection-workspace";
 import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
@@ -14,7 +14,7 @@ import {
   type CommandBarItem,
   type CommandBarMode,
 } from "@/app/command-bar/command-bar-utils";
-import { databasesQueryKey } from "@/app/connection/hooks/use-databases";
+import { databasesQueryKey, useDatabases } from "@/app/connection/hooks/use-databases";
 import { useSchemaObjects, schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { useConnections } from "@/app/home/hooks/use-connections";
@@ -39,11 +39,13 @@ export type TableTab = DataTableTab;
 export type WorkspaceController = ReturnType<typeof useConnectionWorkspaceController>;
 export type ConnectionWorkspaceControllerProps = {
   profile: ConnectionProfile;
+  isActive?: boolean;
   onConnectionSwitch?: (profile: ConnectionProfile) => void | Promise<void>;
 };
 
 export function useConnectionWorkspaceController({
   profile,
+  isActive = true,
   onConnectionSwitch,
 }: ConnectionWorkspaceControllerProps) {
   const navigate = useNavigate();
@@ -61,18 +63,29 @@ export function useConnectionWorkspaceController({
     isFetching: isFetchingConnections,
   } = useConnections();
   const [selectedDatabase, setSelectedDatabase] = useState(() => getInitialDatabase(profile));
+  const {
+    data: databaseValues = [],
+    isLoading: isLoadingDatabases,
+    isFetching: isFetchingDatabases,
+  } = useDatabases(profile);
   const [sqlTabs, setSqlTabs] = useState<SqlEditorTab[]>([
     createSqlTab(1, profile.id, getInitialDatabase(profile)),
   ]);
   const [tableTabs, setTableTabs] = useState<TableTab[]>([]);
+  const [isErDiagramOpen, setIsErDiagramOpen] = useState(false);
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
-  const [activeTabId, setActiveTabId] = useState("sql-1");
+  const [activeTabId, setActiveTabIdState] = useState("sql-1");
+  // Keyboard repeats must advance from the latest event, not the last React commit.
+  const activeTabIdRef = useRef(activeTabId);
+  const setActiveTabId = useCallback((tabId: string) => {
+    activeTabIdRef.current = tabId;
+    setActiveTabIdState(tabId);
+  }, []);
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
   const [tableRefreshToken, setTableRefreshToken] = useState(0);
   const [commandBarMode, setCommandBarMode] = useState<CommandBarMode | null>(null);
-  const [switcherCycle, setSwitcherCycle] = useState<{ sequence: number; direction: -1 | 1 }>();
-  const [switcherInitialDirection, setSwitcherInitialDirection] = useState<-1 | 1>(1);
+  const commandBarModeRef = useRef<CommandBarMode | null>(null);
   const [switchingConnectionIds, setSwitchingConnectionIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -86,7 +99,6 @@ export function useConnectionWorkspaceController({
   const activeSqlTabIdRef = useRef(activeSqlTabId);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const previewOriginTabIdRef = useRef<string | null>(null);
-  const switcherCycleRef = useRef(0);
   const selectedSwitcherTabIdRef = useRef<string | null>(null);
   const switchingConnectionIdsRef = useRef(new Set<string>());
   const focusWorkspaceAfterRender = () => {
@@ -102,6 +114,13 @@ export function useConnectionWorkspaceController({
   const sqlTables = useMemo(
     () => schemaObjects.filter((object) => object.object_type === "table"),
     [schemaObjects],
+  );
+  const databases = useMemo(
+    () =>
+      Array.from(
+        new Set([getInitialDatabase(profile), ...databaseValues, selectedDatabase].filter(Boolean)),
+      ),
+    [databaseValues, profile, selectedDatabase],
   );
   const sqlDialect =
     profile.db_type === "postgres" ? PostgreSQL : profile.db_type === "mysql" ? MySQL : SQLite;
@@ -126,9 +145,8 @@ export function useConnectionWorkspaceController({
     ...sqlTabs.map((tab) => ({ ...tab, type: "sql" as const })),
     ...tableTabs.map((tab) => ({ ...tab, type: "table" as const })),
   ];
-  const switcherTabsRef = useRef<typeof workspaceTabs>([]);
-  const commandBarTabs =
-    commandBarMode === "tab-switcher" ? switcherTabsRef.current : workspaceTabs;
+  const switcherTabsRef = useRef<WorkspaceTab[]>([]);
+  const commandBarTabs = switcherTabsRef.current;
   const commandBarItems = useMemo<CommandBarItem[]>(
     () =>
       commandBarMode === "commands"
@@ -149,11 +167,18 @@ export function useConnectionWorkspaceController({
               isActive: false as const,
               command: "new-connection" as const,
             },
+            {
+              id: "command:generate-er-diagram",
+              kind: "command" as const,
+              label: "Generate ER diagram",
+              detail: `Map all tables in ${selectedDatabase}`,
+              isActive: false as const,
+              command: "generate-er-diagram" as const,
+            },
           ]
         : commandBarMode === "tab-switcher"
           ? commandBarTabs.map((tab) => {
-              const workspaceTab: QueryTab | DataTableTab =
-                tab.type === "sql" ? { ...tab, type: "query" } : { ...tab, type: "datatable" };
+              const workspaceTab = tab;
               const description = describeTab(workspaceTab);
               return {
                 id: workspaceTab.id,
@@ -173,6 +198,14 @@ export function useConnectionWorkspaceController({
                 isActive: connection.id === profile.id,
                 connection,
               })),
+              ...databases.map((database) => ({
+                id: `database:${profile.id}:${database}`,
+                kind: "database" as const,
+                label: database,
+                detail: database === selectedDatabase ? "Current database" : "Switch database",
+                isActive: database === selectedDatabase,
+                database,
+              })),
               ...schemaObjects
                 .filter((object) => object.object_type === "table")
                 .map((table) => ({
@@ -189,18 +222,19 @@ export function useConnectionWorkspaceController({
       commandBarMode,
       commandBarTabs,
       connections,
+      databases,
       profile.id,
-      schemaObjects,
       selectedDatabase,
+      schemaObjects,
     ],
   );
 
   const closeCommandBar = (commitPreview = false) => {
     if (
-      commandBarMode === "tab-switcher" &&
+      commandBarModeRef.current === "tab-switcher" &&
       !commitPreview &&
       previewOriginTabIdRef.current &&
-      previewOriginTabIdRef.current !== activeTabId
+      previewOriginTabIdRef.current !== activeTabIdRef.current
     ) {
       const originTabId = previewOriginTabIdRef.current;
       activateWorkspaceTab(profile.id, originTabId);
@@ -208,8 +242,9 @@ export function useConnectionWorkspaceController({
       if (workspaceTabs.find((tab) => tab.id === originTabId)?.type === "sql")
         setActiveSqlTabId(originTabId);
     }
+    commandBarModeRef.current = null;
     setCommandBarMode(null);
-    setSwitcherCycle(undefined);
+    selectedSwitcherTabIdRef.current = null;
     previewOriginTabIdRef.current = null;
     requestAnimationFrame(() =>
       restoreFocusRef.current?.isConnected
@@ -217,17 +252,26 @@ export function useConnectionWorkspaceController({
         : editorSectionRef.current?.focus(),
     );
   };
-  const openCommandBar = (mode: CommandBarMode, direction: -1 | 1 = 1) => {
+  const openCommandBar = (mode: CommandBarMode) => {
     restoreFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    commandBarModeRef.current = mode;
     setCommandBarMode(mode);
     if (mode === "tab-switcher") {
-      previewOriginTabIdRef.current = activeTabId;
-      switcherTabsRef.current = workspaceTabs;
-      selectedSwitcherTabIdRef.current = null;
-      setSwitcherInitialDirection(direction);
-      setSwitcherCycle(undefined);
+      previewOriginTabIdRef.current = activeTabIdRef.current;
+      switcherTabsRef.current = workspaceTabs.map((tab) =>
+        tab.type === "sql" ? { ...tab, type: "query" } : { ...tab, type: "datatable" },
+      );
+      selectedSwitcherTabIdRef.current = activeTabIdRef.current;
     }
+  };
+  const highlightSwitcherTab = (tabId: string) => {
+    if (commandBarModeRef.current !== "tab-switcher") return;
+    const tab = switcherTabsRef.current.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    selectedSwitcherTabIdRef.current = tab.id;
+    setActiveTabId(tab.id);
+    if (tab.type === "query") setActiveSqlTabId(tab.id);
   };
   const switchConnection = async (nextProfile: ConnectionProfile) => {
     if (switchingConnectionIdsRef.current.has(nextProfile.id)) return;
@@ -237,7 +281,8 @@ export function useConnectionWorkspaceController({
       await testSavedConnection(nextProfile);
       setConnectionWorkspace({
         connectionId: profile.id,
-        activeTabId: activeTabId || null,
+        activeTabId:
+          (activeTabId === "er-diagram" ? activeSqlTabIdRef.current : activeTabId) || null,
         tabs: [...sqlTabsRef.current, ...tableTabs],
       });
       await onConnectionSwitch?.(nextProfile);
@@ -260,7 +305,20 @@ export function useConnectionWorkspaceController({
     }
   };
 
+  const shortcutActionsRef = useRef({
+    workspaceTabs,
+    openCommandBar,
+    closeCommandBar,
+    highlightSwitcherTab,
+  });
+  shortcutActionsRef.current = {
+    workspaceTabs,
+    openCommandBar,
+    closeCommandBar,
+    highlightSwitcherTab,
+  };
   useEffect(() => {
+    if (!isActive) return;
     const isEditableTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
       const isCodeMirror =
@@ -277,40 +335,38 @@ export function useConnectionWorkspaceController({
       if (event.key.toLowerCase() === "p") {
         event.preventDefault();
         event.stopPropagation();
-        openCommandBar(event.shiftKey ? "commands" : "palette");
+        shortcutActionsRef.current.openCommandBar(event.shiftKey ? "commands" : "palette");
         return;
       }
       if (event.key === "Tab") {
         if (
-          !workspaceTabs.length ||
-          (commandBarMode !== "tab-switcher" && isEditableTarget(event.target))
+          !shortcutActionsRef.current.workspaceTabs.length ||
+          (commandBarModeRef.current !== "tab-switcher" && isEditableTarget(event.target))
         )
           return;
         event.preventDefault();
         event.stopPropagation();
-        if (commandBarMode !== "tab-switcher")
-          openCommandBar("tab-switcher", event.shiftKey ? -1 : 1);
-        else {
-          const direction = event.shiftKey ? -1 : 1;
-          switcherCycleRef.current += 1;
-          setSwitcherCycle({ sequence: switcherCycleRef.current, direction });
-        }
+        if (commandBarModeRef.current !== "tab-switcher")
+          shortcutActionsRef.current.openCommandBar("tab-switcher");
+        const nextIndex = nextTabIndex(
+          switcherTabsRef.current,
+          selectedSwitcherTabIdRef.current,
+          event.shiftKey ? -1 : 1,
+        );
+        const nextTab = switcherTabsRef.current[nextIndex];
+        if (nextTab) shortcutActionsRef.current.highlightSwitcherTab(nextTab.id);
       }
     };
     const handleKeyUp = (event: globalThis.KeyboardEvent) => {
-      if (commandBarMode !== "tab-switcher" || (event.key !== "Control" && event.key !== "Meta"))
+      if (
+        commandBarModeRef.current !== "tab-switcher" ||
+        (event.key !== "Control" && event.key !== "Meta")
+      )
         return;
       event.preventDefault();
-      const item = commandBarItems.find(
-        (candidate): candidate is Extract<CommandBarItem, { kind: "tab" }> =>
-          candidate.kind === "tab" && candidate.id === selectedSwitcherTabIdRef.current,
-      );
-      if (item) {
-        activateWorkspaceTab(profile.id, item.id);
-        setActiveTabId(item.id);
-        if (item.tab.type === "query") setActiveSqlTabId(item.id);
-      }
-      closeCommandBar(true);
+      const selectedId = selectedSwitcherTabIdRef.current;
+      if (selectedId) shortcutActionsRef.current.highlightSwitcherTab(selectedId);
+      shortcutActionsRef.current.closeCommandBar(true);
     };
     window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp, true);
@@ -318,7 +374,7 @@ export function useConnectionWorkspaceController({
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [activateWorkspaceTab, commandBarItems, commandBarMode, profile.id, workspaceTabs.length]);
+  }, [isActive]);
   const focusEditor = (view: EditorView, tabId: string) => {
     view.focus();
     if (!initializedEditorIdsRef.current.has(tabId)) {
@@ -329,7 +385,6 @@ export function useConnectionWorkspaceController({
   useEffect(() => {
     if (editorViewRef.current) focusEditor(editorViewRef.current, activeSqlTabId);
   }, [activeSqlTabId]);
-  useEffect(() => setSelectedDatabase(getInitialDatabase(profile)), [profile]);
   useEffect(() => {
     if (
       !workspaceHydrated ||
@@ -340,6 +395,7 @@ export function useConnectionWorkspaceController({
     initializedWorkspaceConnectionIdRef.current = profile.id;
     restoringWorkspaceRef.current = true;
     setActiveConnection(profile.id);
+    setIsErDiagramOpen(false);
     if (storedWorkspace) {
       const restoredSqlTabs = storedWorkspace.tabs.flatMap((tab): SqlEditorTab[] =>
         tab.type === "query"
@@ -369,11 +425,9 @@ export function useConnectionWorkspaceController({
       sqlTabsRef.current = restoredSqlTabs;
       setTableTabs(restoredTableTabs);
       setActiveTabId(storedWorkspace.activeTabId ?? restoredSqlTabs[0]?.id ?? "");
-      const activeSql = activeTab?.type === "query" ? activeTab : restoredSqlTabs[0];
-      setActiveSqlTabId(activeSql?.id ?? "");
-      setSelectedDatabase(
-        activeSql?.database ?? activeTab?.database ?? getInitialDatabase(profile),
-      );
+      const activeSql = activeTab?.type === "query" ? activeTab : undefined;
+      setActiveSqlTabId(activeSql?.id ?? restoredSqlTabs[0]?.id ?? "");
+      setSelectedDatabase(getInitialDatabase(profile));
     } else {
       const initialTab = createSqlTab(1, profile.id, getInitialDatabase(profile));
       setSqlTabs([initialTab]);
@@ -397,10 +451,18 @@ export function useConnectionWorkspaceController({
     }
     setConnectionWorkspace({
       connectionId: profile.id,
-      activeTabId: activeTabId || null,
+      activeTabId: (activeTabId === "er-diagram" ? activeSqlTabId : activeTabId) || null,
       tabs: [...sqlTabs, ...tableTabs],
     });
-  }, [activeTabId, profile.id, setConnectionWorkspace, sqlTabs, tableTabs, workspaceHydrated]);
+  }, [
+    activeSqlTabId,
+    activeTabId,
+    profile.id,
+    setConnectionWorkspace,
+    sqlTabs,
+    tableTabs,
+    workspaceHydrated,
+  ]);
   useEffect(() => {
     sqlTabsRef.current = sqlTabs;
   }, [sqlTabs]);
@@ -408,6 +470,7 @@ export function useConnectionWorkspaceController({
     activeSqlTabIdRef.current = activeSqlTabId;
   }, [activeSqlTabId]);
   useEffect(() => {
+    if (!isActive) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (
         event.key.toLowerCase() !== "r" ||
@@ -422,7 +485,7 @@ export function useConnectionWorkspaceController({
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activeTabId]);
+  }, [activeTabId, isActive]);
 
   const createEditorTab = () => {
     const number =
@@ -511,6 +574,22 @@ export function useConnectionWorkspaceController({
     const tabs = sqlTabsRef.current.map((tab) => ({ ...tab, database }));
     sqlTabsRef.current = tabs;
     setSqlTabs(tabs);
+  };
+  const openErDiagram = () => {
+    setIsErDiagramOpen(true);
+    setActiveTabId("er-diagram");
+    focusWorkspaceAfterRender();
+  };
+  const closeErDiagram = () => {
+    setIsErDiagramOpen(false);
+    if (activeTabId === "er-diagram") {
+      const fallbackTabId =
+        sqlTabsRef.current.find((tab) => tab.id === activeSqlTabIdRef.current)?.id ??
+        sqlTabsRef.current[0]?.id ??
+        tableTabs[0]?.id ??
+        "";
+      setActiveTabId(fallbackTabId);
+    }
   };
   const openRoutineTab = async (routine: ObjectMeta) => {
     const id = `routine-${encodeURIComponent(selectedDatabase)}-${routine.object_type}-${encodeURIComponent(routine.signature ?? routine.name)}`;
@@ -616,8 +695,7 @@ export function useConnectionWorkspaceController({
       getQuerySegment(
         activeSqlTab.query,
         cursorPosition ?? editorViewRef.current.state.selection.main.head,
-      ) ||
-      DEFAULT_QUERY;
+      ) || DEFAULT_QUERY;
     await executeQuery(query);
   };
   const executeAllQuery = async () => {
@@ -638,13 +716,13 @@ export function useConnectionWorkspaceController({
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     if (event.key === "Enter" && activeSqlTab) {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.closest(".cm-editor, .cm-content")
-      )
+      if (event.target instanceof HTMLElement && event.target.closest(".cm-editor, .cm-content"))
         return;
       event.preventDefault();
       void (event.shiftKey ? executeActiveQuery() : executeAllQuery());
+    } else if (event.key.toLowerCase() === "w" && activeTabId === "er-diagram") {
+      event.preventDefault();
+      closeErDiagram();
     } else if (event.shiftKey) {
       return;
     } else if (event.key.toLowerCase() === "t") {
@@ -658,14 +736,12 @@ export function useConnectionWorkspaceController({
       closeEditorTab(activeSqlTab.id, getPreviousWorkspaceTabId(activeSqlTab.id));
     }
   };
-  const tabItems: WorkspaceTab[] = (
-    commandBarMode === "tab-switcher" ? switcherTabsRef.current : workspaceTabs
-  ).map((tab) => (tab.type === "sql" ? { ...tab, type: "query" } : { ...tab, type: "datatable" }));
   return {
     profile,
     selectedDatabase,
     activeSqlTab,
     activeTableTab,
+    isErDiagramOpen,
     sqlTabs,
     tableTabs,
     activeSqlTabId,
@@ -682,12 +758,12 @@ export function useConnectionWorkspaceController({
     workspaceTabs,
     commandBarMode,
     commandBarItems,
-    tabItems,
-    switcherCycle,
-    switcherInitialDirection,
+    highlightSwitcherTab,
     switchingConnectionIds,
     isLoadingConnections,
     isFetchingConnections,
+    isLoadingDatabases,
+    isFetchingDatabases,
     isLoadingSchema,
     isFetchingSchema,
     navigate,
@@ -696,6 +772,8 @@ export function useConnectionWorkspaceController({
     closeCommandBar,
     switchConnection,
     openTableTab,
+    openErDiagram,
+    closeErDiagram,
     openRoutineTab,
     handleDatabaseChange,
     createEditorTab,

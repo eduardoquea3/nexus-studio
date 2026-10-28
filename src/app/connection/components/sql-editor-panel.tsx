@@ -14,13 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/animate-ui/components/radix/dropdown-menu";
 import { Button } from "@/components/ui/button";
-
 import { sqlCompletionIcons } from "@/shared/lib/sql-completion-icons";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 
 import type { WorkspaceController } from "./connection-workspace-controller";
-import { getQueryRange } from "./connection-workspace-utils";
 
+import { getQueryRange } from "./connection-workspace-utils";
 import { QueryResultView } from "./query-result-view";
 
 const EMPTY_STATE_SHORTCUTS = [
@@ -90,10 +89,17 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
                 className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
               >
                 <span className="truncate">{label}</span>
-                <span className="flex shrink-0 items-center gap-1" aria-label={`${keys.join("+")} ${label}`}>
+                <span
+                  className="flex shrink-0 items-center gap-1"
+                  aria-label={`${keys.join("+")} ${label}`}
+                >
                   {keys.map((key, index) => (
                     <span key={`${key}-${index}`} className="flex items-center gap-1">
-                      {index > 0 && <span aria-hidden="true" className="text-muted-foreground/60">+</span>}
+                      {index > 0 && (
+                        <span aria-hidden="true" className="text-muted-foreground/60">
+                          +
+                        </span>
+                      )}
                       <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[0.65rem] text-foreground shadow-[0_1px_0_hsl(var(--border))]">
                         {key}
                       </kbd>
@@ -106,6 +112,49 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
         </section>
       </div>
     );
+  const hasTabularResult =
+    !isRunning && !activeSqlTab.queryError && Boolean(activeSqlTab.queryResult?.columns.length);
+  const runActions = (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        size="sm"
+        disabled={isRunning || !hasQuery}
+        onClick={() => void executeAllQuery()}
+        aria-label="Run all queries"
+      >
+        <RiPlayLine data-icon="inline-start" />
+        {isRunning ? "Running..." : "Run all"}
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            disabled={isRunning || !hasQuery}
+            aria-label="Query run options"
+          >
+            <RiArrowDownSLine />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => void executeAllQuery()}>
+            Run all
+            <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+              Ctrl + Enter
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void executeActiveQuery()}>
+            Run current
+            <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+              Ctrl + Shift + Enter
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
   return (
     <Group orientation="vertical" className="h-full min-h-0 overflow-hidden">
       <Panel defaultSize="30%" minSize="15%" maxSize="80%" className="min-h-0 overflow-hidden">
@@ -184,59 +233,23 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
           aria-label="SQL query results"
           className="results-font flex h-full min-h-0 flex-col overflow-hidden bg-background/80 text-xs text-muted-foreground"
         >
-          <div className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1">
-            {activeSqlTab.queryResult ? (
-              <div
-                aria-label="Query result statistics"
-                className="flex items-center gap-3 text-[0.65rem] text-muted-foreground"
-              >
-                <span>{activeSqlTab.queryResult.rows.length} rows</span>
-                <span>{activeSqlTab.queryResult.columns.length} columns</span>
-                <span>{activeSqlTab.queryResult.duration_ms} ms</span>
-              </div>
-            ) : (
-              <span aria-hidden="true" />
-            )}
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                size="sm"
-                disabled={isRunning || !hasQuery}
-                onClick={() => void executeAllQuery()}
-                aria-label="Run all queries"
-              >
-                <RiPlayLine data-icon="inline-start" />
-                {isRunning ? "Running..." : "Run all"}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    disabled={isRunning || !hasQuery}
-                    aria-label="Query run options"
-                  >
-                    <RiArrowDownSLine />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => void executeAllQuery()}>
-                    Run all
-                    <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-                      Ctrl + Enter
-                    </DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void executeActiveQuery()}>
-                    Run current
-                    <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-                      Ctrl + Shift + Enter
-                    </DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+          {!hasTabularResult ? (
+            <div className="flex w-full shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-3 py-1">
+              {activeSqlTab.queryResult ? (
+                <div
+                  aria-label="Query result statistics"
+                  className="flex items-center gap-3 text-[0.65rem] text-muted-foreground"
+                >
+                  <span>{activeSqlTab.queryResult.rows.length} rows</span>
+                  <span>{activeSqlTab.queryResult.columns.length} columns</span>
+                  <span>{activeSqlTab.queryResult.duration_ms} ms</span>
+                </div>
+              ) : (
+                <span aria-hidden="true" />
+              )}
+              {runActions}
             </div>
-          </div>
+          ) : null}
           <div className="min-h-0 flex-1 overflow-hidden">
             {isRunning ? (
               <p className="p-2" role="status">
@@ -247,6 +260,7 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
             ) : activeSqlTab.queryResult ? (
               <QueryResultView
                 result={activeSqlTab.queryResult}
+                toolbarActions={runActions}
                 viewMode={activeSqlTab.viewMode}
                 onViewModeChange={(viewMode: ViewMode) =>
                   setSqlTabs((tabs) =>

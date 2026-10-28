@@ -1,11 +1,17 @@
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
+  RiAddCircleLine,
   RiCodeBoxLine,
   RiDatabase2Line,
+  RiLogoutBoxRLine,
+  RiPlugLine,
   RiSearchLine,
+  RiShare2Line,
   RiTableLine,
 } from "@remixicon/react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile } from "@/shared/types/models";
@@ -19,12 +25,15 @@ import {
   type CommandBarMode,
 } from "./command-bar-utils";
 
-type CommandBarGroup = "connections" | "tables" | "commands" | "tabs";
+gsap.registerPlugin(useGSAP);
+
+type CommandBarGroup = "connections" | "databases" | "tables" | "commands" | "tabs";
 
 type CommandBarProps = {
   mode: CommandBarMode;
   items: readonly CommandBarItem[];
   initialIndex?: number;
+  selectedId?: string;
   isLoading?: boolean;
   onClose: () => void;
   onSelect: (item: CommandBarItem) => void;
@@ -39,6 +48,7 @@ export function CommandBar({
   mode,
   items,
   initialIndex = 0,
+  selectedId,
   isLoading = false,
   onClose,
   onSelect,
@@ -49,11 +59,31 @@ export function CommandBar({
   inline = false,
 }: CommandBarProps) {
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+  const [localSelectedIndex, setSelectedIndex] = useState(initialIndex);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const switcherRef = useRef<HTMLElement>(null);
+  const isClosingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const closeAnimationRef = useRef<((afterClose?: () => void) => void) | null>(null);
+  onCloseRef.current = onClose;
   const filteredItems = useMemo(() => filterCommandBarItems(items, query), [items, query]);
+  const selectedIndex =
+    selectedId === undefined
+      ? localSelectedIndex
+      : filteredItems.findIndex((item) => item.id === selectedId);
   const selectedItem = filteredItems[selectedIndex];
+  const highlightItem = (index: number) => {
+    if (selectedId === undefined) setSelectedIndex(index);
+    else onHighlightChange?.(filteredItems[index]);
+  };
+  const moveHighlight = (direction: -1 | 1) => {
+    if (selectedId === undefined) {
+      setSelectedIndex((index) => moveSelection(index, filteredItems.length, direction));
+    } else {
+      highlightItem(moveSelection(selectedIndex, filteredItems.length, direction));
+    }
+  };
   const isSwitcher = mode === "tab-switcher";
   const visibleGroups = groups ?? (isSwitcher ? ["tabs"] : inferGroups(items));
   const groupedItems = visibleGroups.map((group) => ({
@@ -69,6 +99,74 @@ export function CommandBar({
     }
   }, [isSwitcher]);
 
+  useGSAP(
+    (_, contextSafe) => {
+      const finishClose = (afterClose?: () => void) => {
+        onCloseRef.current();
+        afterClose?.();
+      };
+      const prefersReducedMotion = window.matchMedia?.(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      if (isSwitcher || prefersReducedMotion) {
+        closeAnimationRef.current = (afterClose) => finishClose(afterClose);
+        return () => {
+          closeAnimationRef.current = null;
+        };
+      }
+
+      const timeline = gsap.timeline();
+      timeline.fromTo(
+        containerRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.5, ease: "power2.out" },
+      );
+      timeline.fromTo(
+        switcherRef.current,
+        { opacity: 0, y: 12, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power2.out" },
+        0,
+      );
+
+      const closeAnimation = (afterClose?: () => void) => {
+        if (isClosingRef.current) return;
+        isClosingRef.current = true;
+        gsap
+          .timeline({ onComplete: () => finishClose(afterClose) })
+          .to(switcherRef.current, {
+            opacity: 0,
+            y: 8,
+            scale: 0.97,
+            duration: 0.45,
+            ease: "power2.in",
+          })
+          .to(containerRef.current, { opacity: 0, duration: 0.45, ease: "power2.in" }, 0);
+      };
+      closeAnimationRef.current = contextSafe
+        ? contextSafe(closeAnimation)
+        : closeAnimation;
+
+      return () => {
+        closeAnimationRef.current = null;
+      };
+    },
+    { scope: containerRef, dependencies: [isSwitcher], revertOnUpdate: true },
+  );
+
+  useEffect(() => {
+    if (!inline) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !switcherRef.current?.contains(event.target)) {
+        closeAnimationRef.current?.();
+      }
+    };
+
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, [inline]);
+
   useEffect(() => {
     setSelectedIndex((index) =>
       filteredItems.length === 0 ? -1 : Math.min(index, filteredItems.length - 1),
@@ -76,12 +174,12 @@ export function CommandBar({
   }, [filteredItems.length]);
 
   useEffect(() => {
-    if (cycleRequest) {
+    if (cycleRequest && selectedId === undefined) {
       setSelectedIndex((index) =>
         moveSelection(index, filteredItems.length, cycleRequest.direction),
       );
     }
-  }, [cycleRequest, filteredItems.length]);
+  }, [cycleRequest, filteredItems.length, selectedId]);
 
   useEffect(() => {
     const selectedElement =
@@ -90,24 +188,27 @@ export function CommandBar({
   }, [selectedIndex, filteredItems.length]);
 
   useEffect(() => {
-    onHighlightChange?.(selectedItem);
-  }, [onHighlightChange, selectedItem]);
+    if (selectedId === undefined) onHighlightChange?.(selectedItem);
+  }, [onHighlightChange, selectedItem, selectedId]);
 
   const selectItem = (item: CommandBarItem | undefined) => {
     if (!item || isLoading) {
       return;
     }
-    if (item.kind === "connection" && onConnectionSelect) {
-      onConnectionSelect(item.connection);
-      return;
-    }
-    onSelect(item);
+    closeAnimationRef.current?.(() => {
+      if (item.kind === "connection" && onConnectionSelect) {
+        onConnectionSelect(item.connection);
+        return;
+      }
+      onSelect(item);
+    });
   };
 
   const selectCurrent = () => selectItem(selectedItem);
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         inline
           ? "absolute left-1/2 top-2 z-50 w-[min(42rem,calc(100%-2rem))] -translate-x-1/2"
@@ -116,7 +217,7 @@ export function CommandBar({
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          closeAnimationRef.current?.();
         }
       }}
     >
@@ -134,17 +235,17 @@ export function CommandBar({
           event.stopPropagation();
           if (event.key === "Escape") {
             event.preventDefault();
-            onClose();
+            closeAnimationRef.current?.();
             return;
           }
           if (event.key === "ArrowDown") {
             event.preventDefault();
-            setSelectedIndex((index) => moveSelection(index, filteredItems.length, 1));
+            moveHighlight(1);
             return;
           }
           if (event.key === "ArrowUp") {
             event.preventDefault();
-            setSelectedIndex((index) => moveSelection(index, filteredItems.length, -1));
+            moveHighlight(-1);
             return;
           }
           if (event.key === "Enter") {
@@ -163,11 +264,13 @@ export function CommandBar({
               aria-label="Search commands"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               placeholder={
-                mode === "commands" ? "Search commands..." : "Search tables and connections..."
+                mode === "commands"
+                  ? "Search commands..."
+                  : "Search databases, tables, and connections..."
               }
             />
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              Ctrl P
+              {mode === "commands" ? "Ctrl Shift P" : "Ctrl P"}
             </kbd>
           </div>
         ) : null}
@@ -188,7 +291,7 @@ export function CommandBar({
           {!isLoading && isSwitcher && filteredItems.length > 0 ? (
             <ul aria-label="Open tabs" className="space-y-0.5">
               {filteredItems.map((item, index) =>
-                renderItem(item, index, selectedIndex, true, setSelectedIndex, selectItem),
+                renderItem(item, index, selectedIndex, true, highlightItem, selectItem),
               )}
             </ul>
           ) : null}
@@ -213,7 +316,7 @@ export function CommandBar({
                           filteredItems.indexOf(item),
                           selectedIndex,
                           isSwitcher,
-                          setSelectedIndex,
+                          highlightItem,
                           selectItem,
                         ),
                       )}
@@ -230,7 +333,7 @@ export function CommandBar({
           {!isLoading && !isSwitcher && query.trim() && filteredItems.length > 0 ? (
             <ul aria-label="Command results" className="space-y-1">
               {filteredItems.map((item, index) =>
-                renderItem(item, index, selectedIndex, isSwitcher, setSelectedIndex, selectItem),
+                renderItem(item, index, selectedIndex, isSwitcher, highlightItem, selectItem),
               )}
             </ul>
           ) : null}
@@ -277,7 +380,13 @@ function renderItem(
         onMouseEnter={() => setSelectedIndex(index)}
         onClick={() => selectItem(item)}
       >
-        <ItemIcon item={item} />
+        <span
+          aria-hidden="true"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]"
+          data-icon-kind={item.kind === "command" ? item.command : item.kind}
+        >
+          <ItemIcon item={item} />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{item.label}</span>
           <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
@@ -285,6 +394,11 @@ function renderItem(
         {item.kind === "connection" && item.isActive ? (
           <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
             Active
+          </span>
+        ) : null}
+        {item.kind === "database" && item.isActive ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+            Current
           </span>
         ) : null}
         {isSwitcher && index === selectedIndex ? (
@@ -298,11 +412,13 @@ function renderItem(
 function itemGroup(item: CommandBarItem): CommandBarGroup {
   return item.kind === "connection"
     ? "connections"
-    : item.kind === "table"
-      ? "tables"
-      : item.kind === "command"
-        ? "commands"
-        : "tabs";
+    : item.kind === "database"
+      ? "databases"
+      : item.kind === "table"
+        ? "tables"
+        : item.kind === "command"
+          ? "commands"
+          : "tabs";
 }
 
 function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
@@ -312,36 +428,45 @@ function inferGroups(items: readonly CommandBarItem[]): CommandBarGroup[] {
 function groupLabel(group: CommandBarGroup): string {
   return group === "connections"
     ? "Connections"
-    : group === "tables"
-      ? "Tables"
-      : group === "commands"
-        ? "Commands"
-        : "Open tabs";
+    : group === "databases"
+      ? "Databases"
+      : group === "tables"
+        ? "Tables"
+        : group === "commands"
+          ? "Commands"
+          : "Open tabs";
 }
 
 function emptyGroupMessage(group: CommandBarGroup): string {
   return group === "connections"
     ? "No connections"
-    : group === "tables"
-      ? "No tables"
-      : group === "commands"
-        ? "No commands"
-        : "No open tabs";
+    : group === "databases"
+      ? "No databases"
+      : group === "tables"
+        ? "No tables"
+        : group === "commands"
+          ? "No commands"
+          : "No open tabs";
 }
 
 function ItemIcon({ item }: { item: CommandBarItem }) {
   if (item.kind === "connection") {
-    return <RiDatabase2Line className="size-4 shrink-0 text-primary" />;
+    return <RiPlugLine className="size-4" />;
+  }
+  if (item.kind === "database") {
+    return <RiDatabase2Line className="size-4" />;
   }
   if (item.kind === "table") {
-    return <RiTableLine className="size-4 shrink-0 text-primary" />;
+    return <RiTableLine className="size-4" />;
   }
   if (item.kind === "command") {
-    return <RiCodeBoxLine className="size-4 shrink-0 text-primary" />;
+    if (item.command === "disconnect") return <RiLogoutBoxRLine className="size-4" />;
+    if (item.command === "new-connection") return <RiAddCircleLine className="size-4" />;
+    return <RiShare2Line className="size-4" />;
   }
   return item.tab.type === "datatable" ? (
-    <RiTableLine className="size-4 shrink-0 text-primary" />
+    <RiTableLine className="size-4" />
   ) : (
-    <RiCodeBoxLine className="size-4 shrink-0 text-primary" />
+    <RiCodeBoxLine className="size-4" />
   );
 }

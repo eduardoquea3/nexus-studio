@@ -1,7 +1,6 @@
 import type { ConnectionProfile } from "@/shared/types/models";
 
 import { CommandBar } from "@/app/command-bar/command-bar";
-import { nextTabIndex } from "@/app/command-bar/command-bar-utils";
 import { ConnectionSidebar } from "@/app/connection/components/connection-sidebar";
 import { ConnectionWorkspaceContent } from "@/app/connection/components/connection-workspace-content";
 
@@ -11,27 +10,33 @@ export { getQuerySegment } from "./connection-workspace-utils";
 
 type ConnectionWorkspaceProps = {
   profile: ConnectionProfile;
+  isActive?: boolean;
   onConnectionSwitch?: (profile: ConnectionProfile) => void | Promise<void>;
 };
 
-export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionWorkspaceProps) {
-  const controller = useConnectionWorkspaceController({ profile, onConnectionSwitch });
+export function ConnectionWorkspace({
+  profile,
+  isActive = true,
+  onConnectionSwitch,
+}: ConnectionWorkspaceProps) {
+  const controller = useConnectionWorkspaceController({ profile, isActive, onConnectionSwitch });
   const {
     commandBarMode,
     commandBarItems,
-    tabItems,
     activeTabId,
-    switcherInitialDirection,
-    switcherCycle,
+    highlightSwitcherTab,
     closeCommandBar,
     activateWorkspaceTab,
     setActiveTabId,
     setActiveSqlTabId,
     openTableTab,
+    openErDiagram,
     switchConnection,
     switchingConnectionIds,
     isLoadingConnections,
     isFetchingConnections,
+    isLoadingDatabases,
+    isFetchingDatabases,
     isLoadingSchema,
     isFetchingSchema,
     editorSectionRef,
@@ -46,19 +51,11 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
         <CommandBar
           mode={commandBarMode}
           items={commandBarItems}
-          initialIndex={
-            commandBarMode === "tab-switcher"
-              ? nextTabIndex(tabItems, activeTabId, switcherInitialDirection)
-              : 0
-          }
-          cycleRequest={commandBarMode === "tab-switcher" ? switcherCycle : undefined}
+          selectedId={commandBarMode === "tab-switcher" ? activeTabId : undefined}
           onHighlightChange={(item) => {
             if (commandBarMode !== "tab-switcher") return;
             if (item?.kind !== "tab") return;
-            if (item.tab.id === activeTabId) return;
-            activateWorkspaceTab(profile.id, item.tab.id);
-            setActiveTabId(item.tab.id);
-            if (item.tab.type === "query") setActiveSqlTabId(item.tab.id);
+            highlightSwitcherTab(item.tab.id);
           }}
           onClose={closeCommandBar}
           inline
@@ -69,6 +66,7 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
                 controller.openModal("new-connection", { source: "command-bar" });
                 void controller.navigate({ to: "/" });
               }
+              if (item.command === "generate-er-diagram") openErDiagram();
               closeCommandBar(true);
             } else if (item.kind === "tab") {
               activateWorkspaceTab(profile.id, item.tab.id);
@@ -78,12 +76,15 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
             } else if (item.kind === "table") {
               openTableTab(item.table.name, item.table.schema);
               closeCommandBar();
+            } else if (item.kind === "database") {
+              controller.handleDatabaseChange(item.database);
+              closeCommandBar();
             }
           }}
           onConnectionSelect={(connection) => void switchConnection(connection)}
           groups={
             commandBarMode === "palette"
-              ? ["connections", "tables"]
+              ? ["connections", "databases", "tables"]
               : commandBarMode === "commands"
                 ? ["commands"]
                 : ["tabs"]
@@ -93,6 +94,8 @@ export function ConnectionWorkspace({ profile, onConnectionSwitch }: ConnectionW
             (switchingConnectionIds.size > 0 ||
               isLoadingConnections ||
               isFetchingConnections ||
+              isLoadingDatabases ||
+              isFetchingDatabases ||
               isLoadingSchema ||
               isFetchingSchema)
           }
