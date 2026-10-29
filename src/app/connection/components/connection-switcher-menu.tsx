@@ -24,14 +24,9 @@ import {
 type ConnectionSwitcherMenuProps = {
   profile: ConnectionProfile;
   connections: ConnectionProfile[];
-  openModal: (modal: string, payload?: unknown) => void;
 };
 
-export function ConnectionSwitcherMenu({
-  profile,
-  connections,
-  openModal,
-}: ConnectionSwitcherMenuProps) {
+export function ConnectionSwitcherMenu({ profile, connections }: ConnectionSwitcherMenuProps) {
   const navigate = useNavigate();
   const sorted = connections
     .filter((connection) => connection.id !== profile.id)
@@ -62,8 +57,10 @@ export function ConnectionSwitcherMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            openModal("new-connection", { connectionId: profile.id });
-            void navigate({ to: "/" });
+            void navigate({
+              to: "/connections/new",
+              search: { connectionId: profile.id },
+            });
           }}
         >
           <RiEditLine />

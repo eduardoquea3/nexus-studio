@@ -39,6 +39,10 @@ const getTableSchema = mock(async () => ({
   indexes: [],
 }));
 const listDatabases = mock(async () => ["development", "analytics"]);
+const saveConnection = mock(
+  async (_profile: ConnectionProfile, _mode: "create" | "update") => undefined,
+);
+const testConnectionFields = mock(async (_request: unknown) => "ok");
 const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
 const exportTableDataJson = mock(
@@ -55,6 +59,14 @@ const closeSshTunnel = mock(async (_connectionId: string) => undefined);
 const getConnectionProfile = mock(async (id: string) =>
   availableConnections.find((connection) => connection.id === id),
 );
+
+mock.module("@tauri-apps/plugin-store", () => ({
+  load: async () => ({
+    get: async <T,>() => structuredClone(availableConnections) as T,
+    set: async () => undefined,
+    save: async () => undefined,
+  }),
+}));
 
 mock.module("@/routes/index", () => ({
   Route: createFileRoute("/")({ component: () => <div>Saved connections</div> }),
@@ -203,6 +215,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 
 mock.module("@/shared/lib/tauriApi", () => ({
   closeSshTunnel,
+  createSqliteDatabase: mock(async () => undefined),
   deleteRecords: mock(async () => 0),
   deleteSshPassword: mock(async () => undefined),
   listSystemFonts: mock(async () => []),
@@ -226,13 +239,15 @@ mock.module("@/shared/lib/tauriApi", () => ({
   listTables: mock(async () => []),
   listViews: mock(async () => []),
   runQuery,
-  saveConnection: mock(async () => undefined),
-  testConnectionFields: mock(async () => "ok"),
+  saveConnection,
+  storeSshPassword: mock(async () => undefined),
+  testConnectionFields,
   testSavedConnection,
   writeJsonFile: mock(async () => "export.json"),
 }));
 
 mock.module("@/app/home/hooks/use-connections", () => ({
+  connectionsQueryKey: ["connections"],
   useConnections: () => ({ data: availableConnections }),
   useConnection: (id: string) =>
     useQuery({
@@ -320,6 +335,8 @@ describe("Connection workspace route sessions", () => {
     });
     useWorkspaceStore.setState({ ...useWorkspaceStore.getInitialState(), isHydrated: true });
     closeSshTunnel.mockClear();
+    saveConnection.mockClear();
+    testConnectionFields.mockClear();
     getConnectionProfile.mockClear();
     listDatabases.mockClear();
     listSchemaObjects.mockClear();
@@ -356,6 +373,111 @@ describe("Connection workspace route sessions", () => {
     await waitFor(() => expect(listDatabases).toHaveBeenCalled());
     return { router, queryClient };
   }
+
+  async function openConnectionSetup(initialEntry = "/connections/new") {
+    const { routeTree } = await import("../routeTree.gen");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    clients.push(queryClient);
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: [initialEntry] }),
+      defaultPendingMs: 0,
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    if (initialEntry.includes("connectionId=")) {
+      await screen.findByRole("heading", { name: "Edit Connection" });
+    } else {
+      await screen.findByRole("group", { name: "Choose a database engine" });
+    }
+    return { router, queryClient };
+  }
+
+  test("cancels from database selection back to the connections list", async () => {
+    const { router } = await openConnectionSetup();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(screen.getByText("Saved connections")).not.toBeNull();
+  });
+
+  test("chooses a database before showing connection mode tabs", async () => {
+    await openConnectionSetup();
+
+    fireEvent.click(screen.getByRole("button", { name: /MySQL/ }));
+
+    expect(await screen.findByRole("tab", { name: "Normal connection" })).not.toBeNull();
+    const sshTab = screen.getByRole("tab", { name: "SSH tunnel" });
+    expect(sshTab).not.toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Connection Type" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" }).closest("header")).not.toBeNull();
+    fireEvent.click(sshTab);
+    expect(screen.getByRole("button", { name: /Manual/ })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Manual/ }));
+    expect(screen.getByPlaceholderText("ssh.example.com")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("group", { name: "Choose a database engine" })).not.toBeNull();
+  });
+
+  test("saves the selected database engine and opens its connection workspace", async () => {
+    const { router } = await openConnectionSetup();
+    fireEvent.click(screen.getByRole("button", { name: /MySQL/ }));
+    await screen.findByRole("tab", { name: "Normal connection" });
+    fireEvent.change(screen.getByPlaceholderText("Production database"), {
+      target: { value: "MySQL test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(saveConnection).toHaveBeenCalledTimes(1));
+    const savedProfile = saveConnection.mock.calls[0]?.[0];
+    expect(savedProfile).toMatchObject({ name: "MySQL test", db_type: "mysql" });
+    expect(saveConnection.mock.calls[0]?.[1]).toBe("create");
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`));
+  });
+
+  test("saves without testing the connection and returns to the connections list", async () => {
+    const { router } = await openConnectionSetup();
+    fireEvent.click(screen.getByRole("button", { name: /PostgreSQL/ }));
+    await screen.findByRole("tab", { name: "Normal connection" });
+    fireEvent.change(screen.getByPlaceholderText("Production database"), {
+      target: { value: "Saved without testing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(saveConnection).toHaveBeenCalledTimes(1));
+    expect(testConnectionFields).not.toHaveBeenCalled();
+    expect(saveConnection.mock.calls[0]?.[0]).toMatchObject({ name: "Saved without testing" });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(screen.getByText("Saved connections")).not.toBeNull();
+  });
+
+  test("opens an existing SSH profile directly in edit mode", async () => {
+    availableConnections[0] = {
+      ...fieldsProfile,
+      password: "test-password",
+      ssh_tunnel: {
+        source: { type: "from_ssh_config", alias: "test-host" },
+        auth: { type: "key_file", path: "test-key", passphrase_ref: null },
+        remote_bind_host: "localhost",
+        remote_bind_port: 5432,
+      },
+    };
+
+    await openConnectionSetup("/connections/new?connectionId=connection-1");
+
+    expect(screen.queryByRole("group", { name: "Choose a database engine" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "SSH tunnel" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+  });
 
   for (const sshEnabled of [false, true]) {
     test(`keeps the live workspace through Settings ${sshEnabled ? "with" : "without"} SSH`, async () => {

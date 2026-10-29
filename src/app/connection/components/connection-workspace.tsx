@@ -63,8 +63,7 @@ export function ConnectionWorkspace({
             if (item.kind === "command") {
               if (item.command === "disconnect") void controller.navigate({ to: "/" });
               if (item.command === "new-connection") {
-                controller.openModal("new-connection", { source: "command-bar" });
-                void controller.navigate({ to: "/" });
+                void controller.navigate({ to: "/connections/new", search: { connectionId: undefined } });
               }
               if (item.command === "generate-er-diagram") openErDiagram();
               closeCommandBar(true);

@@ -1,6 +1,6 @@
+import { useGSAP } from "@gsap/react";
 import {
   RiArrowLeftLine,
-  RiDatabase2Fill,
   RiDatabase2Line,
   RiEyeLine,
   RiEyeOffLine,
@@ -11,11 +11,11 @@ import {
   RiTerminalBoxLine,
   RiUserLine,
 } from "@remixicon/react";
-import { MySQLDark, PostgreSQL, SQLite } from "@ridemountainpig/svgl-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
-import { SVGProps, useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConnectionProfile, DbType, SshTunnelConfig } from "@/shared/types/models";
 
@@ -27,8 +27,13 @@ import {
   shouldResetConnectionSession,
 } from "@/app/home/lib/connection-panel-state";
 import { parseConnectionString } from "@/app/home/lib/connection-string-parser";
+import {
+  addConnectionTag,
+  CONNECTION_TAG_COLORS,
+  getAvailableConnectionTags,
+  getConnectionTagColor,
+} from "@/app/home/lib/connection-tags";
 import { getConnection } from "@/app/home/services/connection-service";
-import { createConnectionId, DuplicateConnectionError } from "@/shared/lib/connection-identity";
 import {
   Accordion,
   AccordionContent,
@@ -38,11 +43,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
-import { Panel } from "@/shared/components/panel";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Field } from "@/shared/components/ui/field";
 import { FileField } from "@/shared/components/ui/file-field";
 import { Input, type InputProps } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
+import { createConnectionId, DuplicateConnectionError } from "@/shared/lib/connection-identity";
 import {
   saveConnection,
   createSqliteDatabase,
@@ -54,21 +60,8 @@ import {
   type ConnectionTestRequest,
 } from "@/shared/lib/tauriApi";
 import { useConnectionStore } from "@/shared/store/connectionStore";
-import { useModalStore } from "@/shared/store/modalStore";
 
-import { HomePanels } from "../lib/home-panels";
-
-type ConnectionType = {
-  value: string;
-  label: string;
-  icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
-};
-
-const connectionTypes = [
-  { value: "mysql", label: "MySQL", icon: MySQLDark },
-  { value: "postgresql", label: "PostgreSQL", icon: PostgreSQL },
-  { value: "sqlite", label: "SQLite", icon: SQLite },
-] satisfies readonly ConnectionType[];
+gsap.registerPlugin(useGSAP);
 
 const sshAuthTypes = [
   { value: "key-file", label: "Key file" },
@@ -78,6 +71,8 @@ const sshAuthTypes = [
 type ConnectionFormValues = {
   dbType: "postgresql" | "mysql" | "sqlite";
   name: string;
+  tags: string[];
+  tagColor: string;
   host: string;
   port: string;
   database: string;
@@ -107,6 +102,8 @@ type ConnectionFeedback = {
 const initialFormValues: ConnectionFormValues = {
   dbType: "postgresql",
   name: "",
+  tags: [],
+  tagColor: "primary",
   host: "localhost",
   port: "5432",
   database: "",
@@ -124,18 +121,27 @@ const initialManualSshValues: ManualSshValues = {
   credentialRef: null,
 };
 
-export function NewConnectionPanel() {
+type NewConnectionPanelProps = {
+  editingId?: string;
+  initialDbType?: ConnectionFormValues["dbType"];
+  onCancel: () => void;
+};
+
+export function NewConnectionPanel({
+  editingId,
+  initialDbType = "postgresql",
+  onCancel,
+}: NewConnectionPanelProps) {
   const navigate = useNavigate();
-  const isOpen = useModalStore((state) => state.modals.includes(HomePanels.NewConnection));
-  const closeModal = useModalStore((state) => state.closeModal);
-  const modalPayload = useModalStore(
-    (state) => state.modalProps[HomePanels.NewConnection] as { connectionId?: string } | undefined,
-  );
   const addProfile = useConnectionStore((state) => state.addProfile);
   const updateProfile = useConnectionStore((state) => state.updateProfile);
   const queryClient = useQueryClient();
-  const editingId = modalPayload?.connectionId;
-  const [form, setForm] = useState(initialFormValues);
+  const [form, setForm] = useState(() => ({ ...initialFormValues, dbType: initialDbType }));
+  const [tagInput, setTagInput] = useState("");
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+  const [activeTagOption, setActiveTagOption] = useState(0);
+  const tagPickerRef = useRef<HTMLDivElement>(null);
+  const tagSuggestionsRef = useRef<HTMLDivElement>(null);
   const [connectionString, setConnectionString] = useState("");
   const [sshAuthType, setSshAuthType] = useState("key-file");
   const [connectionTab, setConnectionTab] = useState<ConnectionTab>("normal");
@@ -147,8 +153,7 @@ export function NewConnectionPanel() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [feedback, setFeedback] = useState<ConnectionFeedback | null>(null);
   const [unsupportedLegacyProfileId, setUnsupportedLegacyProfileId] = useState<string>();
-  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
-  const sessionKey = getConnectionSessionKey(isOpen, editingId);
+  const sessionKey = getConnectionSessionKey(true, editingId);
   const sessionKeyRef = useRef<string | null>(null);
   const loadedProfileSessionKeyRef = useRef<string | null>(null);
   const importedFieldsRef = useRef<(keyof ConnectionFormValues)[]>([]);
@@ -157,6 +162,75 @@ export function NewConnectionPanel() {
   const isUnsupportedLegacyProfile =
     isCurrentSession && editingId !== undefined && unsupportedLegacyProfileId === editingId;
   const displayedForm = isCurrentSession ? form : initialFormValues;
+  const savedProfiles = queryClient.getQueryData<ConnectionProfile[]>(connectionsQueryKey) ?? [];
+  const availableTags = useMemo(() => getAvailableConnectionTags(savedProfiles), [savedProfiles]);
+  const tagOptions = useMemo(
+    () =>
+      availableTags.filter(
+        (tag) =>
+          !displayedForm.tags.some(
+            (selected) => selected.toLocaleLowerCase() === tag.toLocaleLowerCase(),
+          ) && tag.toLocaleLowerCase().includes(tagInput.trim().toLocaleLowerCase()),
+      ),
+    [availableTags, displayedForm.tags, tagInput],
+  );
+  const canCreateTag =
+    tagInput.trim().length > 0 &&
+    !availableTags.some((tag) => tag.toLocaleLowerCase() === tagInput.trim().toLocaleLowerCase()) &&
+    !displayedForm.tags.some(
+      (tag) => tag.toLocaleLowerCase() === tagInput.trim().toLocaleLowerCase(),
+    );
+  const addTag = (value = tagInput) => {
+    setForm((current) => ({ ...current, tags: addConnectionTag(current.tags, value) }));
+    setTagInput("");
+    setIsTagPickerOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isTagPickerOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !tagPickerRef.current?.contains(event.target)) {
+        setIsTagPickerOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [isTagPickerOpen]);
+
+  useGSAP(
+    () => {
+      const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      if (prefersReducedMotion) return;
+
+      if (isTagPickerOpen && tagSuggestionsRef.current) {
+        const suggestions = tagSuggestionsRef.current;
+        gsap.fromTo(
+          suggestions,
+          { autoAlpha: 0, y: -6, scale: 0.985 },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.18, ease: "power2.out" },
+        );
+        gsap.fromTo(
+          suggestions.querySelectorAll("[data-tag-option]"),
+          { autoAlpha: 0, y: 4 },
+          { autoAlpha: 1, y: 0, duration: 0.14, stagger: 0.025, ease: "power2.out" },
+        );
+      }
+
+      const chips = tagPickerRef.current?.querySelectorAll("[data-selected-tag]");
+      if (chips?.length) {
+        gsap.fromTo(
+          chips,
+          { autoAlpha: 0, scale: 0.92, y: 3 },
+          { autoAlpha: 1, scale: 1, y: 0, duration: 0.18, stagger: 0.035, ease: "back.out(1.5)" },
+        );
+      }
+    },
+    {
+      scope: tagPickerRef,
+      dependencies: [isTagPickerOpen, tagOptions, canCreateTag, displayedForm.tags],
+      revertOnUpdate: true,
+    },
+  );
 
   const clearImportedFormValues = () => {
     if (importedFieldsRef.current.length === 0) return;
@@ -173,19 +247,10 @@ export function NewConnectionPanel() {
   };
 
   useEffect(() => {
-    if (!isOpen) {
-      setConnectionString("");
-      setManualSshValues(initialManualSshValues);
-      clearImportedFormValues();
-      sessionKeyRef.current = null;
-      loadedProfileSessionKeyRef.current = null;
-      setUnsupportedLegacyProfileId(undefined);
-      return;
-    }
-
     if (shouldResetConnectionSession(sessionKeyRef.current, sessionKey)) {
       sessionKeyRef.current = sessionKey;
-      setForm(initialFormValues);
+      setForm({ ...initialFormValues, dbType: initialDbType });
+      setTagInput("");
       setConnectionString("");
       setSshAuthType("key-file");
       setConnectionTab("normal");
@@ -196,30 +261,12 @@ export function NewConnectionPanel() {
       loadedProfileSessionKeyRef.current = null;
       importedFieldsRef.current = [];
     }
-  }, [isOpen, sessionKey]);
-
-  useEffect(() => {
-    if (isOpen || pendingConnectionId === null) return;
-
-    const connectionId = pendingConnectionId;
-    setPendingConnectionId(null);
-    void navigate({
-      to: "/connections/$connectionId",
-      params: { connectionId },
-    }).catch((error: unknown) => {
-      toast.add({
-        title: "Connection saved but could not be opened",
-        type: "error",
-        description: String(error),
-      });
-    });
-  }, [isOpen, navigate, pendingConnectionId]);
+  }, [initialDbType, sessionKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     if (
-      !isOpen ||
       !editingId ||
       !shouldLoadConnectionProfile(loadedProfileSessionKeyRef.current, sessionKey, editingId)
     ) {
@@ -276,10 +323,9 @@ export function NewConnectionPanel() {
     return () => {
       cancelled = true;
     };
-  }, [editingId, isOpen, sessionKey]);
+  }, [editingId, sessionKey]);
 
   useEffect(() => {
-    if (!isOpen) return;
     let cancelled = false;
     void listSshConfigHosts()
       .then((hosts) => {
@@ -291,7 +337,7 @@ export function NewConnectionPanel() {
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, []);
 
   const updateField = <K extends keyof ConnectionFormValues>(
     field: K,
@@ -425,7 +471,7 @@ export function NewConnectionPanel() {
     }
   };
 
-  const handleConnect = async () => {
+  const handleConnect = async (testBeforeSave = true) => {
     if (isConnectingRef.current) return;
 
     if (!form.name.trim()) {
@@ -481,7 +527,9 @@ export function NewConnectionPanel() {
     let newCredentialRef: string | null = null;
     let profileSaved = false;
     try {
-      await testConnectionFields(getTestRequest());
+      if (testBeforeSave) {
+        await testConnectionFields(getTestRequest());
+      }
 
       let credentialRef = manualSshValues.credentialRef;
       if (connectionTab === "ssh" && sshSource === "manual" && sshAuthType === "password") {
@@ -528,20 +576,37 @@ export function NewConnectionPanel() {
       if (editingId) {
         updateProfile(profileToSave);
         await queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-        setFeedback({
-          type: "success",
-          title: "Connection updated",
-          description: "The connection profile and its credentials were saved locally.",
-        });
+        if (testBeforeSave) {
+          setFeedback({
+            type: "success",
+            title: "Connection updated",
+            description: "The connection profile and its credentials were saved locally.",
+          });
+        } else {
+          await navigate({ to: "/" });
+        }
       } else {
         addProfile(profileToSave);
-        setPendingConnectionId(profileToSave.id);
-        closeModal(HomePanels.NewConnection);
         void queryClient
           .invalidateQueries({ queryKey: connectionsQueryKey })
           .catch((error: unknown) => {
             console.warn("Could not refresh saved connections", error);
           });
+        const destination = testBeforeSave
+          ? navigate({
+              to: "/connections/$connectionId",
+              params: { connectionId: profileToSave.id },
+            })
+          : navigate({ to: "/" });
+        void destination.catch((error: unknown) => {
+          toast.add({
+            title: testBeforeSave
+              ? "Connection saved but could not be opened"
+              : "Connection saved but could not return to the list",
+            type: "error",
+            description: String(error),
+          });
+        });
       }
     } catch (error) {
       if (newCredentialRef && !profileSaved) {
@@ -555,9 +620,7 @@ export function NewConnectionPanel() {
       setFeedback({
         type: "error",
         title: isDuplicateConnection ? "Connection already exists" : "Could not save connection",
-        description: isDuplicateConnection
-          ? error.message
-          : String(error),
+        description: isDuplicateConnection ? error.message : String(error),
       });
     } finally {
       isConnectingRef.current = false;
@@ -566,63 +629,27 @@ export function NewConnectionPanel() {
   };
 
   return (
-    <Panel
-      panelId={HomePanels.NewConnection}
-      title={editingId ? "Edit Connection" : "New Connection"}
-      description={
-        editingId
-          ? "Update the saved connection profile."
-          : "Create a reusable connection from the dashboard."
-      }
-      icon={<RiDatabase2Fill size={19} />}
-      className="w-140"
-      contentClassName="h-full"
-      footer={
-        <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-popover px-6 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setConnectionString("");
-                clearImportedFormValues();
-                closeModal(HomePanels.NewConnection);
-              }}
-            >
-              Cancel
-            </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => void handleTest()}
-                disabled={
-                  isTesting ||
-                  isCreatingSqlite ||
-                  isLoadingProfile ||
-                  isUnsupportedLegacyProfile ||
-                  (connectionTab === "ssh" && sshSource === null)
-                }
-              >
-                Test
-              </Button>
-              {!isUnsupportedLegacyProfile && (
-                <Button
-                  onClick={() => void handleConnect()}
-                  disabled={
-                    isTesting ||
-                    isCreatingSqlite ||
-                    isLoadingProfile ||
-                    (connectionTab === "ssh" && sshSource === null)
-                  }
-                >
-                  {editingId ? "Save changes" : "Connect"}
-                </Button>
-              )}
-            </div>
-          </div>
+    <main className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden px-5 py-6 text-foreground sm:px-8 sm:py-8">
+      <header className="mb-5 flex items-center justify-between gap-4 border-b border-border/70 pb-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">
+            {editingId ? "Connection profile" : "New connection"}
+          </p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
+            {editingId ? "Edit Connection" : "Configure connection"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {editingId ? "Update the saved connection profile." : "Set up a reusable database connection."}
+          </p>
         </div>
-      }
-    >
-      <div className="flex min-h-full flex-col">
+        <Button variant="outline" onClick={onCancel}>
+          <RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />
+          Cancel
+        </Button>
+      </header>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="mx-auto w-full max-w-3xl py-2">
+          <div className="flex min-h-full flex-col gap-4 text-sm">
         {isUnsupportedLegacyProfile ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
             This legacy connection format cannot be safely edited here. Its saved connection data is
@@ -630,22 +657,6 @@ export function NewConnectionPanel() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col gap-4 text-sm">
-            <Field label="Connection Type">
-              <Select
-                options={connectionTypes}
-                valueKey="value"
-                value={connectionTypes.find((item) => item.value === displayedForm.dbType)}
-                onValueChange={(value) => {
-                  if (!value) return;
-                  setFeedback(null);
-                  updateField("dbType", value.value as ConnectionFormValues["dbType"]);
-                  if (value.value === "sqlite") setConnectionTab("normal");
-                }}
-                render={(option) => <ConnectionTypeOption type={option} />}
-                placeholder="Select type"
-              />
-            </Field>
-
             <Tabs
               value={connectionTab}
               onValueChange={(value) => {
@@ -743,6 +754,164 @@ export function NewConnectionPanel() {
                   />
                 </Field>
 
+                <Field label="Tags">
+                  <div ref={tagPickerRef} className="relative">
+                    <Input
+                      value={tagInput}
+                      placeholder="Search or create a tag"
+                      aria-label="Search or create a connection tag"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={isTagPickerOpen && (tagOptions.length > 0 || canCreateTag)}
+                      aria-controls={
+                        isTagPickerOpen && (tagOptions.length > 0 || canCreateTag)
+                          ? "connection-tag-options"
+                          : undefined
+                      }
+                      aria-activedescendant={
+                        isTagPickerOpen && (tagOptions.length > 0 || canCreateTag)
+                          ? `connection-tag-option-${activeTagOption}`
+                          : undefined
+                      }
+                      onFocus={() => setIsTagPickerOpen(true)}
+                      onChange={(event) => {
+                        setTagInput(event.target.value);
+                        setActiveTagOption(0);
+                        setIsTagPickerOpen(true);
+                      }}
+                      onKeyDown={(event) => {
+                        const optionCount = tagOptions.length + Number(canCreateTag);
+                        if (event.key === "ArrowDown" && optionCount > 0) {
+                          event.preventDefault();
+                          setIsTagPickerOpen(true);
+                          setActiveTagOption((index) => (index + 1) % optionCount);
+                        } else if (event.key === "ArrowUp" && optionCount > 0) {
+                          event.preventDefault();
+                          setActiveTagOption((index) => (index - 1 + optionCount) % optionCount);
+                        } else if (event.key === "Enter" || event.key === ",") {
+                          event.preventDefault();
+                          if (
+                            isTagPickerOpen &&
+                            optionCount > 0 &&
+                            activeTagOption < tagOptions.length
+                          ) {
+                            addTag(tagOptions[activeTagOption]);
+                          } else {
+                            addTag();
+                          }
+                        } else if (event.key === "Escape") {
+                          setIsTagPickerOpen(false);
+                        }
+                      }}
+                    />
+                    {isTagPickerOpen && (tagOptions.length > 0 || canCreateTag) ? (
+                      <div
+                        ref={tagSuggestionsRef}
+                        id="connection-tag-options"
+                        role="listbox"
+                        aria-label="Tag suggestions"
+                        className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-lg border border-border/80 bg-popover p-1.5 shadow-lg shadow-black/15"
+                      >
+                        {tagOptions.map((tag, index) => (
+                          <div
+                            key={tag}
+                            id={`connection-tag-option-${index}`}
+                            role="option"
+                            tabIndex={-1}
+                            aria-selected={activeTagOption === index}
+                            data-tag-option
+                            className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm text-popover-foreground transition-colors hover:bg-accent aria-selected:bg-accent"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onMouseEnter={() => setActiveTagOption(index)}
+                            onClick={() => addTag(tag)}
+                          >
+                            <span>{tag}</span>
+                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                              Existing
+                            </span>
+                          </div>
+                        ))}
+                        {canCreateTag ? (
+                          <div
+                            id={`connection-tag-option-${tagOptions.length}`}
+                            role="option"
+                            tabIndex={-1}
+                            aria-selected={activeTagOption === tagOptions.length}
+                            data-tag-option
+                            className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm text-popover-foreground transition-colors hover:bg-accent aria-selected:bg-accent"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onMouseEnter={() => setActiveTagOption(tagOptions.length)}
+                            onClick={() => addTag()}
+                          >
+                            <span>Create “{tagInput.trim()}”</span>
+                            <span className="text-[10px] font-medium uppercase tracking-wider text-primary">
+                              New tag
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {displayedForm.tags.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {displayedForm.tags.map((tag) => {
+                          const color = getConnectionTagColor(displayedForm.tagColor);
+                          return (
+                            <span
+                              key={tag}
+                              data-selected-tag
+                              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium"
+                              style={{
+                                backgroundColor: `color-mix(in oklch, var(--${color}) 20%, var(--card))`,
+                                borderColor: `color-mix(in oklch, var(--${color}) 55%, var(--border))`,
+                                color: "var(--foreground)",
+                              }}
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                aria-label={`Remove ${tag} tag`}
+                                className="ml-0.5 rounded-full px-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                                onClick={() =>
+                                  updateField(
+                                    "tags",
+                                    displayedForm.tags.filter((item) => item !== tag),
+                                  )
+                                }
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </Field>
+
+                <fieldset>
+                  <legend className="mb-2 text-xs font-medium">Connection color</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {CONNECTION_TAG_COLORS.map(({ value, label }) => (
+                      <label key={value} className="cursor-pointer" title={label}>
+                        <input
+                          type="radio"
+                          name="connection-tag-color"
+                          value={value}
+                          checked={getConnectionTagColor(displayedForm.tagColor) === value}
+                          aria-label={`${label} theme color`}
+                          className="peer sr-only"
+                          onChange={() => updateField("tagColor", value)}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="block size-6 rounded-full border-2 border-background outline outline-1 outline-border transition-transform peer-checked:scale-110 peer-checked:outline-foreground peer-focus-visible:outline-2 peer-focus-visible:outline-ring"
+                          style={{ backgroundColor: `var(--${value})` }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
                 <div className="border-t border-border/70 pt-4">
                   <Field label="Import connection string">
                     <div className="flex gap-2">
@@ -767,8 +936,38 @@ export function NewConnectionPanel() {
         )}
 
         <ConnectionFeedbackMessage feedback={feedback} />
-      </div>
-    </Panel>
+        </div>
+        </div>
+      </ScrollArea>
+      <footer className="mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-border/70 pt-4">
+        <div className="flex items-center gap-2">
+          {!isUnsupportedLegacyProfile && (
+            <Button
+              variant="outline"
+              onClick={() => void handleConnect(false)}
+              disabled={isTesting || isCreatingSqlite || isLoadingProfile}
+            >
+              Save
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => void handleTest()}
+            disabled={isTesting || isCreatingSqlite || isLoadingProfile || isUnsupportedLegacyProfile || (connectionTab === "ssh" && sshSource === null)}
+          >
+            Test
+          </Button>
+          {!isUnsupportedLegacyProfile && (
+            <Button
+              onClick={() => void handleConnect()}
+              disabled={isTesting || isCreatingSqlite || isLoadingProfile || (connectionTab === "ssh" && sshSource === null)}
+            >
+              {editingId ? "Save changes" : "Connect"}
+            </Button>
+          )}
+        </div>
+      </footer>
+    </main>
   );
 }
 
@@ -788,20 +987,6 @@ function ConnectionFeedbackMessage({ feedback }: { feedback: ConnectionFeedback 
       <p className="font-semibold">{feedback.title}</p>
       <p className="mt-1 break-words opacity-90">{feedback.description}</p>
     </div>
-  );
-}
-
-function ConnectionTypeOption({ type }: { type?: ConnectionType }) {
-  if (!type) {
-    return null;
-  }
-
-  const { icon: Icon, label } = type;
-  return (
-    <span className="flex items-center gap-2">
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <span>{label}</span>
-    </span>
   );
 }
 
@@ -834,6 +1019,8 @@ function createConnectionProfile(
             username: values.username,
             password_ref: null,
           },
+    tags: values.tags,
+    tag_color: values.tagColor,
     ssh_tunnel: ssh.enabled
       ? {
           source:
@@ -861,6 +1048,8 @@ function profileToFormValues(profile: ConnectionProfile): ConnectionFormValues {
     return {
       dbType: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
       name: profile.name,
+      tags: profile.tags ?? [],
+      tagColor: getConnectionTagColor(profile.tag_color),
       host: "localhost",
       port: "5432",
       database: "",
@@ -873,6 +1062,8 @@ function profileToFormValues(profile: ConnectionProfile): ConnectionFormValues {
   return {
     dbType: profile.db_type === "postgres" ? "postgresql" : profile.db_type,
     name: profile.name,
+    tags: profile.tags ?? [],
+    tagColor: getConnectionTagColor(profile.tag_color),
     host: profile.connect_mode.host,
     port: String(profile.connect_mode.port),
     database: profile.connect_mode.database,

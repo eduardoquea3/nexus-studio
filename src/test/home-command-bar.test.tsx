@@ -54,7 +54,7 @@ mock.module("@/components/ui/toast", () => ({
 }));
 
 const { HomeCommandBar } = await import("@/app/command-bar/home-command-bar");
-const { cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
 
 describe("HomeCommandBar", () => {
   beforeEach(() => {
@@ -93,5 +93,20 @@ describe("HomeCommandBar", () => {
     expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /New connection/ })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Production/ })).toBeNull();
+  });
+
+  test("routes New connection to the setup page", async () => {
+    render(<HomeCommandBar activeConnectionId={null} />);
+    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true, shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /New connection/ }));
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+    });
+
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/connections/new",
+      search: { connectionId: undefined },
+    });
   });
 });

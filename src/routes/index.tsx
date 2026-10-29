@@ -1,57 +1,55 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { RiAddLine, RiDatabaseLine, RiRefreshLine, RiSearchLine } from "@remixicon/react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
 import type { ConnectionProfile } from "@/shared/types/models";
 
-import { ConnectionGrid } from "@/app/home/components/connection-grid";
 import { HomeCommandBar } from "@/app/command-bar/home-command-bar";
-import type { ConnectionSort } from "@/app/home/components/connection-toolbar";
-import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
-import { NewConnectionPanel } from "@/app/home/components/new-connection-panel";
-import { HomePanels } from "@/app/home/lib/home-panels";
+import { ConnectionGrid } from "@/app/home/components/connection-grid";
 import { useConnections } from "@/app/home/hooks/use-connections";
+import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
 import {
   createConnectionString,
   redactConnectionString,
 } from "@/app/home/lib/connection-string-parser";
+import {
+  getAvailableConnectionTags,
+  getConnectionTagColor,
+  matchesConnectionTag,
+  sortConnectionsByRecent,
+} from "@/app/home/lib/connection-tags";
 import { deleteConnection, markConnectionOpened } from "@/app/home/services/connection-service";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
 import { type ConnectionItem } from "@/shared/components/connection-card";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
-import { useModalStore } from "@/shared/store/modalStore";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 export const Route = createFileRoute("/")({ component: Index });
 
 function Index() {
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<ConnectionSort>("recent");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isCommandBarVisible, setIsCommandBarVisible] = useState(false);
-  const openModal = useModalStore((state) => state.openModal);
-  const closeModal = useModalStore((state) => state.closeModal);
-  const isNewConnectionOpen = useModalStore((state) =>
-    state.modals.includes(HomePanels.NewConnection),
-  );
+  const navigate = useNavigate();
   const removeWorkspaceConnection = useWorkspaceStore((state) => state.removeConnection);
   const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
   const { data: profiles = [], isFetching, refetch } = useConnections();
   const toggleNewConnection = () => {
-    if (isNewConnectionOpen) {
-      closeModal(HomePanels.NewConnection);
-      return;
-    }
-
-    openModal(HomePanels.NewConnection, { source: "dashboard" });
+    void navigate({ to: "/connections/new", search: { connectionId: undefined } });
   };
-  const connections = useMemo(() => profiles.map(toConnectionItem), [profiles]);
+  const connections = useMemo(
+    () => sortConnectionsByRecent(profiles).map(toConnectionItem),
+    [profiles],
+  );
+  const availableTags = useMemo(() => getAvailableConnectionTags(profiles), [profiles]);
   const filteredConnections = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return [...connections]
-      .filter((connection) =>
+    return [...connections].filter(
+      (connection) =>
+        (selectedTag === null || matchesConnectionTag(connection, selectedTag)) &&
         [
           connection.name,
           connection.engine,
@@ -60,13 +58,8 @@ function Index() {
           ...(connection.sshEnabled ? ["ssh"] : []),
           ...(connection.sslEnabled ? ["ssl"] : []),
         ].some((value) => value.toLowerCase().includes(normalized)),
-      )
-      .sort((left, right) =>
-        sort === "name"
-          ? left.name.localeCompare(right.name)
-          : (right.lastOpenedAt ?? 0) - (left.lastOpenedAt ?? 0),
-      );
-  }, [connections, query, sort]);
+    );
+  }, [connections, query, selectedTag]);
 
   const handleDelete = async (connection: ConnectionItem) => {
     if (!window.confirm(`Delete connection "${connection.name}"?`)) return;
@@ -120,7 +113,10 @@ function Index() {
         onNewConnection={toggleNewConnection}
         isCommandBarVisible={isCommandBarVisible}
       />
-      <HomeCommandBar activeConnectionId={activeConnectionId} onOpenChange={setIsCommandBarVisible} />
+      <HomeCommandBar
+        activeConnectionId={activeConnectionId}
+        onOpenChange={setIsCommandBarVisible}
+      />
       <div className="relative isolate min-h-full px-5 pb-10 pt-8 sm:px-8 sm:pt-12">
         <div
           aria-hidden="true"
@@ -142,7 +138,10 @@ function Index() {
             </div>
             <label className="relative w-full max-w-lg">
               <span className="sr-only">Search connections</span>
-              <RiSearchLine className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <RiSearchLine
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
                 type="search"
                 value={query}
@@ -164,8 +163,18 @@ function Index() {
                 {String(filteredConnections.length).padStart(2, "0")}
               </span>
               <div className="ml-auto flex items-center gap-2">
-                <Button variant="outline" size="icon-sm" className="rounded-full" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh connections">
-                  <RiRefreshLine className={isFetching ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  className="rounded-full"
+                  onClick={() => void refetch()}
+                  disabled={isFetching}
+                  aria-label="Refresh connections"
+                >
+                  <RiRefreshLine
+                    className={isFetching ? "size-4 animate-spin" : "size-4"}
+                    aria-hidden="true"
+                  />
                 </Button>
                 <Button className="h-8 rounded-full px-4 text-xs" onClick={toggleNewConnection}>
                   New connection <RiAddLine className="size-4" aria-hidden="true" />
@@ -173,28 +182,58 @@ function Index() {
               </div>
             </div>
             <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background">All</span>
-                <select
-                  value={sort}
-                  onChange={(event) => setSort(event.target.value as ConnectionSort)}
-                  aria-label="Sort connections"
-                  className="h-8 rounded-lg border border-border/60 bg-background px-2 text-xs text-muted-foreground focus-visible:outline-ring"
+              <div
+                role="group"
+                className="flex flex-wrap items-center gap-2"
+                aria-label="Filter connections by tag"
+              >
+                <button
+                  type="button"
+                  aria-pressed={selectedTag === null}
+                  onClick={() => setSelectedTag(null)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${selectedTag === null ? "bg-foreground text-background" : "border border-border text-muted-foreground hover:text-foreground"}`}
                 >
-                  <option value="recent">Recently opened</option>
-                  <option value="name">Name</option>
-                </select>
+                  All
+                </button>
+                {availableTags.map((tag) => {
+                  const tagColor = getConnectionTagColor(
+                    profiles.find((profile) => matchesConnectionTag(profile, tag))?.tag_color,
+                  );
+                  const isSelected = selectedTag === tag;
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedTag(isSelected ? null : tag)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: `color-mix(in oklch, var(--${tagColor}) 65%, var(--border))`,
+                        backgroundColor: isSelected
+                          ? `color-mix(in oklch, var(--${tagColor}) 22%, var(--card))`
+                          : "transparent",
+                        color: "var(--foreground)",
+                      }}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
               </div>
               <ConnectionGrid
                 connections={filteredConnections}
                 onOpen={handleOpen}
-                onEdit={(connection) => openModal("new-connection", { connectionId: connection.id })}
+                onEdit={(connection) =>
+                  void navigate({
+                    to: "/connections/new",
+                    search: { connectionId: connection.id },
+                  })
+                }
                 onDelete={(connection) => void handleDelete(connection)}
               />
             </div>
           </section>
         </main>
-        <NewConnectionPanel />
       </div>
     </ScrollArea>
   );
@@ -206,16 +245,17 @@ function toConnectionItem(profile: ConnectionProfile): ConnectionItem {
   const connectionString = fullConnectionString
     ? redactConnectionString(fullConnectionString)
     : undefined;
-  const searchValues = profile.connect_mode.type === "fields"
-    ? [
-        profile.connect_mode.host,
-        String(profile.connect_mode.port),
-        profile.connect_mode.database,
-        profile.connect_mode.username,
-      ]
-    : connectionString
-      ? [connectionString]
-      : [];
+  const searchValues =
+    profile.connect_mode.type === "fields"
+      ? [
+          profile.connect_mode.host,
+          String(profile.connect_mode.port),
+          profile.connect_mode.database,
+          profile.connect_mode.username,
+        ]
+      : connectionString
+        ? [connectionString]
+        : [];
 
   return {
     id: profile.id,
@@ -228,6 +268,8 @@ function toConnectionItem(profile: ConnectionProfile): ConnectionItem {
     connectionStringLabel: profile.db_type === "sqlite" ? "Database path" : "Connection string",
     searchValues,
     metadata: [],
+    tags: profile.tags ?? [],
+    tagColor: profile.tag_color,
     lastOpenedAt: profile.last_opened_at,
   };
 }

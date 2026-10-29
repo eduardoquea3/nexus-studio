@@ -15,7 +15,6 @@ import { useConnections } from "@/app/home/hooks/use-connections";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getTableSchema } from "@/shared/lib/tauriApi";
-import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
 
 type ConnectionSidebarProps = {
@@ -33,7 +32,6 @@ export function ConnectionSidebar({
   onTableSelect,
   onRoutineSelect,
 }: ConnectionSidebarProps) {
-  const openModal = useModalStore((state) => state.openModal);
   const initialDatabase = getInitialDatabase(profile);
   const {
     data: databaseValues = [],
@@ -154,7 +152,7 @@ export function ConnectionSidebar({
         </div>
       </ScrollArea>
       <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
-        <ConnectionSwitcherMenu profile={profile} connections={connections} openModal={openModal} />
+        <ConnectionSwitcherMenu profile={profile} connections={connections} />
       </div>
     </aside>
   );

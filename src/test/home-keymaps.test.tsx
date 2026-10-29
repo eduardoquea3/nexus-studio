@@ -3,10 +3,9 @@ import "./setup";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
-import { HomePanels } from "@/app/home/lib/home-panels";
 import { useModalStore } from "@/shared/store/modalStore";
 
-const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render } = await import("@testing-library/react");
 
 describe("HomeKeymaps", () => {
   beforeEach(() => {
@@ -15,16 +14,13 @@ describe("HomeKeymaps", () => {
 
   afterEach(() => cleanup());
 
-  test("handles Ctrl+N from Home and while the New Connection panel is open", () => {
+  test("handles Ctrl+N from Home", () => {
     const onNewConnection = mock(() => undefined);
     render(<HomeKeymaps onNewConnection={onNewConnection} isCommandBarVisible={false} />);
 
     fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
     expect(onNewConnection).toHaveBeenCalledTimes(1);
 
-    useModalStore.setState({ modals: [HomePanels.NewConnection], modalProps: {} });
-    fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
-    expect(onNewConnection).toHaveBeenCalledTimes(2);
   });
 
   test("ignores Ctrl+N when the command bar or another modal is visible", () => {
@@ -34,7 +30,7 @@ describe("HomeKeymaps", () => {
     fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
     expect(onNewConnection).not.toHaveBeenCalled();
 
-    useModalStore.setState({ modals: ["other-modal"], modalProps: {} });
+    act(() => useModalStore.setState({ modals: ["other-modal"], modalProps: {} }));
     fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
     expect(onNewConnection).not.toHaveBeenCalled();
   });

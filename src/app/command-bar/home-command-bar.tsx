@@ -4,11 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { CommandBar } from "@/app/command-bar/command-bar";
 import { describeConnection, type CommandBarItem } from "@/app/command-bar/command-bar-utils";
 import { useConnections } from "@/app/home/hooks/use-connections";
-import { HomePanels } from "@/app/home/lib/home-panels";
 import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { toast } from "@/components/ui/toast";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
-import { useModalStore } from "@/shared/store/modalStore";
 
 type HomeCommandBarProps = {
   activeConnectionId: string | null;
@@ -18,7 +16,6 @@ type HomeCommandBarProps = {
 export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommandBarProps) {
   const { data: connections = [], isLoading, isFetching } = useConnections();
   const navigate = useNavigate();
-  const openModal = useModalStore((state) => state.openModal);
   const [isOpen, setIsOpen] = useState(false);
   const [switchingConnectionIds, setSwitchingConnectionIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -127,7 +124,7 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
       onSelect={(item) => {
         if (item.kind === "command" && item.command === "new-connection") {
           closeCommandBar();
-          openModal(HomePanels.NewConnection, { source: "command-bar" });
+          void navigate({ to: "/connections/new", search: { connectionId: undefined } });
         }
       }}
       onConnectionSelect={(profile) => void switchConnection(profile)}

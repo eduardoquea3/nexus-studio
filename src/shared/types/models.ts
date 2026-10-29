@@ -8,6 +8,8 @@ export interface ConnectionProfile {
   connect_mode: ConnectMode;
   ssh_tunnel: SshTunnelConfig | null;
   last_opened_at?: number;
+  tags?: string[];
+  tag_color?: string;
 }
 
 export type ConnectMode =
