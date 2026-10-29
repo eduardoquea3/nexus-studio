@@ -15,18 +15,18 @@ Scope: Connection create/edit, saved-connection list/card rendering, and list fi
 
 ## Tasks
 
-- T1 | S1-S7 | inline | commit: none (not authorized) — Implement optional persisted connection metadata, create/edit tag UI and color palette, card rendering, tag filtering, deterministic recent-first ordering, and focused tests. Outcome: complete; 4 utility tests and one persistence test added.
-- T2 | S1-S7 | inline | commit: none (not authorized) — Run repository tests/build and review final diff. Outcome: complete; `bun test --isolate` and `bun run build` pass; oxlint unavailable due missing package.
-- T3 | S1-S2 | inline | commit: none (not authorized) — Replace hard-coded badge colors with theme tokens, improve the tag picker, and add GSAP transitions. Outcome: complete; persisted color tokens adapt to light/dark themes, listbox keyboard navigation and reduced-motion behavior are supported, and GSAP animates picker options, selected chips, and card badges.
-- T4 | S1-S2 | inline | commit: none (not authorized) — Verify the tag picker and theme changes. Outcome: complete; user accepted automated checks only (`bun test --isolate`, 236 tests; `bun run build`; `git diff --check`) and waived browser visual verification because Orca lacks Python GTK/AT-SPI support.
-- T5 | S2 | inline | commit: none (not authorized) — Move visible connection tags into a compact card-header row and avoid adding card-body height. Outcome: complete; `bun test --isolate` passes (236 tests), `bun run build` passes, and `git diff --check` passes.
+- T1 | S1-S7 | inline | commit: 15a507e — Implement optional persisted connection metadata, create/edit tag UI and color palette, card rendering, tag filtering, deterministic recent-first ordering, and focused tests. Outcome: complete; 4 utility tests and one persistence test added.
+- T2 | S1-S7 | inline | commit: 15a507e — Run repository tests/build and review final diff. Outcome: complete; `bun test --isolate` and `bun run build` pass; oxlint unavailable due missing package.
+- T3 | S1-S2 | inline | commit: 15a507e — Replace hard-coded badge colors with theme tokens, improve the tag picker, and add GSAP transitions. Outcome: complete; persisted color tokens adapt to light/dark themes, listbox keyboard navigation and reduced-motion behavior are supported, and GSAP animates picker options, selected chips, and card badges.
+- T4 | S1-S2 | inline | commit: 15a507e — Verify the tag picker and theme changes. Outcome: complete; user accepted automated checks only (`bun test --isolate`, 236 tests; `bun run build`; `git diff --check`) and waived browser visual verification because Orca lacks Python GTK/AT-SPI support.
+- T5 | S2 | inline | commit: 15a507e — Move visible connection tags into a compact card-header row and avoid adding card-body height. Outcome: complete; `bun test --isolate` passes (236 tests), `bun run build` passes, and `git diff --check` passes.
 
 ## Routing and checks
 
 - User authorized implementation continuation after the delegated writer returned `interaction_required`; the prior inline-edit blocker is resolved.
 - TDD: `bun test --isolate`; RED observed when the new test imported the not-yet-created helper, then GREEN after implementation.
 - Additional checks: `bun run build`, `git diff --check`.
-- Delivery strategy: no commit, push, PR, or release was authorized.
+- Delivery: local commit `15a507e` (`feat(connections): add tagged connection setup workflow`); no push, PR, or release was authorized.
 
 ## Evidence
 
@@ -48,3 +48,4 @@ Scope: Connection create/edit, saved-connection list/card rendering, and list fi
 - L5: /tmp/orca-paste-1793286725258-ecce7c05-db1b-4bd8-8ec3-99a6e83cc5af.png /tmp/orca-paste-1793286817489-ec1dd38c-b8ce-47b5-8a13-49f397944fb5.png
   mejora con frontend-design skill , de los badges que usen los colores del theme y mejora el select del tags usa gsap para agregar mas animaciones
 - L6: /tmp/orca-paste-1793299427834-67487f88-e8fd-4e8d-a9e6-2ae6a295f706.png mejora el design de donde se coloca el badge del tag ya que esta q descuadra todo el design en la lista de conexion
+- L7: Committed the integrated connection setup and tagging work in `15a507e`; full tests and build passed before commit.
