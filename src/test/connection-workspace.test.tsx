@@ -399,6 +399,18 @@ describe("Connection workspace route sessions", () => {
     return { router, queryClient };
   }
 
+  test("rounds only the outer window frame for the connection workspace", async () => {
+    const { router } = await openConnection();
+    const appShell = document.querySelector(".connection-workbench")?.closest(".h-screen");
+
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(true);
+    expect(appShell?.classList.contains("border-[8px]")).toBe(true);
+
+    await router.navigate({ to: "/" });
+    await screen.findByText("Saved connections");
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(false);
+  });
+
   test("cancels from database selection back to the connections list", async () => {
     const { router } = await openConnectionSetup();
 
