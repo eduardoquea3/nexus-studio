@@ -20,7 +20,7 @@ export function ConnectionDatabaseSelector({
   hasError,
 }: ConnectionDatabaseSelectorProps) {
   return (
-    <div className="border-b border-border/70 px-4 py-4">
+    <div className="border-b border-border/70 px-3 py-2.5">
       <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
         Database
       </p>
@@ -37,7 +37,7 @@ export function ConnectionDatabaseSelector({
           isLoading ? "Loading databases..." : hasError ? "Database unavailable" : "Select database"
         }
         isLoading={isLoading}
-        className="mt-1 h-8 w-full text-xs"
+        className="mt-1 h-7 w-full text-xs"
         disabled={databases.length === 0 || isLoading}
       />
       {hasError ? (

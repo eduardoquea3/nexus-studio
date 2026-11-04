@@ -16,11 +16,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { explorerGroups } from "../utils/connection-explorer";
+
 import type { ConnectionExplorerProps } from "../types/connection-explorer";
+
+import { explorerGroups } from "../utils/connection-explorer";
 
 export function ConnectionExplorer({
   dbType,
+  selectedTableName,
+  selectedTableSchema,
   schemaObjects,
   isLoading,
   error,
@@ -55,9 +59,7 @@ export function ConnectionExplorer({
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-2 py-2">
-        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Explorer
-        </p>
+        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-[#a3a6b0]">Explorer</p>
         <Button
           type="button"
           variant="ghost"
@@ -99,7 +101,10 @@ export function ConnectionExplorer({
             );
             return (
               <FolderItem key={group.id} value={group.id}>
-                <FolderTrigger icon={group.icon} className="text-xs">
+                <FolderTrigger
+                  icon={group.icon}
+                  className="text-xs text-[#c3c5ce] hover:bg-[#151820]"
+                >
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                     <span>{group.label}</span>
                     <span className="text-2xs text-muted-foreground">{objects.length}</span>
@@ -113,13 +118,23 @@ export function ConnectionExplorer({
                   ) : (
                     objects.map((object) => {
                       const isTable = group.objectType === "table";
+                      const isSelectedTable =
+                        isTable &&
+                        object.name === selectedTableName &&
+                        (!selectedTableSchema || object.schema === selectedTableSchema);
                       const resourceKey = tableResourceKey(object.schema, object.name);
                       const isExpanded = expandedTables.includes(resourceKey);
                       const columns = tableColumns[resourceKey];
                       return (
                         <div key={resourceKey}>
                           {isTable ? (
-                            <div className="group flex items-center gap-2 rounded-md p-2 text-xs transition-colors hover:bg-muted/60 hover:text-foreground">
+                            <div
+                              className={cn(
+                                "group flex items-center gap-2 rounded-md p-1.5 text-xs transition-colors hover:bg-[#151820] hover:text-foreground",
+                                isSelectedTable &&
+                                  "bg-[#1a1b2a] text-[#e1e0ff] ring-1 ring-inset ring-violet-500/35",
+                              )}
+                            >
                               <button
                                 type="button"
                                 className="group/icon relative flex size-4.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -130,6 +145,7 @@ export function ConnectionExplorer({
                                 <RiTableLine
                                   className={cn(
                                     "size-4 transition-opacity",
+                                    isSelectedTable && "text-violet-300",
                                     isExpanded ? "hidden" : "group-hover/icon:opacity-0",
                                   )}
                                   aria-hidden="true"

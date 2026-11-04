@@ -438,7 +438,9 @@ describe("Connection workspace route sessions", () => {
     const savedProfile = saveConnection.mock.calls[0]?.[0];
     expect(savedProfile).toMatchObject({ name: "MySQL test", db_type: "mysql" });
     expect(saveConnection.mock.calls[0]?.[1]).toBe("create");
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`),
+    );
   });
 
   test("saves without testing the connection and returns to the connections list", async () => {
@@ -862,8 +864,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").className).toContain("rounded-none");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-md");
+    expect(screen.getByRole("tablist").className).toContain("rounded-md");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;
