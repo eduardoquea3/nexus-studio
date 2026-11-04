@@ -249,10 +249,11 @@ mock.module("@/shared/lib/tauriApi", () => ({
 mock.module("@/app/home/hooks/use-connections", () => ({
   connectionsQueryKey: ["connections"],
   useConnections: () => ({ data: availableConnections }),
-  useConnection: (id: string) =>
+  useConnection: (id: string, options: { enabled?: boolean } = {}) =>
     useQuery({
       queryKey: ["connections", id],
       queryFn: () => getConnectionProfile(id),
+      enabled: options.enabled ?? true,
     }),
 }));
 
@@ -708,6 +709,17 @@ describe("ConnectionWorkspace SQL tabs", () => {
   afterEach(() => {
     cleanup();
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+  });
+
+  test("does not render a second appbar and rounds the main workspace panel", () => {
+    renderWorkspace();
+
+    expect(screen.queryByText("NEXUS STUDIO")).toBeNull();
+    expect(
+      document
+        .querySelector('.connection-workbench section[aria-label="SQL editor workspace"]')
+        ?.classList.contains("rounded-xl"),
+    ).toBe(true);
   });
 
   test("keeps the saved connection database selected and blocks a table tab from another database", () => {
