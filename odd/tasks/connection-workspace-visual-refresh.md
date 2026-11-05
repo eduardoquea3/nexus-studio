@@ -15,7 +15,7 @@ Goal: Apply the reference's compact dark database-workbench styling to the exist
 
 ## Tasks
 
-- T1 — S1-S7 — Inline — Commits: 2be3b4e (initial), 10a203f (unified titlebar/panel follow-up), efc9aa8 (rounded outer corners); mockup-border cleanup completed as a local follow-up diff. Implement the dark workbench visual framing, connection identity, explorer selection, tabs, data grid and footer while preserving existing behavior; apply the user's panel-radius, unified-titlebar, and outer-radius corrections without adding emulation chrome.
+- T1 — S1-S7 — Inline — Commits: 2be3b4e (initial), 10a203f (unified titlebar/panel follow-up), efc9aa8 (rounded outer corners), ef6c8d2 (panel radius and mockup-border cleanup), a87e822 (compact table toolbar controls). Implement the dark workbench visual framing, connection identity, explorer selection, tabs, data grid and footer while preserving existing behavior; apply the user's panel-radius, unified-titlebar, and outer-radius corrections without adding emulation chrome.
 - T2 — S1-S2 — Inline — Commit: 2be3b4e. Run focused tests/build and verify workspace behavior, then record evidence.
 
 ## Log
@@ -34,4 +34,5 @@ Goal: Apply the reference's compact dark database-workbench styling to the exist
 - L12: Outer-frame regression test observed RED before implementation and GREEN afterward. `bun test --isolate test/title-bar.test.tsx test/connection-workspace.test.tsx` passed (79/79); build passed with the existing large-chunk warning; oxfmt and `git diff --check` passed. The integration test confirms other routes do not receive the connection-only frame.
 - L13: Commit `efc9aa8` assessed as medium (`reviewDue: false`, `under_budget`) against `f625101`; no native review transaction was started. The final correction remains local.
 - L14: User clarification appended verbatim to S7; T1 reopened to remove the mockup-only outer border while retaining the app shell radius.
-- L15: Test-first border cleanup observed RED on the prior border, then GREEN after removing border/color classes. Focused titlebar/workspace tests passed (80/80); full suite passed (253/253); oxfmt and `git diff --check` passed. Native assessment: medium, `reviewDue: false` (`under_budget`); no native review transaction was started. The correction remains an uncommitted local diff; no push or PR.
+- L15: Test-first border cleanup observed RED on the prior border, then GREEN after removing border/color classes. Focused titlebar/workspace tests passed (80/80); full suite passed (253/253); oxfmt and `git diff --check` passed. Native assessment: medium, `reviewDue: false` (`under_budget`); no native review transaction was started. The correction is recorded in `ef6c8d2`; no push or PR.
+- L16: Additional local follow-up slices: `ef6c8d2` records matching panel radii and removal of mockup-only border; `a87e822` records compact bottom-toolbar controls, each with code and tests in its slice. The feature now has local evidence for these commits; no push or PR was authorized.
