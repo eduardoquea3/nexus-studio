@@ -76,7 +76,7 @@ export function TableDataToolbar({
       <div className="flex min-w-0 items-center gap-2 justify-self-start">
         {canShowJson ? (
           <div
-            className="flex h-8 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
+            className="flex h-7 items-center gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5"
             role="group"
             aria-label="Table data view"
           >
@@ -84,7 +84,7 @@ export function TableDataToolbar({
               type="button"
               size="xs"
               variant="ghost"
-              className={`h-7 text-xs ${viewMode === "table" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
+              className={`h-6 text-xs ${viewMode === "table" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
               aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
               onKeyDown={(event) => activateViewMode(event, "table", setViewMode)}
@@ -95,7 +95,7 @@ export function TableDataToolbar({
               type="button"
               size="xs"
               variant="ghost"
-              className={`h-7 text-xs ${viewMode === "json" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
+              className={`h-6 text-xs ${viewMode === "json" ? "border-primary/30 bg-primary/15 text-foreground" : "text-muted-foreground"}`}
               aria-pressed={viewMode === "json"}
               onClick={() => setViewMode("json")}
               onKeyDown={(event) => activateViewMode(event, "json", setViewMode)}
@@ -104,16 +104,16 @@ export function TableDataToolbar({
             </Button>
           </div>
         ) : null}
-        <TabsList className="h-8 justify-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5">
+        <TabsList className="h-7 justify-start gap-0.5 rounded-md border border-border/70 bg-muted/30 p-0.5">
           <TabsTrigger
             value="data"
-            className="h-7 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm"
+            className="h-6 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm"
           >
             Data
           </TabsTrigger>
           <TabsTrigger
             value="structure"
-            className="h-7 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm"
+            className="h-6 px-2 text-xs data-active:border-primary/30 data-active:bg-primary/15 data-active:text-foreground data-active:shadow-sm"
           >
             Structure
           </TabsTrigger>
@@ -123,23 +123,23 @@ export function TableDataToolbar({
         <Button
           type="button"
           variant="outline"
-          size="icon-xs"
-          className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
+          size="icon"
+          className={`rounded-lg p-0 transition-colors ${neutralActionClassName}`}
           disabled={isLoading}
           onClick={onRefresh}
           aria-label="Refresh table data"
           title="Refresh table data"
         >
-          <RiRefreshLine className="size-5" />
+          <RiRefreshLine className="size-4" />
         </Button>
         <Button
           type="button"
           variant={draftRow ? "secondary" : "outline"}
-          size="icon-xs"
+          size="icon"
           className={
             draftRow
-              ? `h-8 w-8 rounded-md p-0 transition-colors ${destructiveActionClassName}`
-              : `h-8 w-8 rounded-md p-0 transition-colors ${primaryActionClassName}`
+              ? `rounded-lg p-0 transition-colors ${destructiveActionClassName}`
+              : `rounded-lg p-0 transition-colors ${primaryActionClassName}`
           }
           disabled={!draftRow && (isLoading || columnNames.length === 0)}
           onClick={() =>
@@ -150,14 +150,14 @@ export function TableDataToolbar({
           aria-label={draftRow ? "Cancel add row" : "Add row"}
           title={draftRow ? "Cancel add row" : "Add row"}
         >
-          {draftRow ? <RiCloseLine className="size-4" /> : <RiAddLine className="size-5" />}
+          {draftRow ? <RiCloseLine className="size-4" /> : <RiAddLine className="size-4" />}
         </Button>
         {draftRow ? (
           <Button
             type="button"
             variant="outline"
-            size="icon-lg"
-            className={primaryActionClassName}
+            size="icon-sm"
+            className={`rounded-lg ${primaryActionClassName}`}
             disabled={isLoading || isInsertingRow}
             onClick={onInsertRow}
             aria-label="Insert row"
@@ -171,8 +171,8 @@ export function TableDataToolbar({
             <Button
               type="button"
               variant="outline"
-              size="icon-lg"
-              className={primaryActionClassName}
+              size="icon-sm"
+              className={`rounded-lg ${primaryActionClassName}`}
               disabled={isExportingRows}
               onClick={onExportRows}
               aria-label={`Export ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} as JSON`}
@@ -183,8 +183,8 @@ export function TableDataToolbar({
             <Button
               type="button"
               variant="outline"
-              size="icon-lg"
-              className={destructiveActionClassName}
+              size="icon-sm"
+              className={`rounded-lg ${destructiveActionClassName}`}
               disabled={!canMarkSelectedForDeletion || isLoading || isApplyingDeletions}
               onClick={onMarkSelectedForDeletion}
               aria-label={`Mark ${selectedRowCount} selected ${selectedRowCount === 1 ? "row" : "rows"} for deletion`}
@@ -209,8 +209,8 @@ export function TableDataToolbar({
             <Button
               type="button"
               variant="outline"
-              size="icon-xs"
-              className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
+              size="icon"
+              className={`rounded-lg p-0 transition-colors ${neutralActionClassName}`}
               disabled={isApplyingDeletions}
               onClick={onUndoPendingDeletion}
               aria-label="Undo last pending deletion"
@@ -221,8 +221,8 @@ export function TableDataToolbar({
             <Button
               type="button"
               variant="outline"
-              size="icon-xs"
-              className={`h-8 w-8 rounded-md p-0 transition-colors ${neutralActionClassName}`}
+              size="icon"
+              className={`rounded-lg p-0 transition-colors ${neutralActionClassName}`}
               disabled={isApplyingDeletions}
               onClick={onCancelPendingDeletions}
               aria-label="Cancel pending deletions"
@@ -233,8 +233,8 @@ export function TableDataToolbar({
             <Button
               type="button"
               variant="default"
-              size="icon-lg"
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              size="icon-sm"
+              className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isApplyingDeletions || isLoading}
               onClick={onApplyPendingDeletions}
               aria-label={`Apply ${pendingDeletionCount} pending ${pendingDeletionCount === 1 ? "deletion" : "deletions"}`}
@@ -251,13 +251,13 @@ export function TableDataToolbar({
       </div>
       <nav
         aria-label="Table data pagination"
-        className="col-start-2 row-start-1 flex h-7 items-center justify-self-center gap-1 text-[0.65rem]"
+        className="col-start-2 row-start-1 flex h-6 items-center justify-self-center gap-1 text-[0.65rem]"
       >
         <Button
           type="button"
           size="xs"
           variant="ghost"
-          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
+          className="h-6 w-6 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={page <= 1 || isLoading}
           onClick={() => onPageChange(1)}
           aria-label="First table page"
@@ -268,7 +268,7 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
+          className="h-6 w-6 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={page <= 1 || isLoading}
           onClick={() => onPageChange(Math.max(1, page - 1))}
           aria-label="Previous table page"
@@ -277,7 +277,7 @@ export function TableDataToolbar({
         </Button>
         <span
           aria-label={`Current page ${page}`}
-          className="flex h-7 min-w-8 items-center justify-center rounded-md border border-primary/30 bg-primary/10 px-2 text-center font-medium tabular-nums text-foreground"
+          className="flex h-6 min-w-7 items-center justify-center rounded-md border border-primary/30 bg-primary/10 px-2 text-center font-medium tabular-nums text-foreground"
         >
           {page}
         </span>
@@ -285,7 +285,7 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
+          className="h-6 w-6 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={isLoading || page >= pageCount}
           onClick={() => onPageChange(page + 1)}
           aria-label="Next table page"
@@ -296,7 +296,7 @@ export function TableDataToolbar({
           type="button"
           size="xs"
           variant="ghost"
-          className="h-7 w-7 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
+          className="h-6 w-6 rounded-md border border-border/70 p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
           disabled={isLoading || page >= pageCount}
           onClick={() => onPageChange(pageCount)}
           aria-label="Last table page"

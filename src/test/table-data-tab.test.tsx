@@ -306,10 +306,12 @@ describe("TableDataTab empty rows", () => {
     const addRowButton = screen.getByRole("button", { name: "Add row" });
     expect(refreshButton.textContent).toBe("");
     expect(addRowButton.textContent).toBe("");
-    expect(refreshButton.className).toContain("h-8 w-8 rounded-md");
-    expect(addRowButton.className).toContain("h-8 w-8 rounded-md");
-    expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
-    expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
+    expect(refreshButton.className).toContain("size-7");
+    expect(addRowButton.className).toContain("size-7");
+    expect(refreshButton.className).toContain("rounded-lg");
+    expect(addRowButton.className).toContain("rounded-lg");
+    expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-4");
+    expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-4");
     expect(screen.getByLabelText("Current page 1").textContent).toBe("1");
     expect(screen.getByRole("navigation", { name: "Table data pagination" }).className).toContain(
       "justify-self-center",
@@ -322,7 +324,7 @@ describe("TableDataTab empty rows", () => {
 
     expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "Structure" })).not.toBeNull();
-    expect(screen.getByRole("tablist").className).toContain("h-8");
+    expect(screen.getByRole("tablist").className).toContain("h-7");
     expect(screen.getByRole("columnheader", { name: "#" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^name/ })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^active/ })).not.toBeNull();
@@ -855,7 +857,7 @@ describe("TableDataTab empty rows", () => {
       page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
-    expect(screen.getByRole("group", { name: "Table data view" }).className).toContain("h-8");
+    expect(screen.getByRole("group", { name: "Table data view" }).className).toContain("h-7");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(refetchTable).not.toHaveBeenCalled();
