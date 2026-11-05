@@ -53,7 +53,7 @@ function RootLayout() {
     <div
       className={[
         "flex h-screen flex-col overflow-hidden bg-background",
-        isConnectionWorkspace && "rounded-[28px] border-[8px] border-[#9ca3af]",
+        isConnectionWorkspace && "rounded-[28px]",
       ]
         .filter(Boolean)
         .join(" ")}

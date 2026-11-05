@@ -404,7 +404,8 @@ describe("Connection workspace route sessions", () => {
     const appShell = document.querySelector(".connection-workbench")?.closest(".h-screen");
 
     expect(appShell?.classList.contains("rounded-[28px]")).toBe(true);
-    expect(appShell?.classList.contains("border-[8px]")).toBe(true);
+    expect(appShell?.classList.contains("border-[8px]")).toBe(false);
+    expect(appShell?.classList.contains("border-[#9ca3af]")).toBe(false);
 
     await router.navigate({ to: "/" });
     await screen.findByText("Saved connections");
@@ -730,7 +731,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(
       document
         .querySelector('.connection-workbench section[aria-label="SQL editor workspace"]')
-        ?.classList.contains("rounded-xl"),
+        ?.classList.contains("rounded-2xl"),
     ).toBe(true);
   });
 
@@ -888,8 +889,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-md");
-    expect(screen.getByRole("tablist").className).toContain("rounded-md");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-lg");
+    expect(screen.getByRole("tablist").className).toContain("rounded-lg");
+    expect(screen.getByRole("tablist").parentElement?.className).toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;

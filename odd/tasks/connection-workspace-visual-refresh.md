@@ -10,11 +10,12 @@ Goal: Apply the reference's compact dark database-workbench styling to the exist
 3. User correction: "ya pero no veo que la seccion del sidebar y la de los tabs este en un isla con border-radius, aparte se repite 2 veces la bar de la parte superior". Put rounded bordered panels around the sidebar and main workspace, and consolidate the repeated top bars into one; S4-S5 specify its contents.
 4. User clarification: "pero la parte izquierda de bar superior mantenlo como la imagen, con el icono, y aparte". Keep the appbar's left-side brand icon and label from the supplied reference.
 5. User clarification: "q sea uno solo". Combine the brand icon, connection badge, and window controls into one top bar, matching the supplied reference.
-6. User correction: "faltaria que tenga el mismo border-radius". Add the matching rounded outer frame shown in the supplied screenshot around the single top bar and connection workspace, retaining the rounded sidebar and main workspace panels.
+6. User correction: "faltaria que tenga el mismo border-radius". Add matching rounded outer corners to the connection app shell around the single top bar and workspace, retaining the rounded sidebar and main panels; S7 clarifies that the mockup border itself is not app UI.
+7. User clarification: "pero el borde blanco es solo la emulacion de una web no es como tal parte del app". Do not render the mockup's white/emulation border; retain only the requested outer corner radius.
 
 ## Tasks
 
-- T1 — S1-S6 — Inline — Commits: 2be3b4e (initial), 10a203f (unified titlebar/panel follow-up), efc9aa8 (outer frame). Implement the dark workbench visual framing, connection identity, explorer selection, tabs, data grid and footer while preserving existing behavior; apply the user's panel-radius, unified-titlebar, and outer-radius corrections.
+- T1 — S1-S7 — Inline — Commits: 2be3b4e (initial), 10a203f (unified titlebar/panel follow-up), efc9aa8 (rounded outer corners); mockup-border cleanup completed as a local follow-up diff. Implement the dark workbench visual framing, connection identity, explorer selection, tabs, data grid and footer while preserving existing behavior; apply the user's panel-radius, unified-titlebar, and outer-radius corrections without adding emulation chrome.
 - T2 — S1-S2 — Inline — Commit: 2be3b4e. Run focused tests/build and verify workspace behavior, then record evidence.
 
 ## Log
@@ -32,3 +33,5 @@ Goal: Apply the reference's compact dark database-workbench styling to the exist
 - L11: User correction appended verbatim to S6; T1 reopened to add the matching rounded outer frame shown in Image#5.
 - L12: Outer-frame regression test observed RED before implementation and GREEN afterward. `bun test --isolate test/title-bar.test.tsx test/connection-workspace.test.tsx` passed (79/79); build passed with the existing large-chunk warning; oxfmt and `git diff --check` passed. The integration test confirms other routes do not receive the connection-only frame.
 - L13: Commit `efc9aa8` assessed as medium (`reviewDue: false`, `under_budget`) against `f625101`; no native review transaction was started. The final correction remains local.
+- L14: User clarification appended verbatim to S7; T1 reopened to remove the mockup-only outer border while retaining the app shell radius.
+- L15: Test-first border cleanup observed RED on the prior border, then GREEN after removing border/color classes. Focused titlebar/workspace tests passed (80/80); full suite passed (253/253); oxfmt and `git diff --check` passed. Native assessment: medium, `reviewDue: false` (`under_budget`); no native review transaction was started. The correction remains an uncommitted local diff; no push or PR.
