@@ -47,7 +47,7 @@ export function ConnectionWorkspace({
     openRoutineTab,
   } = controller;
   return (
-    <div className="connection-workbench dark relative flex h-full min-h-0 flex-col overflow-hidden bg-background p-2 text-foreground">
+    <div className="connection-workbench relative flex h-full min-h-0 flex-col overflow-hidden bg-background p-2 text-foreground">
       {commandBarMode ? (
         <CommandBar
           mode={commandBarMode}

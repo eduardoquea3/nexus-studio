@@ -48,7 +48,7 @@ describe("TitleBar", () => {
     routeState.matches.splice(0, routeState.matches.length, connectionMatch);
   });
 
-  test("combines connection identity and window controls into one top bar", () => {
+  test("uses the branded top bar without showing connection identity", () => {
     const { container } = render(<TitleBar />);
 
     expect(container.querySelectorAll("header")).toHaveLength(1);
@@ -64,8 +64,9 @@ describe("TitleBar", () => {
     routeState.matches.splice(0, routeState.matches.length);
     render(<TitleBar />);
 
-    expect(screen.getByText("Nexus Studio")).not.toBeNull();
-    expect(screen.queryByText("NEXUS STUDIO")).toBeNull();
+    expect(screen.getByText("NEXUS STUDIO")).not.toBeNull();
+    expect(screen.queryByText("Production")).toBeNull();
+    expect(screen.queryByText("Nexus Studio")).toBeNull();
     expect(screen.getByRole("button", { name: "Open settings" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).not.toBeNull();
   });

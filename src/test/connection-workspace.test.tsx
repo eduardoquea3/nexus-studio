@@ -399,11 +399,12 @@ describe("Connection workspace route sessions", () => {
     return { router, queryClient };
   }
 
-  test("rounds only the outer window frame for the connection workspace", async () => {
+  test("uses the selected theme and rounds only the outer workspace frame", async () => {
     const { router } = await openConnection();
     const appShell = document.querySelector(".connection-workbench")?.closest(".h-screen");
 
     expect(appShell?.classList.contains("rounded-[28px]")).toBe(true);
+    expect(document.querySelector(".connection-workbench")?.classList.contains("dark")).toBe(false);
     expect(appShell?.classList.contains("border-[8px]")).toBe(false);
     expect(appShell?.classList.contains("border-[#9ca3af]")).toBe(false);
 
@@ -891,7 +892,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-lg");
     expect(screen.getByRole("tablist").className).toContain("rounded-lg");
-    expect(screen.getByRole("tablist").parentElement?.className).toContain("rounded-2xl");
+    expect(screen.getByRole("tablist").parentElement?.className).not.toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;

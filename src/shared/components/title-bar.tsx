@@ -59,12 +59,12 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
         data-tauri-drag-region
         className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground"
       >
+        <div className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground">
+          <RiDatabase2Line className="size-4 text-violet-400" aria-hidden="true" />
+          <span>NEXUS STUDIO</span>
+        </div>
         {profile ? (
           <>
-            <div className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground">
-              <RiDatabase2Line className="size-4 text-violet-400" aria-hidden="true" />
-              <span>NEXUS STUDIO</span>
-            </div>
             <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
             <div className="flex min-w-0 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[0.65rem] text-emerald-300">
               <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
@@ -72,9 +72,7 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
               <span className="hidden text-emerald-200/60 sm:inline">· {profile.db_type}</span>
             </div>
           </>
-        ) : (
-          <span>Nexus Studio</span>
-        )}
+        ) : null}
       </div>
 
       <div className="flex items-center gap-2">

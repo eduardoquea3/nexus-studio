@@ -22,7 +22,7 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
   } = controller;
   const tableTabs = workspaceTabs.flatMap((tab) => (tab.type === "table" ? [tab] : []));
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-1 rounded-2xl border-b border-border bg-surface px-2 py-1">
+    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border bg-surface px-2 py-1">
       <TabsList className="h-7 min-w-0 overflow-hidden rounded-lg bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-lg">
         {workspaceTabs.map((tab) => (
           <div key={tab.id} className="group flex h-7 items-center">
