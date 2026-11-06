@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { ConnectionSessionHost } from "@/app/connection/components/connection-session-host";
@@ -12,6 +12,11 @@ export const Route = createRootRoute({
 });
 
 function RootLayout() {
+  const isConnectionWorkspace = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId === "/connections/$connectionId"),
+  });
+
   useEffect(() => {
     const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const preventBrowserZoom = (event: KeyboardEvent) => {
@@ -45,7 +50,14 @@ function RootLayout() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div
+      className={[
+        "flex h-screen flex-col overflow-hidden bg-background",
+        isConnectionWorkspace && "rounded-[28px]",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <GlobalKeymaps />
       <TitleBar />
       <main className="min-h-0 flex-1 overflow-hidden">

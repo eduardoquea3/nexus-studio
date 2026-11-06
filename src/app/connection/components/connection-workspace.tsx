@@ -42,11 +42,12 @@ export function ConnectionWorkspace({
     editorSectionRef,
     handleWorkspaceKeyDown,
     selectedDatabase,
+    activeTableTab,
     handleDatabaseChange,
     openRoutineTab,
   } = controller;
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-background text-foreground">
+    <div className="connection-workbench dark relative flex h-full min-h-0 flex-col overflow-hidden bg-background p-2 text-foreground">
       {commandBarMode ? (
         <CommandBar
           mode={commandBarMode}
@@ -63,7 +64,10 @@ export function ConnectionWorkspace({
             if (item.kind === "command") {
               if (item.command === "disconnect") void controller.navigate({ to: "/" });
               if (item.command === "new-connection") {
-                void controller.navigate({ to: "/connections/new", search: { connectionId: undefined } });
+                void controller.navigate({
+                  to: "/connections/new",
+                  search: { connectionId: undefined },
+                });
               }
               if (item.command === "generate-er-diagram") openErDiagram();
               closeCommandBar(true);
@@ -100,10 +104,12 @@ export function ConnectionWorkspace({
           }
         />
       ) : null}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
         <ConnectionSidebar
           profile={profile}
           selectedDatabase={selectedDatabase}
+          selectedTableName={activeTableTab?.tableName}
+          selectedTableSchema={activeTableTab?.schema}
           onDatabaseChange={handleDatabaseChange}
           onTableSelect={openTableTab}
           onRoutineSelect={(routine) => void openRoutineTab(routine)}
@@ -115,7 +121,7 @@ export function ConnectionWorkspace({
               tabIndex={0}
               aria-label="SQL editor workspace"
               onKeyDownCapture={handleWorkspaceKeyDown}
-              className="flex h-full min-h-0 flex-col overflow-hidden border border-border/70 bg-card shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <ConnectionWorkspaceContent profile={profile} controller={controller} />
             </section>

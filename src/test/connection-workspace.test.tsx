@@ -249,10 +249,11 @@ mock.module("@/shared/lib/tauriApi", () => ({
 mock.module("@/app/home/hooks/use-connections", () => ({
   connectionsQueryKey: ["connections"],
   useConnections: () => ({ data: availableConnections }),
-  useConnection: (id: string) =>
+  useConnection: (id: string, options: { enabled?: boolean } = {}) =>
     useQuery({
       queryKey: ["connections", id],
       queryFn: () => getConnectionProfile(id),
+      enabled: options.enabled ?? true,
     }),
 }));
 
@@ -398,6 +399,19 @@ describe("Connection workspace route sessions", () => {
     return { router, queryClient };
   }
 
+  test("rounds only the outer window frame for the connection workspace", async () => {
+    const { router } = await openConnection();
+    const appShell = document.querySelector(".connection-workbench")?.closest(".h-screen");
+
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(true);
+    expect(appShell?.classList.contains("border-[8px]")).toBe(false);
+    expect(appShell?.classList.contains("border-[#9ca3af]")).toBe(false);
+
+    await router.navigate({ to: "/" });
+    await screen.findByText("Saved connections");
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(false);
+  });
+
   test("cancels from database selection back to the connections list", async () => {
     const { router } = await openConnectionSetup();
 
@@ -438,7 +452,9 @@ describe("Connection workspace route sessions", () => {
     const savedProfile = saveConnection.mock.calls[0]?.[0];
     expect(savedProfile).toMatchObject({ name: "MySQL test", db_type: "mysql" });
     expect(saveConnection.mock.calls[0]?.[1]).toBe("create");
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`),
+    );
   });
 
   test("saves without testing the connection and returns to the connections list", async () => {
@@ -708,6 +724,17 @@ describe("ConnectionWorkspace SQL tabs", () => {
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
   });
 
+  test("does not render a second appbar and rounds the main workspace panel", () => {
+    renderWorkspace();
+
+    expect(screen.queryByText("NEXUS STUDIO")).toBeNull();
+    expect(
+      document
+        .querySelector('.connection-workbench section[aria-label="SQL editor workspace"]')
+        ?.classList.contains("rounded-2xl"),
+    ).toBe(true);
+  });
+
   test("keeps the saved connection database selected and blocks a table tab from another database", () => {
     getTableData.mockClear();
     useWorkspaceStore.setState({
@@ -862,8 +889,9 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").className).toContain("rounded-none");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-lg");
+    expect(screen.getByRole("tablist").className).toContain("rounded-lg");
+    expect(screen.getByRole("tablist").parentElement?.className).toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;
