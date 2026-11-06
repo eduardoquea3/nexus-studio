@@ -423,35 +423,13 @@
   }
 }
 
-.connection-workbench {
-  --background: #0a0c10;
-  --foreground: #c8cad2;
-  --card: #101218;
-  --card-foreground: #c8cad2;
-  --popover: #151820;
-  --popover-foreground: #d5d7df;
-  --primary: #7774f4;
-  --primary-foreground: #f6f5ff;
-  --accent: #171a22;
-  --accent-foreground: #e0e2e8;
-  --muted: #151820;
-  --muted-foreground: #878a95;
-  --border: #252832;
-  --input: #20232c;
-  --ring: #807cff;
-  --surface: #101218;
-  --surface-raised: #151820;
-  --control: #101218;
-  --success: #35d2a1;
-}
-
 .connection-workbench [data-slot="table"] {
-  color: #c7c9d1;
+  color: var(--foreground);
 }
 
 .connection-workbench [data-slot="table-header"] {
-  background-color: #11131a;
-  color: #d6d8df;
+  background-color: var(--muted);
+  color: var(--foreground);
 }
 
 .connection-workbench [data-slot="table-head"] {
