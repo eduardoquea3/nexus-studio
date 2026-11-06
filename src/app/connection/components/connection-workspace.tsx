@@ -47,7 +47,7 @@ export function ConnectionWorkspace({
     openRoutineTab,
   } = controller;
   return (
-    <div className="connection-workbench dark relative flex h-full min-h-0 flex-col overflow-hidden bg-[#111318] p-2 text-foreground">
+    <div className="connection-workbench dark relative flex h-full min-h-0 flex-col overflow-hidden bg-background p-2 text-foreground">
       {commandBarMode ? (
         <CommandBar
           mode={commandBarMode}
@@ -121,7 +121,7 @@ export function ConnectionWorkspace({
               tabIndex={0}
               aria-label="SQL editor workspace"
               onKeyDownCapture={handleWorkspaceKeyDown}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-[#292d36] bg-[#0b0d12] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <ConnectionWorkspaceContent profile={profile} controller={controller} />
             </section>

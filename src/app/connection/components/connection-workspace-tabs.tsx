@@ -22,13 +22,13 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
   } = controller;
   const tableTabs = workspaceTabs.flatMap((tab) => (tab.type === "table" ? [tab] : []));
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-1 rounded-2xl border-b border-[#252831] bg-[#0c0e13] px-2 py-1">
+    <div className="flex min-w-0 shrink-0 items-center gap-1 rounded-2xl border-b border-border bg-surface px-2 py-1">
       <TabsList className="h-7 min-w-0 overflow-hidden rounded-lg bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-lg">
         {workspaceTabs.map((tab) => (
           <div key={tab.id} className="group flex h-7 items-center">
             <TabsTrigger
               value={tab.id}
-              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-lg border border-transparent px-2.5 text-xs text-muted-foreground data-[state=active]:border-[#30333d] data-[state=active]:bg-[#171922] data-[state=active]:text-foreground"
+              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-lg border border-transparent px-2.5 text-xs text-muted-foreground data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground"
               onClick={() => {
                 controller.setActiveTabId(tab.id);
                 if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
@@ -90,7 +90,7 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
           <div className="group flex h-7 items-center">
             <TabsTrigger
               value="er-diagram"
-              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-lg border border-transparent px-2.5 text-xs text-muted-foreground data-[state=active]:border-[#30333d] data-[state=active]:bg-[#171922] data-[state=active]:text-foreground"
+              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-lg border border-transparent px-2.5 text-xs text-muted-foreground data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground"
               onClick={openErDiagram}
               aria-label="ER diagram tab"
             >

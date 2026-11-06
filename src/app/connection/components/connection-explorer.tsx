@@ -59,7 +59,7 @@ export function ConnectionExplorer({
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-2 py-2">
-        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-[#a3a6b0]">Explorer</p>
+        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Explorer</p>
         <Button
           type="button"
           variant="ghost"
@@ -103,7 +103,7 @@ export function ConnectionExplorer({
               <FolderItem key={group.id} value={group.id}>
                 <FolderTrigger
                   icon={group.icon}
-                  className="text-xs text-[#c3c5ce] hover:bg-[#151820]"
+                  className="text-xs text-foreground hover:bg-muted"
                 >
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                     <span>{group.label}</span>
@@ -130,9 +130,9 @@ export function ConnectionExplorer({
                           {isTable ? (
                             <div
                               className={cn(
-                                "group flex items-center gap-2 rounded-md p-1.5 text-xs transition-colors hover:bg-[#151820] hover:text-foreground",
+                                "group flex items-center gap-2 rounded-md p-1.5 text-xs transition-colors hover:bg-muted hover:text-foreground",
                                 isSelectedTable &&
-                                  "bg-[#1a1b2a] text-[#e1e0ff] ring-1 ring-inset ring-violet-500/35",
+                                  "bg-accent text-accent-foreground ring-1 ring-inset ring-ring/35",
                               )}
                             >
                               <button
@@ -145,7 +145,7 @@ export function ConnectionExplorer({
                                 <RiTableLine
                                   className={cn(
                                     "size-4 transition-opacity",
-                                    isSelectedTable && "text-violet-300",
+                                    isSelectedTable && "text-accent-foreground",
                                     isExpanded ? "hidden" : "group-hover/icon:opacity-0",
                                   )}
                                   aria-hidden="true"
