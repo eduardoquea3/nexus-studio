@@ -82,7 +82,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           nullable: false,
           default: null,
           is_pk: false,
-          is_fk: false,
+          is_fk: true,
           is_unique: false,
         },
         {
@@ -326,12 +326,22 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("tab", { name: "Structure" })).not.toBeNull();
     expect(screen.getByRole("tablist").className).toContain("h-7");
     expect(screen.getByRole("columnheader", { name: "#" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: /^name/ })).not.toBeNull();
+    const nameHeader = screen.getByRole("columnheader", { name: /^name/ });
+    expect(nameHeader.className).toContain("border-r-2");
+    expect(nameHeader.className).toContain("border-border");
     expect(screen.getByRole("columnheader", { name: /^active/ })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^status/ })).not.toBeNull();
     expect(screen.getByText("varchar")).not.toBeNull();
     expect(screen.getByText("boolean")).not.toBeNull();
     expect(screen.getByText("enum")).not.toBeNull();
+    const primaryKeyIcon = screen.getByRole("img", { name: "Primary key" });
+    const foreignKeyIcon = screen.getByRole("img", { name: "Foreign key" });
+    expect(primaryKeyIcon.className).toContain("bg-primary/15");
+    expect(primaryKeyIcon.className).toContain("rounded-full");
+    expect(foreignKeyIcon.className).toContain("bg-success/15");
+    expect(foreignKeyIcon.className).toContain("rounded-full");
+    expect(screen.getByText("varchar").className).toContain("ml-auto");
+    expect(screen.getByText("varchar").className).toContain("text-right");
     expect(screen.getByRole("table").className.includes("min-w-max")).toBe(true);
     expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
@@ -378,10 +388,12 @@ describe("TableDataTab empty rows", () => {
     expect(document.querySelector('[data-row-index="1"]')?.getAttribute("data-row-selected")).toBe(
       "true",
     );
+    expect(secondRowSelector.closest("td")?.className).toContain("bg-primary/30");
+    expect(secondRowSelector.closest("td")?.className).toContain("group-hover/row:bg-primary/30");
     expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
   });
 
-  test("toggles rows independently and keeps selected-row export in sync", () => {
+  test("replaces selection on plain click and toggles rows with Ctrl", () => {
     currentTableData = {
       columns: ["name"],
       rows: [{ name: "first" }, { name: "second" }, { name: "third" }],
@@ -393,31 +405,34 @@ describe("TableDataTab empty rows", () => {
 
     const firstRow = screen.getByRole("button", { name: "Select row 1" });
     const secondRow = screen.getByRole("button", { name: "Select row 2" });
-    const clickRowSelector = (rowSelector: HTMLElement) => {
+    const clickRowSelector = (rowSelector: HTMLElement, ctrlKey = false) => {
       fireEvent.pointerDown(rowSelector, {
         button: 0,
         buttons: 1,
         pointerId: 1,
         pointerType: "mouse",
+        ctrlKey,
       });
       fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
     };
     clickRowSelector(firstRow);
-    clickRowSelector(secondRow);
-
-    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
-    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
-    const exportButton = screen.getByRole("button", { name: "Export 2 selected rows as JSON" });
-    const markButton = screen.getByRole("button", { name: "Mark 2 selected rows for deletion" });
-    expect(exportButton.textContent).toBe("");
-    expect(markButton.textContent).toBe("");
+    clickRowSelector(firstRow);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("button", { name: /Export .* selected rows? as JSON/ })).toBeNull();
 
     clickRowSelector(firstRow);
-
+    clickRowSelector(secondRow);
     expect(firstRow.getAttribute("aria-pressed")).toBe("false");
     expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    clickRowSelector(firstRow, true);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Export 2 selected rows as JSON" })).not.toBeNull();
+
+    clickRowSelector(secondRow, true);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Mark 1 selected row for deletion" })).not.toBeNull();
   });
 
   test("stages selected rows and deletes them in one batch on apply", async () => {
@@ -611,6 +626,56 @@ describe("TableDataTab empty rows", () => {
     fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
 
     expect(screen.getByRole("button", { name: "Export 3 selected rows as JSON" })).not.toBeNull();
+  });
+
+  test("Ctrl-drag toggles a row range while preserving selections outside it", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
+      total: 5,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const startDrag = (row: number, ctrlKey = false) =>
+      fireEvent.pointerDown(screen.getByRole("button", { name: `Select row ${row}` }), {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+        ctrlKey,
+      });
+    const enterRow = (row: number) => {
+      const element = document.querySelector(`[data-row-index="${row - 1}"]`);
+      if (!element) throw new Error(`Could not find row ${row}`);
+      fireEvent.pointerEnter(element, { buttons: 1, pointerId: 1, pointerType: "mouse" });
+    };
+    const endDrag = () =>
+      fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
+
+    startDrag(2);
+    enterRow(4);
+    endDrag();
+    startDrag(1, true);
+    endDrag();
+    startDrag(3, true);
+    enterRow(4);
+    endDrag();
+
+    expect(screen.getByRole("button", { name: "Select row 1" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 2" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 3" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Select row 4" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Export 2 selected rows as JSON" })).not.toBeNull();
   });
 
   test("exports the row selected by its index and shows its count and home-relative path", async () => {

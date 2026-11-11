@@ -14,6 +14,8 @@ use sqlx::{
 use std::collections::{HashMap, HashSet};
 use tauri::State;
 
+const POSTGRES_FOREIGN_KEY_COLUMNS_QUERY: &str = "SELECT kcu.column_name FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON tc.constraint_catalog = kcu.constraint_catalog AND tc.constraint_schema = kcu.constraint_schema AND tc.constraint_name = kcu.constraint_name AND tc.table_catalog = kcu.table_catalog AND tc.table_schema = kcu.table_schema AND tc.table_name = kcu.table_name WHERE tc.constraint_type = 'FOREIGN KEY' AND kcu.table_schema = COALESCE($1, current_schema()::text) AND kcu.table_name = $2";
+
 #[tauri::command]
 pub async fn list_schema_objects(
     request: ConnectionTestRequest,
@@ -921,6 +923,24 @@ async fn postgres_primary_key_columns(
         .collect())
 }
 
+async fn postgres_foreign_key_columns(
+    connection: &mut PgConnection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<HashSet<String>, String> {
+    let rows = sqlx::query(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY)
+    .bind(schema)
+    .bind(table)
+    .fetch_all(connection)
+    .await
+    .map_err(|error| format!("Could not load foreign keys: {error}"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("column_name"))
+        .collect())
+}
+
 async fn mysql_primary_key_columns(
     connection: &mut MySqlConnection,
     schema: Option<&str>,
@@ -944,6 +964,15 @@ async fn mysql_primary_key_columns(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn postgres_foreign_key_query_uses_supported_information_schema_columns() {
+        assert!(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains(
+            "JOIN information_schema.table_constraints"
+        ));
+        assert!(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains("tc.constraint_type = 'FOREIGN KEY'"));
+        assert!(!POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains("referenced_table_name"));
+    }
 
     #[test]
     fn get_table_data_reports_total_across_pages() {
@@ -1226,20 +1255,28 @@ async fn get_table_schema_with_manager(
                 &request.table,
             )
             .await?;
+            let foreign_key_columns = postgres_foreign_key_columns(
+                &mut connection,
+                request.schema.as_deref(),
+                &request.table,
+            )
+            .await?;
 
             Ok(TableSchemaResult {
                 columns: rows
                     .into_iter()
                     .map(|row| {
                         let name: String = row.get("column_name");
+                        let is_pk = primary_key_columns.contains(&name);
+                        let is_fk = foreign_key_columns.contains(&name);
                         ColumnInfo {
-                            is_pk: primary_key_columns.contains(&name),
+                            is_pk,
                             name,
                             data_type: row.get("data_type"),
                             enum_values: row.get("enum_values"),
                             nullable: row.get::<String, _>("is_nullable") == "YES",
                             default: row.get("column_default"),
-                            is_fk: false,
+                            is_fk,
                             is_unique: false,
                         }
                     })

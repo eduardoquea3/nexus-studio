@@ -1,6 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 
-import { RiLoader4Line } from "@remixicon/react";
+import { RiKey2Line, RiLinkM, RiLoader4Line } from "@remixicon/react";
 import { flexRender, type Row, type Table as TanStackTable } from "@tanstack/react-table";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
@@ -35,6 +35,8 @@ type DataTableProps<TData> = {
 type DragSelection<TData> = {
   startIndex: number;
   endIndex: number;
+  baseRows: Row<TData>[];
+  ctrlKey: boolean;
   rows: Row<TData>[];
 };
 
@@ -159,10 +161,26 @@ export function DataTable<TData>({
   const startRowSelection = (row: Row<TData>, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    const selectedRows = toggleRowSelection(row);
+    const baseRows = rows.filter((item) => visibleSelectedRowIds.has(item.id));
+    const selectedIds = new Set(baseRows.map((item) => item.id));
+    if (event.ctrlKey) {
+      if (selectedIds.has(row.id)) selectedIds.delete(row.id);
+      else selectedIds.add(row.id);
+    } else if (selectedIds.size === 1 && selectedIds.has(row.id)) {
+      selectedIds.clear();
+    } else {
+      selectedIds.clear();
+      selectedIds.add(row.id);
+    }
+    const selectedRows = rows.filter((item) => selectedIds.has(item.id));
+    updateSelectionVisuals(baseRows, selectedRows);
+    setSelectedRowIds(selectedIds);
+    onSelectionChange?.(selectedRows);
     dragSelectionRef.current = {
       startIndex: row.index,
       endIndex: row.index,
+      baseRows,
+      ctrlKey: event.ctrlKey,
       rows: selectedRows,
     };
     tableWrapperRef.current?.classList.add("select-none");
@@ -174,7 +192,19 @@ export function DataTable<TData>({
     dragSelection.endIndex = row.index;
     const firstIndex = Math.min(dragSelection.startIndex, row.index);
     const lastIndex = Math.max(dragSelection.startIndex, row.index);
-    const selectedRows = rows.filter((item) => item.index >= firstIndex && item.index <= lastIndex);
+    const rangeIds = new Set(
+      rows
+        .filter((item) => item.index >= firstIndex && item.index <= lastIndex)
+        .map((item) => item.id),
+    );
+    const selectedIds = new Set(
+      dragSelection.ctrlKey ? dragSelection.baseRows.map((item) => item.id) : [],
+    );
+    for (const id of rangeIds) {
+      if (dragSelection.ctrlKey && selectedIds.has(id)) selectedIds.delete(id);
+      else selectedIds.add(id);
+    }
+    const selectedRows = rows.filter((item) => selectedIds.has(item.id));
     updateSelectionVisuals(dragSelection.rows, selectedRows);
     dragSelection.rows = selectedRows;
   };
@@ -239,27 +269,50 @@ export function DataTable<TData>({
             <TableHeader className="sticky top-0 z-10 bg-accent text-left">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
-                  <TableHead className="w-12 border-b border-r border-border/70 px-3 py-2 text-right font-medium">
+                  <TableHead className="w-12 border-b border-r-2 border-border px-3 py-2 text-right font-medium">
                     #
                   </TableHead>
                   {headerGroup.headers.map((header) => (
                     <TableHead
                       key={header.id}
-                      className="border-b border-r border-border/70 px-3 py-2 font-medium"
+                      className="border-b border-r-2 border-border px-3 py-2 font-medium"
                       colSpan={header.colSpan}
                     >
-                      {header.isPlaceholder ? null : (
-                        <div className="flex min-w-28 items-baseline gap-2 whitespace-nowrap">
-                          <span>
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </span>
-                          {getColumnInfo(draftColumns, header.column.id) ? (
-                            <span className="text-[0.625rem] font-normal text-muted-foreground/75">
-                              {getDisplayType(getColumnInfo(draftColumns, header.column.id))}
+                      {header.isPlaceholder ? null : (() => {
+                        const columnInfo = getColumnInfo(draftColumns, header.column.id);
+                        return (
+                          <div className="flex min-w-28 items-center justify-between gap-2 whitespace-nowrap">
+                            <span className="inline-flex min-w-0 items-center gap-1.5">
+                              <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                              {columnInfo?.is_pk ? (
+                                <span
+                                  role="img"
+                                  aria-label="Primary key"
+                                  title="Primary key"
+                                  className="inline-flex size-4 items-center justify-center rounded-full bg-primary/15 text-primary"
+                                >
+                                  <RiKey2Line className="size-2.5" aria-hidden="true" />
+                                </span>
+                              ) : null}
+                              {columnInfo?.is_fk ? (
+                                <span
+                                  role="img"
+                                  aria-label="Foreign key"
+                                  title="Foreign key"
+                                  className="inline-flex size-4 items-center justify-center rounded-full bg-success/15 text-success"
+                                >
+                                  <RiLinkM className="size-2.5" aria-hidden="true" />
+                                </span>
+                              ) : null}
                             </span>
-                          ) : null}
-                        </div>
-                      )}
+                            {columnInfo ? (
+                              <span className="ml-auto text-right text-[0.625rem] font-normal text-muted-foreground/75">
+                                {getDisplayType(columnInfo)}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -329,7 +382,7 @@ function DataTableRow<TData>({
       aria-selected={isSelected}
       onPointerEnter={(event) => onPointerEnter(row, event)}
       className={cn(
-        "transition-none",
+        "group/row transition-none",
         isPending
           ? "bg-destructive/10 hover:bg-destructive/15 data-[row-selected=true]:bg-destructive/20 data-[row-selected=true]:hover:bg-destructive/25"
           : "hover:bg-muted/40 data-[row-selected=true]:bg-primary/25 data-[row-selected=true]:hover:bg-primary/30",
@@ -342,6 +395,11 @@ function DataTableRow<TData>({
         className={cn(
           "w-12 border-b border-r border-border/50 p-0 text-right font-mono text-[0.65rem] text-muted-foreground",
           isPending && "text-destructive/70",
+          "group-hover/row:bg-muted/60",
+          isSelected &&
+            (isPending
+              ? "bg-destructive/20 group-hover/row:bg-destructive/20"
+              : "bg-primary/30 group-hover/row:bg-primary/30"),
         )}
       >
         {isSelectable ? (
@@ -354,8 +412,8 @@ function DataTableRow<TData>({
             onClick={(event) => onKeyboardSelect(row, event)}
             className={cn(
               "flex min-h-9 w-full select-none items-center justify-end px-3 py-2 text-right font-mono text-[0.65rem] text-muted-foreground transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60",
-              "cursor-pointer hover:bg-muted/60 hover:text-foreground",
-              isSelected && "bg-primary/30 text-foreground",
+              "cursor-pointer hover:text-foreground",
+              isSelected && "bg-transparent text-foreground",
               isPending && !isSelected && "text-destructive/70",
             )}
           >
