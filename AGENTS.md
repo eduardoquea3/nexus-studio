@@ -7,3 +7,7 @@
 ## Project Skills
 
 - `release-workflow`: use for commit, push, tag, and release requests. It requires validation and confirmation gates before remote mutations.
+
+## Testing
+
+- Run tests with `bun run test`; do not invoke `bun test` directly.

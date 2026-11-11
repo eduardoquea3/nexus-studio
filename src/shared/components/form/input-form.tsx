@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useController, useFormContext, type Path } from "react-hook-form";
-import { z } from "zod";
+import type { z } from "zod";
 
 import { Field } from "@/shared/components/ui/field";
 import { Input, type InputProps } from "@/shared/components/ui/input";

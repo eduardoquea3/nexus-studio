@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/toast";
-import { type ConnectionItem } from "@/shared/components/connection-card";
+import type { ConnectionItem } from "@/shared/components/connection-card";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
