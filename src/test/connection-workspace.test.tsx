@@ -1068,6 +1068,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
       "1 rows2 columns2 ms",
     );
     expect(screen.getByRole("table").closest(".w-full")).not.toBeNull();
+    expect(screen.getByRole("table").closest(".font-sans")).not.toBeNull();
     const viewGroup = screen.getByRole("group", { name: "SQL result view" });
     expect(viewGroup.className).toContain("h-6");
     expect(viewGroup.className).toContain("justify-self-start");

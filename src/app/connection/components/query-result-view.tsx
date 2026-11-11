@@ -162,7 +162,7 @@ export function QueryResultView({
           ) : (
             <DataTable
               table={table}
-              className="h-full w-full"
+              className="h-full w-full font-sans"
               withShell={false}
               rowNumberOffset={currentPageIndex * QUERY_RESULT_PAGE_SIZE}
             />

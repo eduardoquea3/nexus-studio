@@ -66,10 +66,10 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
         {profile ? (
           <>
             <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
-            <div className="flex min-w-0 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[0.65rem] text-emerald-300">
-              <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+            <div className="flex min-w-0 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-success">
+              <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
               <span className="truncate">{profile.name}</span>
-              <span className="hidden text-emerald-200/60 sm:inline">· {profile.db_type}</span>
+              <span className="hidden text-muted-foreground sm:inline">· {profile.db_type}</span>
             </div>
           </>
         ) : null}

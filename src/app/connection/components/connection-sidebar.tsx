@@ -152,7 +152,7 @@ export function ConnectionSidebar({
       aria-hidden={!sidebarOpen}
       inert={!sidebarOpen}
       className={cn(
-        "w-60 basis-60 shrink-0 overflow-hidden rounded-2xl border border-border bg-surface",
+        "w-60 basis-60 shrink-0 overflow-hidden rounded-2xl border border-border bg-card",
         "flex flex-col",
       )}
     >
