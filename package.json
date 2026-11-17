@@ -4,8 +4,8 @@
   "version": "0.2.6",
   "type": "module",
   "scripts": {
-    "dev": "node init && vite",
-    "build": "node init && tsc && vite build",
+    "dev": "vite",
+    "build": "tsc && vite build",
     "lint": "biome lint .",
     "format": "biome format --write '**/*.ts' '**/*.tsx'",
     "preview": "vite preview",
