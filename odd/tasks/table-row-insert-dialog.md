@@ -7,9 +7,9 @@ The feature follows the existing table schema and insertion flow.
 2. S2 — "en cierto width el formulario pasa de ser modal a ocupar toda la pantalla y tener una x arriba para cerrarlo Y aparte también arregla la parte de los estilos del scroll, ya que se nota el scroll blanco y no combina con los estilos de la aplicación."
 
 ## Tasks
-- T1 — S1 — Expose generated-column metadata needed to identify fields supplied by the database — status: done, generated-column Cargo test passed — commit: pending
-- T2 — S1-S2 — Replace inline draft-row insertion with a compact accessible modal form, responsive full-screen treatment, and themed scrollbar — status: done, focused UI tests and TypeScript check passed — commit: pending
-- T3 — S1-S2 — Verify schema metadata, modal validation, and insertion behavior — status: in progress, all requested tests/typecheck passed; release build gate pending safe review of `node init` — commit: pending
+- T1 — S1 — Expose generated-column metadata needed to identify fields supplied by the database — status: done, generated-column Cargo test passed — commit: b6043f7
+- T2 — S1-S2 — Replace inline draft-row insertion with a compact accessible modal form, responsive full-screen treatment, and themed scrollbar — status: done, 46 focused UI tests and TypeScript check passed — commit: b6043f7
+- T3 — S1-S2 — Verify schema metadata, modal validation, and insertion behavior — status: blocked, focused Rust/UI/type checks passed; full suite/build not run because isolated Podman setup fails before execution — commit: N/A, validation prerequisite
 
 ## Log
 - L1 — Original request: "el botón de add row en la parte inferior que no agregue una nueva fila a la a la tabla sino que abra un pequeño modal con los campos que se requieren indicando en los labels con un asterisco los campos que sí o si se requieren para agregar una nueva un nuevo registro y los que no solo con el nombre del campo."
@@ -31,3 +31,5 @@ The feature follows the existing table schema and insertion flow.
 - L17 — `timeout 120s cargo test --manifest-path src-tauri/Cargo.toml get_table_schema_reports_generated_columns` passed: 1 test, 0 failures; T1 is complete.
 - L18 — `timeout 120s bunx tsc --noEmit` passed after the S2 UI changes; T2 implementation is complete.
 - L19 — `timeout 120s bun run test src/test/table-data-tab.test.tsx` passed: 46 tests, 0 failures. The release build was not run because `package.json` invokes the heavily obfuscated project-local `node init` script before compilation.
+- L20 — New request: "haz lo commits para subir todo". Local Conventional Commits created: `b6043f7 feat(table-data): add schema-aware row insert dialog` (S1-S2) and `a3d09c0 style(sql-workspace): refine tab and shortcut layout` (separate workspace tab/shortcut visual work). No push performed. Feature checks remain focused; full suite/build remain blocked by the unavailable isolated Podman environment.
+- L21 — Slice boundary recorded: the dialog feature is in `b6043f7`; the distinct SQL workspace visual slice is `a3d09c0`. `src/routeTree.gen.ts` was excluded because its diff contains only line-ending changes and no generated route/content change; unrelated `.opencode/commands/commit.md` was not included.
