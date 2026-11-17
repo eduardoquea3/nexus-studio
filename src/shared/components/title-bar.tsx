@@ -8,11 +8,9 @@ import {
 } from "@remixicon/react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
-import type { ConnectionProfile } from "@/shared/types/models";
-
 import { useConnection } from "@/app/home/hooks/use-connections";
 import { Button } from "@/components/ui/button";
+import type { ConnectionProfile } from "@/shared/types/models";
 
 import { useThemeStore } from "../store/theme-store";
 
@@ -25,12 +23,8 @@ export function TitleBar() {
       return match && "connectionId" in match.params ? match.params.connectionId : null;
     },
   });
+  const { data: profile } = useConnection(connectionId ?? "", { enabled: false });
 
-  return connectionId ? <ConnectionTitleBar connectionId={connectionId} /> : <TitleBarContent />;
-}
-
-function ConnectionTitleBar({ connectionId }: { connectionId: string }) {
-  const { data: profile } = useConnection(connectionId, { enabled: false });
   return <TitleBarContent profile={profile} />;
 }
 
@@ -55,11 +49,11 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
 
   return (
     <header className="flex h-10 select-none items-center justify-between border-b border-border bg-background pl-3">
-      <div
-        data-tauri-drag-region
-        className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground"
-      >
-        <div className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground">
+      <div className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground">
+        <div
+          data-tauri-drag-region
+          className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground"
+        >
           <RiDatabase2Line className="size-4 text-violet-400" aria-hidden="true" />
           <span>NEXUS STUDIO</span>
         </div>
@@ -73,6 +67,11 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
             </div>
           </>
         ) : null}
+        <div
+          data-slot="title-bar-database-switcher"
+          className={profile ? "flex shrink-0 items-center" : "hidden"}
+        />
+        <div data-tauri-drag-region className="h-full min-w-0 flex-1" />
       </div>
 
       <div className="flex items-center gap-2">

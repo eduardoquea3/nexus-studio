@@ -60,6 +60,14 @@ describe("TitleBar", () => {
     expect(screen.queryByText("Nexus Studio")).toBeNull();
   });
 
+  test("provides an interactive database badge slot beside the connection badge", () => {
+    const { container } = render(<TitleBar />);
+    const databaseSlot = container.querySelector('[data-slot="title-bar-database-switcher"]');
+
+    expect(databaseSlot).not.toBeNull();
+    expect(databaseSlot?.closest("[data-tauri-drag-region]")).toBeNull();
+  });
+
   test("keeps the standard title on routes outside the connection workspace", () => {
     routeState.matches.splice(0, routeState.matches.length);
     render(<TitleBar />);

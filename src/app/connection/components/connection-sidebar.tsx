@@ -1,23 +1,15 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
-
-import type { ColumnInfo, ConnectionProfile, ObjectMeta } from "@/shared/types/models";
-
-import {
-  ConnectionDatabaseSelector,
-  type DatabaseOption,
-} from "@/app/connection/components/connection-database-selector";
 import { ConnectionExplorer } from "@/app/connection/components/connection-explorer";
 import { ConnectionSwitcherMenu } from "@/app/connection/components/connection-switcher-menu";
-import { useDatabases } from "@/app/connection/hooks/use-databases";
 import { useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
-import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { useConnections } from "@/app/home/hooks/use-connections";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getTableSchema } from "@/shared/lib/tauriApi";
 import { useThemeStore } from "@/shared/store/theme-store";
+import type { ColumnInfo, ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 
 gsap.registerPlugin(useGSAP);
 
@@ -26,7 +18,6 @@ type ConnectionSidebarProps = {
   selectedDatabase: string;
   selectedTableName?: string;
   selectedTableSchema?: string;
-  onDatabaseChange: (database: string) => void;
   onTableSelect: (table: string, schema?: string) => void;
   onRoutineSelect: (routine: ObjectMeta) => void;
 };
@@ -36,16 +27,9 @@ export function ConnectionSidebar({
   selectedDatabase,
   selectedTableName,
   selectedTableSchema,
-  onDatabaseChange,
   onTableSelect,
   onRoutineSelect,
 }: ConnectionSidebarProps) {
-  const initialDatabase = getInitialDatabase(profile);
-  const {
-    data: databaseValues = [],
-    error: databaseError,
-    isLoading: isLoadingDatabases,
-  } = useDatabases(profile);
   const {
     data: schemaObjects = [],
     error: schemaError,
@@ -64,9 +48,6 @@ export function ConnectionSidebar({
   const openGroupsBeforeFilterRef = useRef<string[] | null>(null);
   const deferredFilterText = useDeferredValue(filterText);
   const normalizedFilter = deferredFilterText.trim().toLowerCase();
-  const databases: DatabaseOption[] = Array.from(
-    new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
-  ).map((value) => ({ value, label: value }));
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
   const sidebarRef = useRef<HTMLElement>(null);
 
@@ -156,13 +137,6 @@ export function ConnectionSidebar({
         "flex flex-col",
       )}
     >
-      <ConnectionDatabaseSelector
-        databases={databases}
-        selectedDatabase={selectedDatabase}
-        onDatabaseChange={onDatabaseChange}
-        isLoading={isLoadingDatabases}
-        hasError={Boolean(databaseError)}
-      />
       <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-scrollbar]]:hidden">
         <div className="min-w-0 p-3">
           <ConnectionExplorer

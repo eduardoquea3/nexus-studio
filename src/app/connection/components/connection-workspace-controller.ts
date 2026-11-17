@@ -3,19 +3,15 @@ import type { EditorView } from "@codemirror/view";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-import type { DataTableTab, QueryTab, WorkspaceTab } from "@/shared/types/connection-workspace";
-import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
-
 import {
+  type CommandBarItem,
+  type CommandBarMode,
   describeConnection,
   describeTab,
   nextTabIndex,
-  type CommandBarItem,
-  type CommandBarMode,
 } from "@/app/command-bar/command-bar-utils";
 import { databasesQueryKey, useDatabases } from "@/app/connection/hooks/use-databases";
-import { useSchemaObjects, schemaObjectsQueryKey } from "@/app/connection/hooks/use-schema-objects";
+import { schemaObjectsQueryKey, useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
 import { getInitialDatabase } from "@/app/connection/services/database-service";
 import { useConnections } from "@/app/home/hooks/use-connections";
 import { toast } from "@/components/ui/toast";
@@ -31,6 +27,8 @@ import {
 } from "@/shared/lib/tauriApi";
 import { useModalStore } from "@/shared/store/modalStore";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
+import type { DataTableTab, QueryTab, WorkspaceTab } from "@/shared/types/connection-workspace";
+import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 
 import { getQuerySegment, splitSqlStatements } from "./connection-workspace-utils";
 
@@ -65,6 +63,7 @@ export function useConnectionWorkspaceController({
   const [selectedDatabase, setSelectedDatabase] = useState(() => getInitialDatabase(profile));
   const {
     data: databaseValues = [],
+    error: databaseError,
     isLoading: isLoadingDatabases,
     isFetching: isFetchingDatabases,
   } = useDatabases(profile);
@@ -764,6 +763,8 @@ export function useConnectionWorkspaceController({
     isFetchingConnections,
     isLoadingDatabases,
     isFetchingDatabases,
+    databaseError,
+    databases,
     isLoadingSchema,
     isFetchingSchema,
     navigate,

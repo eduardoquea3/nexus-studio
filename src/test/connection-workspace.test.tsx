@@ -74,6 +74,7 @@ mock.module("@/routes/index", () => ({
 mock.module("@/shared/keymaps/global-keymaps", () => ({ GlobalKeymaps: () => null }));
 const themeState = {
   theme: { mode: "dark", variantId: "default" },
+  sidebarOpen: true,
   interfaceFontFamily: "Inter",
   sqlEditorFontFamily: "monospace",
   resultFontFamily: "monospace",
@@ -703,6 +704,7 @@ describe("Connection workspace route sessions", () => {
 
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
+    themeState.sidebarOpen = true;
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockReset();
@@ -723,6 +725,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
   afterEach(() => {
     cleanup();
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+  });
+
+  test("removes the collapsed sidebar gap to keep the workspace margins even", () => {
+    themeState.sidebarOpen = false;
+    renderWorkspace();
+
+    const workspaceRow = document.querySelector(".connection-workbench > div.flex");
+    expect(workspaceRow?.className).toContain("gap-0");
+    themeState.sidebarOpen = true;
   });
 
   test("does not render a second appbar and rounds the main workspace panel", () => {
