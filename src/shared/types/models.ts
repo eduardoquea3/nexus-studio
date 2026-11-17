@@ -52,6 +52,7 @@ export interface ColumnInfo {
   enum_values: string[];
   nullable: boolean;
   default: string | null;
+  is_generated: boolean;
   is_pk: boolean;
   is_fk: boolean;
   is_unique: boolean;

@@ -1,4 +1,4 @@
-import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
+import type { KeyboardEvent } from "react";
 
 import {
   RiAddLine,
@@ -24,9 +24,8 @@ type TableDataToolbarProps = {
   canShowJson: boolean;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
-  columnNames: string[];
-  draftRow: Record<string, unknown> | null;
-  setDraftRow: Dispatch<SetStateAction<Record<string, unknown> | null>>;
+  canAddRow: boolean;
+  onAddRow: () => void;
   selectedRowCount: number;
   canMarkSelectedForDeletion: boolean;
   pendingDeletionCount: number;
@@ -41,8 +40,6 @@ type TableDataToolbarProps = {
   page: number;
   pageCount: number;
   isLoading: boolean;
-  isInsertingRow: boolean;
-  onInsertRow: () => void;
   onPageChange: (page: number) => void;
 };
 
@@ -50,9 +47,8 @@ export function TableDataToolbar({
   canShowJson,
   viewMode,
   setViewMode,
-  columnNames,
-  draftRow,
-  setDraftRow,
+  canAddRow,
+  onAddRow,
   selectedRowCount,
   canMarkSelectedForDeletion,
   pendingDeletionCount,
@@ -67,8 +63,6 @@ export function TableDataToolbar({
   page,
   pageCount,
   isLoading,
-  isInsertingRow,
-  onInsertRow,
   onPageChange,
 }: TableDataToolbarProps) {
   return (
@@ -134,38 +128,16 @@ export function TableDataToolbar({
         </Button>
         <Button
           type="button"
-          variant={draftRow ? "secondary" : "outline"}
+          variant="outline"
           size="icon"
-          className={
-            draftRow
-              ? `rounded-lg p-0 transition-colors ${destructiveActionClassName}`
-              : `rounded-lg p-0 transition-colors ${primaryActionClassName}`
-          }
-          disabled={!draftRow && (isLoading || columnNames.length === 0)}
-          onClick={() =>
-            setDraftRow(
-              draftRow ? null : Object.fromEntries(columnNames.map((column) => [column, ""])),
-            )
-          }
-          aria-label={draftRow ? "Cancel add row" : "Add row"}
-          title={draftRow ? "Cancel add row" : "Add row"}
+          className={`rounded-lg p-0 transition-colors ${primaryActionClassName}`}
+          disabled={isLoading || !canAddRow}
+          onClick={onAddRow}
+          aria-label="Add row"
+          title="Add row"
         >
-          {draftRow ? <RiCloseLine className="size-4" /> : <RiAddLine className="size-4" />}
+          <RiAddLine className="size-4" />
         </Button>
-        {draftRow ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            className={`rounded-lg ${primaryActionClassName}`}
-            disabled={isLoading || isInsertingRow}
-            onClick={onInsertRow}
-            aria-label="Insert row"
-            title="Insert row"
-          >
-            <RiCheckLine className="size-4" />
-          </Button>
-        ) : null}
         {selectedRowCount > 0 ? (
           <>
             <Button

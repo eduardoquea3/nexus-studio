@@ -4,6 +4,18 @@ import { describe, expect, test } from "bun:test";
 import { buildInsertRowQuery } from "@/app/connection/services/table-data-insert-service";
 
 describe("buildInsertRowQuery", () => {
+  test("inserts a row with database defaults when no values are supplied", () => {
+    expect(
+      buildInsertRowQuery({ dbType: "postgres", table: "events", values: {} }),
+    ).toBe('INSERT INTO "events" DEFAULT VALUES');
+    expect(buildInsertRowQuery({ dbType: "mysql", table: "events", values: {} })).toBe(
+      "INSERT INTO `events` () VALUES ()",
+    );
+    expect(buildInsertRowQuery({ dbType: "sqlite", table: "events", values: {} })).toBe(
+      'INSERT INTO "events" DEFAULT VALUES',
+    );
+  });
+
   test("quotes identifiers and stores blank fields as NULL", () => {
     expect(
       buildInsertRowQuery({
