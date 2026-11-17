@@ -1,38 +1,16 @@
 {
-  "lsp": {
-    "oxlint": {
-      "initialization_options": {
-        "settings": {
-          "configPath": null,
-          "run": "onType",
-          "disableNestedConfig": false,
-          "fixKind": "safe_fix",
-          "unusedDisableDirectives": "deny"
-        }
-      }
-    },
-    "oxfmt": {
-      "initialization_options": {
-        "settings": {
-          "configPath": null,
-          "run": "onSave"
-        }
-      }
-    }
-  },
   "languages": {
     "JavaScript": {
-      "language_servers": ["oxc", "!biome", "!eslint", "..."],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
-        },
-        {
-          "code_action": "source.fixAll.oxc"
+      "language_servers": ["biome", "!oxc", "!eslint", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
+      "code_actions_on_format": {
+        "source.fixAll.biome": true,
+        "source.organizeImports.biome": true
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
@@ -40,24 +18,23 @@
     },
     "TypeScript": {
       "language_servers": [
+        "biome",
         "tsgo",
-        "oxc",
+        "!oxc",
         "!vtsls",
         "!typescript-language-server",
-        "!biome",
         "!eslint",
         "..."
       ],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
-        },
-        {
-          "code_action": "source.fixAll.oxc"
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
+      "code_actions_on_format": {
+        "source.fixAll.biome": true,
+        "source.organizeImports.biome": true
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
@@ -65,92 +42,83 @@
     },
     "TSX": {
       "language_servers": [
+        "biome",
         "tsgo",
-        "oxc",
+        "!oxc",
         "!vtsls",
         "!typescript-language-server",
-        "!biome",
         "!eslint",
         "..."
       ],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
-        },
-        {
-          "code_action": "source.fixAll.oxc"
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
+      "code_actions_on_format": {
+        "source.fixAll.biome": true,
+        "source.organizeImports.biome": true
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
       }
     },
     "JSON": {
-      "language_servers": ["oxc", "!biome", "..."],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
+      "language_servers": ["biome", "!oxc", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
       }
     },
     "JSONC": {
-      "language_servers": ["oxc", "!biome", "..."],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
+      "language_servers": ["biome", "!oxc", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
       }
     },
     "CSS": {
-      "language_servers": ["oxc", "!biome", "..."],
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
+      "language_servers": ["biome", "!oxc", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
       }
     },
     "HTML": {
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
+      "language_servers": ["biome", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false
       }
     },
     "GraphQL": {
-      "formatter": [
-        {
-          "language_server": {
-            "name": "oxfmt"
-          }
+      "language_servers": ["biome", "..."],
+      "formatter": {
+        "language_server": {
+          "name": "biome"
         }
-      ],
+      },
       "format_on_save": "on",
       "prettier": {
         "allowed": false

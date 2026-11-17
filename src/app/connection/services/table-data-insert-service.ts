@@ -23,13 +23,15 @@ export function buildInsertRowQuery({
   values,
 }: BuildInsertRowQueryOptions) {
   const entries = Object.entries(values);
-  if (entries.length === 0) {
-    throw new Error("A row must contain at least one column.");
-  }
-
   const tableName = schema
     ? `${quoteSqlIdentifier(dbType, schema)}.${quoteSqlIdentifier(dbType, table)}`
     : quoteSqlIdentifier(dbType, table);
+  if (entries.length === 0) {
+    return dbType === "mysql"
+      ? `INSERT INTO ${tableName} () VALUES ()`
+      : `INSERT INTO ${tableName} DEFAULT VALUES`;
+  }
+
   const columns = entries.map(([column]) => quoteSqlIdentifier(dbType, column)).join(", ");
   const columnInfoByName = new Map(schemaColumns?.map((column) => [column.name, column]));
   const literals = entries

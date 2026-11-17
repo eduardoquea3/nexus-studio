@@ -81,8 +81,8 @@ export function ConnectionWorkspaceContent({
                             {tableTab.schema ?? "public"}.{tableTab.tableName}
                           </span>{" "}
                           belongs to{" "}
-                          <span className="font-medium text-foreground">{tableTab.database}</span>
-                          , but{" "}
+                          <span className="font-medium text-foreground">{tableTab.database}</span>,
+                          but{" "}
                           <span className="font-medium text-foreground">
                             {selectedDatabase || "no database"}
                           </span>{" "}

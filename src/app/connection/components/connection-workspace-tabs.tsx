@@ -4,8 +4,9 @@ import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { getTableTabTitle } from "./connection-workspace-view-utils";
 import type { WorkspaceController } from "./connection-workspace-controller";
+
+import { getTableTabTitle } from "./connection-workspace-view-utils";
 
 export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceController }) {
   const {
@@ -21,13 +22,13 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
   } = controller;
   const tableTabs = workspaceTabs.flatMap((tab) => (tab.type === "table" ? [tab] : []));
   return (
-    <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border/70 bg-background/80 px-2 py-0.5">
-      <TabsList className="h-7 min-w-0 overflow-hidden rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
+    <div className="flex h-9 min-w-0 shrink-0 items-center gap-0 border-b border-border bg-card px-0 py-0">
+      <TabsList className="flex h-full min-w-0 flex-1 justify-start overflow-x-auto overflow-y-hidden rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
         {workspaceTabs.map((tab) => (
-          <div key={tab.id} className="group flex h-7 items-center">
+          <div key={tab.id} className="group flex h-full min-w-0 flex-none border-r border-border">
             <TabsTrigger
               value={tab.id}
-              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-none px-3 text-xs data-[state=active]:text-foreground"
+              className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
               onClick={() => {
                 controller.setActiveTabId(tab.id);
                 if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
@@ -86,10 +87,10 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
           </div>
         ))}
         {isErDiagramOpen ? (
-          <div className="group flex h-7 items-center">
+          <div className="group flex h-full min-w-0 flex-none border-r border-border">
             <TabsTrigger
               value="er-diagram"
-              className="group/tab flex h-7 w-36 flex-none items-center gap-1.5 overflow-hidden rounded-none px-3 text-xs data-[state=active]:text-foreground"
+              className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
               onClick={openErDiagram}
               aria-label="ER diagram tab"
             >
@@ -131,7 +132,7 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
       <Button
         variant="ghost"
         size="icon-xs"
-        className="mb-0.5 shrink-0"
+        className="h-9 w-9 shrink-0 rounded-none border-l border-border"
         onClick={createEditorTab}
         aria-label="Create SQL editor tab"
       >

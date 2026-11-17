@@ -39,6 +39,10 @@ const getTableSchema = mock(async () => ({
   indexes: [],
 }));
 const listDatabases = mock(async () => ["development", "analytics"]);
+const saveConnection = mock(
+  async (_profile: ConnectionProfile, _mode: "create" | "update") => undefined,
+);
+const testConnectionFields = mock(async (_request: unknown) => "ok");
 const testSavedConnection = mock(async () => "ok");
 const addToast = mock((_options: unknown) => "toast-1");
 const exportTableDataJson = mock(
@@ -55,6 +59,14 @@ const closeSshTunnel = mock(async (_connectionId: string) => undefined);
 const getConnectionProfile = mock(async (id: string) =>
   availableConnections.find((connection) => connection.id === id),
 );
+
+mock.module("@tauri-apps/plugin-store", () => ({
+  load: async () => ({
+    get: async <T,>() => structuredClone(availableConnections) as T,
+    set: async () => undefined,
+    save: async () => undefined,
+  }),
+}));
 
 mock.module("@/routes/index", () => ({
   Route: createFileRoute("/")({ component: () => <div>Saved connections</div> }),
@@ -203,6 +215,7 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
 
 mock.module("@/shared/lib/tauriApi", () => ({
   closeSshTunnel,
+  createSqliteDatabase: mock(async () => undefined),
   deleteRecords: mock(async () => 0),
   deleteSshPassword: mock(async () => undefined),
   listSystemFonts: mock(async () => []),
@@ -226,18 +239,21 @@ mock.module("@/shared/lib/tauriApi", () => ({
   listTables: mock(async () => []),
   listViews: mock(async () => []),
   runQuery,
-  saveConnection: mock(async () => undefined),
-  testConnectionFields: mock(async () => "ok"),
+  saveConnection,
+  storeSshPassword: mock(async () => undefined),
+  testConnectionFields,
   testSavedConnection,
   writeJsonFile: mock(async () => "export.json"),
 }));
 
 mock.module("@/app/home/hooks/use-connections", () => ({
+  connectionsQueryKey: ["connections"],
   useConnections: () => ({ data: availableConnections }),
-  useConnection: (id: string) =>
+  useConnection: (id: string, options: { enabled?: boolean } = {}) =>
     useQuery({
       queryKey: ["connections", id],
       queryFn: () => getConnectionProfile(id),
+      enabled: options.enabled ?? true,
     }),
 }));
 
@@ -320,6 +336,8 @@ describe("Connection workspace route sessions", () => {
     });
     useWorkspaceStore.setState({ ...useWorkspaceStore.getInitialState(), isHydrated: true });
     closeSshTunnel.mockClear();
+    saveConnection.mockClear();
+    testConnectionFields.mockClear();
     getConnectionProfile.mockClear();
     listDatabases.mockClear();
     listSchemaObjects.mockClear();
@@ -356,6 +374,127 @@ describe("Connection workspace route sessions", () => {
     await waitFor(() => expect(listDatabases).toHaveBeenCalled());
     return { router, queryClient };
   }
+
+  async function openConnectionSetup(initialEntry = "/connections/new") {
+    const { routeTree } = await import("../routeTree.gen");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    clients.push(queryClient);
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: [initialEntry] }),
+      defaultPendingMs: 0,
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    if (initialEntry.includes("connectionId=")) {
+      await screen.findByRole("heading", { name: "Edit Connection" });
+    } else {
+      await screen.findByRole("group", { name: "Choose a database engine" });
+    }
+    return { router, queryClient };
+  }
+
+  test("uses the selected theme and rounds only the outer workspace frame", async () => {
+    const { router } = await openConnection();
+    const appShell = document.querySelector(".connection-workbench")?.closest(".h-screen");
+
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(true);
+    expect(document.querySelector(".connection-workbench")?.classList.contains("dark")).toBe(false);
+    expect(appShell?.classList.contains("border-[8px]")).toBe(false);
+    expect(appShell?.classList.contains("border-[#9ca3af]")).toBe(false);
+
+    await router.navigate({ to: "/" });
+    await screen.findByText("Saved connections");
+    expect(appShell?.classList.contains("rounded-[28px]")).toBe(false);
+  });
+
+  test("cancels from database selection back to the connections list", async () => {
+    const { router } = await openConnectionSetup();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(screen.getByText("Saved connections")).not.toBeNull();
+  });
+
+  test("chooses a database before showing connection mode tabs", async () => {
+    await openConnectionSetup();
+
+    fireEvent.click(screen.getByRole("button", { name: /MySQL/ }));
+
+    expect(await screen.findByRole("tab", { name: "Normal connection" })).not.toBeNull();
+    const sshTab = screen.getByRole("tab", { name: "SSH tunnel" });
+    expect(sshTab).not.toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Connection Type" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" }).closest("header")).not.toBeNull();
+    fireEvent.click(sshTab);
+    expect(screen.getByRole("button", { name: /Manual/ })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Manual/ }));
+    expect(screen.getByPlaceholderText("ssh.example.com")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("group", { name: "Choose a database engine" })).not.toBeNull();
+  });
+
+  test("saves the selected database engine and opens its connection workspace", async () => {
+    const { router } = await openConnectionSetup();
+    fireEvent.click(screen.getByRole("button", { name: /MySQL/ }));
+    await screen.findByRole("tab", { name: "Normal connection" });
+    fireEvent.change(screen.getByPlaceholderText("Production database"), {
+      target: { value: "MySQL test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(saveConnection).toHaveBeenCalledTimes(1));
+    const savedProfile = saveConnection.mock.calls[0]?.[0];
+    expect(savedProfile).toMatchObject({ name: "MySQL test", db_type: "mysql" });
+    expect(saveConnection.mock.calls[0]?.[1]).toBe("create");
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/connections/${savedProfile?.id}`),
+    );
+  });
+
+  test("saves without testing the connection and returns to the connections list", async () => {
+    const { router } = await openConnectionSetup();
+    fireEvent.click(screen.getByRole("button", { name: /PostgreSQL/ }));
+    await screen.findByRole("tab", { name: "Normal connection" });
+    fireEvent.change(screen.getByPlaceholderText("Production database"), {
+      target: { value: "Saved without testing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(saveConnection).toHaveBeenCalledTimes(1));
+    expect(testConnectionFields).not.toHaveBeenCalled();
+    expect(saveConnection.mock.calls[0]?.[0]).toMatchObject({ name: "Saved without testing" });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(screen.getByText("Saved connections")).not.toBeNull();
+  });
+
+  test("opens an existing SSH profile directly in edit mode", async () => {
+    availableConnections[0] = {
+      ...fieldsProfile,
+      password: "test-password",
+      ssh_tunnel: {
+        source: { type: "from_ssh_config", alias: "test-host" },
+        auth: { type: "key_file", path: "test-key", passphrase_ref: null },
+        remote_bind_host: "localhost",
+        remote_bind_port: 5432,
+      },
+    };
+
+    await openConnectionSetup("/connections/new?connectionId=connection-1");
+
+    expect(screen.queryByRole("group", { name: "Choose a database engine" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "SSH tunnel" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+  });
 
   for (const sshEnabled of [false, true]) {
     test(`keeps the live workspace through Settings ${sshEnabled ? "with" : "without"} SSH`, async () => {
@@ -586,6 +725,17 @@ describe("ConnectionWorkspace SQL tabs", () => {
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
   });
 
+  test("does not render a second appbar and rounds the main workspace panel", () => {
+    renderWorkspace();
+
+    expect(screen.queryByText("NEXUS STUDIO")).toBeNull();
+    expect(
+      document
+        .querySelector('.connection-workbench section[aria-label="SQL editor workspace"]')
+        ?.classList.contains("rounded-2xl"),
+    ).toBe(true);
+  });
+
   test("keeps the saved connection database selected and blocks a table tab from another database", () => {
     getTableData.mockClear();
     useWorkspaceStore.setState({
@@ -733,15 +883,23 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
 
-  test("keeps the run action out of the compact tab bar", () => {
+  test("keeps workspace tabs content-sized, left-aligned, and horizontally scrollable", () => {
     renderWorkspace();
 
     expect(within(screen.getByRole("tablist")).queryByText("Run all")).toBeNull();
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("w-fit");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("flex-none");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
+    expect(screen.getByRole("tablist").className).toContain("flex-1");
+    expect(screen.getByRole("tablist").className).toContain("justify-start");
+    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).toContain("border-r");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).not.toContain("last:border-r-0");
     expect(screen.getByRole("tablist").className).toContain("rounded-none");
+    expect(screen.getByRole("tablist").parentElement?.className).toContain("h-9");
+    expect(screen.getByRole("tablist").parentElement?.className).not.toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;
@@ -917,6 +1075,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
       "1 rows2 columns2 ms",
     );
     expect(screen.getByRole("table").closest(".w-full")).not.toBeNull();
+    expect(screen.getByRole("table").closest(".font-sans")).not.toBeNull();
     const viewGroup = screen.getByRole("group", { name: "SQL result view" });
     expect(viewGroup.className).toContain("h-6");
     expect(viewGroup.className).toContain("justify-self-start");
@@ -1288,9 +1447,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Close Query 2" })).toBeNull();
-    expect(screen.getByRole("tablist").className).not.toContain("overflow-x-auto");
-    expect(screen.getByRole("tablist").className).toContain("overflow-hidden");
+    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
+    expect(screen.getByRole("tablist").className).toContain("overflow-y-hidden");
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
+  });
+
+  test("keeps keyboard focus in the workspace without drawing an outer accent ring after closing the last tab", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Close Query 1" }));
+
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+    expect(document.activeElement).toBe(workspace);
+    expect(workspace.className).not.toContain("focus-visible:ring-2");
   });
 
   test("keeps the tab controls left aligned and exposes a close control for a single tab", () => {
@@ -1300,10 +1468,13 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
     const queryTab = screen.getByRole("tab", { name: /Query 1/ });
 
-    expect(tabList.className).not.toContain("flex-1");
+    expect(tabList.className).toContain("flex-1");
+    expect(tabList.className).toContain("overflow-x-auto");
     expect(createTab.previousElementSibling).toBe(tabList);
-    expect(queryTab.className).toContain("w-36");
-    expect(screen.getByRole("button", { name: "Close Query 1" })).not.toBeNull();
+    expect(queryTab.className).toContain("flex-none");
+    expect(queryTab.className.split(/\s+/)).toContain("gap-1");
+    expect(queryTab.className.split(/\s+/)).toContain("pr-1.5");
+    expect(screen.getByRole("button", { name: "Close Query 1" }).className).toContain("size-4");
   });
 
   test("marks edited SQL tabs as having unsaved changes", () => {
@@ -1783,7 +1954,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
       ctrlKey: true,
     });
 
+    const shortcutPanel = screen.getByRole("region", { name: "Available keyboard shortcuts" });
     const shortcutList = screen.getByRole("list", { name: "Implemented shortcuts" });
+    expect(shortcutPanel.className).toContain("max-w-2xl");
+    expect(screen.getByRole("heading", { name: "Workspace shortcuts" })).not.toBeNull();
+    expect(shortcutList.className).toContain("sm:grid-cols-2");
+    expect(shortcutList.firstElementChild?.textContent).toContain("New SQL tab");
     expect(shortcutList.textContent).toContain("Run all");
     expect(shortcutList.textContent).toContain("Run current");
     expect(shortcutList.textContent).toContain("Ctrl+Enter");

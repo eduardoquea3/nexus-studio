@@ -71,6 +71,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           enum_values: [],
           nullable: true,
           default: null,
+          is_generated: false,
           is_pk: schemaHasPrimaryKey,
           is_fk: false,
           is_unique: false,
@@ -81,8 +82,9 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           enum_values: [],
           nullable: false,
           default: null,
+          is_generated: false,
           is_pk: false,
-          is_fk: false,
+          is_fk: true,
           is_unique: false,
         },
         {
@@ -91,6 +93,7 @@ mock.module("@/app/connection/hooks/use-table-schema", () => ({
           enum_values: ["draft", "published"],
           nullable: false,
           default: null,
+          is_generated: false,
           is_pk: false,
           is_fk: false,
           is_unique: false,
@@ -205,18 +208,18 @@ describe("TableDataTab empty rows", () => {
     expect(lastPageNextButton.className).not.toContain("disabled:hidden");
   });
 
-  test("cancels an unsaved draft row when changing pages", () => {
+  test("closes the add-row dialog when changing pages", () => {
     currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 250, page: 1, page_size: 100 };
     render(<TableDataTab profile={profile} table="auth" />);
+    const nextPageButton = screen.getByRole("button", { name: "Next table page" });
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
-    expect(screen.getByRole("button", { name: "Cancel add row" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Add row" })).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Next table page" }));
+    fireEvent.click(nextPageButton);
 
     expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Cancel add row" })).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Add row" })).toBeNull();
   });
 
   test("keeps the index column content-sized and centered with px-3 padding", () => {
@@ -233,10 +236,6 @@ describe("TableDataTab empty rows", () => {
       true,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
-    const draftIndex = screen.getByRole("textbox").closest("tr")?.firstElementChild;
-    expect(draftIndex?.textContent).toBe("2");
-    expect(draftIndex?.classList.contains("px-3")).toBe(true);
   });
 
   test("shows global row indexes on later pages and keeps the toolbar available", () => {
@@ -306,10 +305,12 @@ describe("TableDataTab empty rows", () => {
     const addRowButton = screen.getByRole("button", { name: "Add row" });
     expect(refreshButton.textContent).toBe("");
     expect(addRowButton.textContent).toBe("");
-    expect(refreshButton.className).toContain("h-8 w-8 rounded-md");
-    expect(addRowButton.className).toContain("h-8 w-8 rounded-md");
-    expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
-    expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-5");
+    expect(refreshButton.className).toContain("size-7");
+    expect(addRowButton.className).toContain("size-7");
+    expect(refreshButton.className).toContain("rounded-lg");
+    expect(addRowButton.className).toContain("rounded-lg");
+    expect(refreshButton.querySelector("svg")?.getAttribute("class")).toContain("size-4");
+    expect(addRowButton.querySelector("svg")?.getAttribute("class")).toContain("size-4");
     expect(screen.getByLabelText("Current page 1").textContent).toBe("1");
     expect(screen.getByRole("navigation", { name: "Table data pagination" }).className).toContain(
       "justify-self-center",
@@ -322,14 +323,24 @@ describe("TableDataTab empty rows", () => {
 
     expect(screen.getByRole("tab", { name: "Data" })).not.toBeNull();
     expect(screen.getByRole("tab", { name: "Structure" })).not.toBeNull();
-    expect(screen.getByRole("tablist").className).toContain("h-8");
+    expect(screen.getByRole("tablist").className).toContain("h-7");
     expect(screen.getByRole("columnheader", { name: "#" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: /^name/ })).not.toBeNull();
+    const nameHeader = screen.getByRole("columnheader", { name: /^name/ });
+    expect(nameHeader.className).toContain("border-r-2");
+    expect(nameHeader.className).toContain("border-border");
     expect(screen.getByRole("columnheader", { name: /^active/ })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: /^status/ })).not.toBeNull();
     expect(screen.getByText("varchar")).not.toBeNull();
     expect(screen.getByText("boolean")).not.toBeNull();
     expect(screen.getByText("enum")).not.toBeNull();
+    const primaryKeyIcon = screen.getByRole("img", { name: "Primary key" });
+    const foreignKeyIcon = screen.getByRole("img", { name: "Foreign key" });
+    expect(primaryKeyIcon.className).toContain("bg-primary/15");
+    expect(primaryKeyIcon.className).toContain("rounded-full");
+    expect(foreignKeyIcon.className).toContain("bg-success/15");
+    expect(foreignKeyIcon.className).toContain("rounded-full");
+    expect(screen.getByText("varchar").className).toContain("ml-auto");
+    expect(screen.getByText("varchar").className).toContain("text-right");
     expect(screen.getByRole("table").className.includes("min-w-max")).toBe(true);
     expect(document.querySelector('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Table data pagination" })).not.toBeNull();
@@ -376,10 +387,12 @@ describe("TableDataTab empty rows", () => {
     expect(document.querySelector('[data-row-index="1"]')?.getAttribute("data-row-selected")).toBe(
       "true",
     );
+    expect(secondRowSelector.closest("td")?.className).toContain("bg-primary/30");
+    expect(secondRowSelector.closest("td")?.className).toContain("group-hover/row:bg-primary/30");
     expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
   });
 
-  test("toggles rows independently and keeps selected-row export in sync", () => {
+  test("replaces selection on plain click and toggles rows with Ctrl", () => {
     currentTableData = {
       columns: ["name"],
       rows: [{ name: "first" }, { name: "second" }, { name: "third" }],
@@ -391,31 +404,34 @@ describe("TableDataTab empty rows", () => {
 
     const firstRow = screen.getByRole("button", { name: "Select row 1" });
     const secondRow = screen.getByRole("button", { name: "Select row 2" });
-    const clickRowSelector = (rowSelector: HTMLElement) => {
+    const clickRowSelector = (rowSelector: HTMLElement, ctrlKey = false) => {
       fireEvent.pointerDown(rowSelector, {
         button: 0,
         buttons: 1,
         pointerId: 1,
         pointerType: "mouse",
+        ctrlKey,
       });
       fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
     };
     clickRowSelector(firstRow);
-    clickRowSelector(secondRow);
-
-    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
-    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
-    const exportButton = screen.getByRole("button", { name: "Export 2 selected rows as JSON" });
-    const markButton = screen.getByRole("button", { name: "Mark 2 selected rows for deletion" });
-    expect(exportButton.textContent).toBe("");
-    expect(markButton.textContent).toBe("");
+    clickRowSelector(firstRow);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("button", { name: /Export .* selected rows? as JSON/ })).toBeNull();
 
     clickRowSelector(firstRow);
-
+    clickRowSelector(secondRow);
     expect(firstRow.getAttribute("aria-pressed")).toBe("false");
     expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    clickRowSelector(firstRow, true);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Export 2 selected rows as JSON" })).not.toBeNull();
+
+    clickRowSelector(secondRow, true);
+    expect(firstRow.getAttribute("aria-pressed")).toBe("true");
+    expect(secondRow.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: "Export 1 selected row as JSON" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Mark 1 selected row for deletion" })).not.toBeNull();
   });
 
   test("stages selected rows and deletes them in one batch on apply", async () => {
@@ -611,6 +627,56 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("button", { name: "Export 3 selected rows as JSON" })).not.toBeNull();
   });
 
+  test("Ctrl-drag toggles a row range while preserving selections outside it", () => {
+    currentTableData = {
+      columns: ["id"],
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
+      total: 5,
+      page: 1,
+      page_size: 100,
+    };
+    render(<TableDataTab profile={profile} table="auth" />);
+
+    const startDrag = (row: number, ctrlKey = false) =>
+      fireEvent.pointerDown(screen.getByRole("button", { name: `Select row ${row}` }), {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+        ctrlKey,
+      });
+    const enterRow = (row: number) => {
+      const element = document.querySelector(`[data-row-index="${row - 1}"]`);
+      if (!element) throw new Error(`Could not find row ${row}`);
+      fireEvent.pointerEnter(element, { buttons: 1, pointerId: 1, pointerType: "mouse" });
+    };
+    const endDrag = () =>
+      fireEvent.pointerUp(window, { button: 0, buttons: 0, pointerId: 1, pointerType: "mouse" });
+
+    startDrag(2);
+    enterRow(4);
+    endDrag();
+    startDrag(1, true);
+    endDrag();
+    startDrag(3, true);
+    enterRow(4);
+    endDrag();
+
+    expect(screen.getByRole("button", { name: "Select row 1" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 2" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Select row 3" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Select row 4" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Export 2 selected rows as JSON" })).not.toBeNull();
+  });
+
   test("exports the row selected by its index and shows its count and home-relative path", async () => {
     currentTableData = {
       columns: ["id"],
@@ -656,28 +722,45 @@ describe("TableDataTab empty rows", () => {
     expect(nameRow.textContent).toContain("NO");
   });
 
-  test("adds a local editable row from the data toolbar", () => {
+  test("opens add row in a dialog, marks required fields, and leaves the table unchanged", () => {
     render(<TableDataTab profile={profile} table="auth" />);
+    const table = screen.getByRole("table");
+    const rowCount = table.querySelectorAll("tbody tr").length;
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
 
-    expect(screen.getAllByRole("textbox")).toHaveLength(1);
-    expect(screen.getAllByRole("combobox")).toHaveLength(2);
-    expect((screen.getByRole("combobox", { name: "New active" }) as HTMLSelectElement).value).toBe(
-      "",
-    );
-    expect((screen.getByRole("combobox", { name: "New status" }) as HTMLSelectElement).value).toBe(
-      "",
-    );
+    const dialog = screen.getByRole("dialog", { name: "Add row" });
+    expect(dialog.className).toContain("max-sm:h-dvh");
+    expect(dialog.className).toContain("max-sm:max-w-none");
+    expect(dialog.querySelector(".table-row-form-scroll")).not.toBeNull();
+    expect(screen.getByLabelText("name")).not.toBeNull();
+    expect(screen.getByLabelText("active *").hasAttribute("required")).toBe(true);
+    expect(screen.getByLabelText("status *").hasAttribute("required")).toBe(true);
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(rowCount);
     expect(screen.getByRole("option", { name: "true" })).not.toBeNull();
     expect(screen.getByRole("option", { name: "published" })).not.toBeNull();
-    expect(
-      (screen.getByRole("textbox") as HTMLInputElement).className.includes("bg-primary/10"),
-    ).toBe(true);
-    expect(screen.getByRole("cell", { name: "1" })).not.toBeNull();
-    expect(screen.queryByText("Draft row")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add row" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Cancel add row" }).textContent).toBe("");
+  });
+
+  test("closes the add-row dialog from its top-right control", () => {
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close add row" }));
+
+    expect(screen.queryByRole("dialog", { name: "Add row" })).toBeNull();
+  });
+
+  test("prevents inserting when required values are missing", async () => {
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: "New table row" }));
+    });
+
+    expect(insertTableRow).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toBe("Enter a value for active.");
+    expect(screen.getByRole("dialog", { name: "Add row" })).not.toBeNull();
   });
 
   test("does not ask for required timestamp values and keeps nullable timestamps editable", () => {
@@ -688,6 +771,7 @@ describe("TableDataTab empty rows", () => {
         enum_values: [],
         nullable: false,
         default: null,
+        is_generated: false,
         is_pk: false,
         is_fk: false,
         is_unique: false,
@@ -698,6 +782,7 @@ describe("TableDataTab empty rows", () => {
         enum_values: [],
         nullable: true,
         default: null,
+        is_generated: false,
         is_pk: false,
         is_fk: false,
         is_unique: false,
@@ -712,15 +797,17 @@ describe("TableDataTab empty rows", () => {
         name: "Current time for created_at set automatically on insert",
       }),
     ).not.toBeNull();
-    expect(screen.queryByRole("textbox", { name: "New created_at" })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "New optional_at" })).not.toBeNull();
+    expect(screen.queryByRole("textbox", { name: "created_at" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "optional_at" })).not.toBeNull();
   });
 
-  test("inserts the draft row, reports success, refreshes data, and clears the draft", async () => {
+  test("inserts dialog values, reports success, refreshes data, and closes the dialog", async () => {
     render(<TableDataTab profile={profile} table="auth" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ada" } });
+    fireEvent.change(screen.getByLabelText("name"), { target: { value: "Ada" } });
+    fireEvent.change(screen.getByLabelText("active *"), { target: { value: "true" } });
+    fireEvent.change(screen.getByLabelText("status *"), { target: { value: "draft" } });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Insert row" }));
@@ -732,8 +819,8 @@ describe("TableDataTab empty rows", () => {
       undefined,
       {
         name: "Ada",
-        active: "",
-        status: "",
+        active: "true",
+        status: "draft",
       },
       expect.any(Array),
     );
@@ -747,13 +834,62 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
   });
 
-  test("reports insert errors and preserves the draft row for correction", async () => {
+  test("omits empty generated and defaulted fields from a new row", async () => {
+    additionalSchemaColumns = [
+      {
+        name: "id",
+        data_type: "integer",
+        enum_values: [],
+        nullable: false,
+        default: null,
+        is_generated: true,
+        is_pk: true,
+        is_fk: false,
+        is_unique: false,
+      },
+      {
+        name: "created_at",
+        data_type: "timestamp with time zone",
+        enum_values: [],
+        nullable: false,
+        default: "CURRENT_TIMESTAMP",
+        is_generated: false,
+        is_pk: false,
+        is_fk: false,
+        is_unique: false,
+      },
+    ];
+    render(<TableDataTab profile={profile} table="auth" />);
+    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    fireEvent.change(screen.getByLabelText("active *"), { target: { value: "false" } });
+    fireEvent.change(screen.getByLabelText("status *"), { target: { value: "draft" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Insert row" }));
+    });
+
+    expect(insertTableRow).toHaveBeenCalledWith(
+      profile,
+      "auth",
+      undefined,
+      {
+        name: "",
+        active: "false",
+        status: "draft",
+      },
+      expect.any(Array),
+    );
+  });
+
+  test("reports insert errors and preserves form values for correction", async () => {
     insertTableRow.mockImplementation(async () => {
       throw new Error("constraint violation");
     });
     render(<TableDataTab profile={profile} table="auth" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
+    fireEvent.change(screen.getByLabelText("active *"), { target: { value: "true" } });
+    fireEvent.change(screen.getByLabelText("status *"), { target: { value: "draft" } });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Insert row" }));
@@ -766,51 +902,22 @@ describe("TableDataTab empty rows", () => {
     });
     expect(refetchTable).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Insert row" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Cancel add row" })).not.toBeNull();
+    expect((screen.getByLabelText("active *") as HTMLSelectElement).value).toBe("true");
   });
 
-  test("focuses the new row editor after adding a row", () => {
-    const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollIntoView",
-    );
-    const scrolledElements: HTMLElement[] = [];
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value(this: HTMLElement) {
-        scrolledElements.push(this);
-      },
-    });
-
-    try {
-      render(<TableDataTab profile={profile} table="auth" />);
-
-      fireEvent.click(screen.getByRole("button", { name: "Add row" }));
-
-      expect(document.activeElement).toBe(screen.getByRole("textbox"));
-      expect(scrolledElements).toHaveLength(1);
-      expect(scrolledElements[0]?.tagName).toBe("TR");
-    } finally {
-      if (scrollIntoViewDescriptor) {
-        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
-      }
-    }
-  });
-
-  test("cancels a local draft row from the data toolbar", () => {
+  test("cancels the add-row dialog without adding a table row", () => {
+    currentTableData = { columns: ["id"], rows: [{ id: 1 }], total: 1, page: 1, page_size: 100 };
     render(<TableDataTab profile={profile} table="auth" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel add row" }));
 
     expect(screen.getByRole("button", { name: "Add row" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Cancel add row" })).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Add row" })).toBeNull();
+    expect(screen.getAllByRole("row")).toHaveLength(2);
   });
 
-  test("shows display indexes without adding them to row data", () => {
+  test("shows display indexes without adding a row from the toolbar", () => {
     currentTableData = {
       columns: ["name", "active", "status"],
       rows: [
@@ -828,9 +935,12 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByRole("cell", { name: "2" })).not.toBeNull();
     expect(screen.queryByRole("columnheader", { name: "id" })).toBeNull();
 
+    const table = screen.getByRole("table");
+    const rowCount = table.querySelectorAll("tbody tr").length;
     fireEvent.click(screen.getByRole("button", { name: "Add row" }));
 
-    expect(screen.getByRole("cell", { name: "3" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Add row" })).not.toBeNull();
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(rowCount);
   });
 
   test("does not show JSON actions while loading or after a data error", () => {
@@ -855,7 +965,7 @@ describe("TableDataTab empty rows", () => {
       page_size: 100,
     };
     render(<TableDataTab profile={profile} table="auth" />);
-    expect(screen.getByRole("group", { name: "Table data view" }).className).toContain("h-8");
+    expect(screen.getByRole("group", { name: "Table data view" }).className).toContain("h-7");
     expect(screen.getByRole("button", { name: "Table" }).className).toContain("text-xs");
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(refetchTable).not.toHaveBeenCalled();
@@ -1195,7 +1305,7 @@ describe("TableDataTab empty rows", () => {
     expect(screen.getByText("Page 1 · 2 loaded")).not.toBeNull();
   });
 
-  test("shows JSON for the loaded page and excludes a local draft row", () => {
+  test("shows JSON for the loaded page without changing the data", () => {
     currentTableData = {
       columns: ["name", "active", "status"],
       rows: [{ name: "first", active: true, status: "draft" }],
@@ -1205,7 +1315,6 @@ describe("TableDataTab empty rows", () => {
     };
     render(<TableDataTab profile={profile} table="auth" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add row" }));
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
 
     expect(screen.getByLabelText("Table data JSON").textContent).toContain('"first"');

@@ -152,6 +152,7 @@ pub struct ColumnInfo {
     pub enum_values: Vec<String>,
     pub nullable: bool,
     pub default: Option<String>,
+    pub is_generated: bool,
     pub is_pk: bool,
     pub is_fk: bool,
     pub is_unique: bool,

@@ -14,6 +14,8 @@ use sqlx::{
 use std::collections::{HashMap, HashSet};
 use tauri::State;
 
+const POSTGRES_FOREIGN_KEY_COLUMNS_QUERY: &str = "SELECT kcu.column_name FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON tc.constraint_catalog = kcu.constraint_catalog AND tc.constraint_schema = kcu.constraint_schema AND tc.constraint_name = kcu.constraint_name AND tc.table_catalog = kcu.table_catalog AND tc.table_schema = kcu.table_schema AND tc.table_name = kcu.table_name WHERE tc.constraint_type = 'FOREIGN KEY' AND kcu.table_schema = COALESCE($1, current_schema()::text) AND kcu.table_name = $2";
+
 #[tauri::command]
 pub async fn list_schema_objects(
     request: ConnectionTestRequest,
@@ -921,6 +923,24 @@ async fn postgres_primary_key_columns(
         .collect())
 }
 
+async fn postgres_foreign_key_columns(
+    connection: &mut PgConnection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<HashSet<String>, String> {
+    let rows = sqlx::query(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY)
+    .bind(schema)
+    .bind(table)
+    .fetch_all(connection)
+    .await
+    .map_err(|error| format!("Could not load foreign keys: {error}"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("column_name"))
+        .collect())
+}
+
 async fn mysql_primary_key_columns(
     connection: &mut MySqlConnection,
     schema: Option<&str>,
@@ -944,6 +964,15 @@ async fn mysql_primary_key_columns(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn postgres_foreign_key_query_uses_supported_information_schema_columns() {
+        assert!(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains(
+            "JOIN information_schema.table_constraints"
+        ));
+        assert!(POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains("tc.constraint_type = 'FOREIGN KEY'"));
+        assert!(!POSTGRES_FOREIGN_KEY_COLUMNS_QUERY.contains("referenced_table_name"));
+    }
 
     #[test]
     fn get_table_data_reports_total_across_pages() {
@@ -1164,6 +1193,81 @@ mod tests {
             );
         });
     }
+
+    #[test]
+    fn get_table_schema_reports_generated_columns() {
+        tauri::async_runtime::block_on(async {
+            let database_path = std::env::temp_dir().join(format!(
+                "nexus-studio-generated-schema-{}-{}.sqlite",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock should be after the Unix epoch")
+                    .as_nanos()
+            ));
+            let database_path = database_path.to_string_lossy().into_owned();
+
+            let result = async {
+                let options = SqliteConnectOptions::new()
+                    .filename(&database_path)
+                    .create_if_missing(true);
+                let mut connection = SqliteConnection::connect_with(&options)
+                    .await
+                    .expect("test database should open");
+                sqlx::query(
+                    "CREATE TABLE generated_fields (id INTEGER PRIMARY KEY, required_value TEXT NOT NULL, computed_value TEXT GENERATED ALWAYS AS (required_value || '-computed') STORED)",
+                )
+                .execute(&mut connection)
+                .await
+                .expect("test table should be created");
+                drop(connection);
+
+                get_table_schema_with_manager(
+                    TableSchemaRequest {
+                        request: ConnectionTestRequest {
+                            db_type: "sqlite".to_string(),
+                            host: None,
+                            port: None,
+                            database: None,
+                            username: None,
+                            password: None,
+                            sqlite_path: Some(database_path.clone()),
+                            ssh: None,
+                            ssh_password: None,
+                            connection_id: None,
+                            persist_ssh_tunnel: false,
+                        },
+                        table: "generated_fields".to_string(),
+                        schema: None,
+                    },
+                    &SshTunnelManager::default(),
+                )
+                .await
+            }
+            .await;
+
+            let _ = std::fs::remove_file(&database_path);
+            let schema = result.expect("table schema should load");
+            let schema_json = serde_json::to_value(schema).expect("schema should serialize");
+            let columns = schema_json["columns"]
+                .as_array()
+                .expect("schema columns should be an array");
+            let is_generated = |name: &str| {
+                columns
+                    .iter()
+                    .find(|column| column["name"] == name)
+                    .and_then(|column| column["is_generated"].as_bool())
+                    .unwrap_or(false)
+            };
+
+            assert!(is_generated("id"), "integer primary keys can be generated");
+            assert!(
+                is_generated("computed_value"),
+                "computed columns are generated"
+            );
+            assert!(!is_generated("required_value"));
+        });
+    }
 }
 #[tauri::command]
 pub async fn get_table_schema(
@@ -1206,11 +1310,11 @@ async fn get_table_schema_with_manager(
             let mut connection = PgConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("PostgreSQL connection failed: {error}"))?;
-            let query = "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, COALESCE(array_agg(e.enumlabel ORDER BY e.enumsortorder) FILTER (WHERE e.enumlabel IS NOT NULL), ARRAY[]::text[]) AS enum_values FROM information_schema.columns c LEFT JOIN pg_namespace n ON n.nspname = c.table_schema LEFT JOIN pg_type t ON t.typname = c.udt_name AND t.typnamespace = n.oid LEFT JOIN pg_enum e ON e.enumtypid = t.oid WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema')";
+            let query = "SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, c.is_identity, c.is_generated, COALESCE(array_agg(e.enumlabel ORDER BY e.enumsortorder) FILTER (WHERE e.enumlabel IS NOT NULL), ARRAY[]::text[]) AS enum_values FROM information_schema.columns c LEFT JOIN pg_namespace n ON n.nspname = c.table_schema LEFT JOIN pg_type t ON t.typname = c.udt_name AND t.typnamespace = n.oid LEFT JOIN pg_enum e ON e.enumtypid = t.oid WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema')";
             let query = if request.schema.is_some() {
-                format!("{query} AND c.table_schema = $2 GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position")
+                format!("{query} AND c.table_schema = $2 GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default, c.is_identity, c.is_generated ORDER BY c.ordinal_position")
             } else {
-                format!("{query} GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default ORDER BY c.ordinal_position")
+                format!("{query} GROUP BY c.ordinal_position, c.column_name, c.data_type, c.is_nullable, c.column_default, c.is_identity, c.is_generated ORDER BY c.ordinal_position")
             };
             let mut query = sqlx::query(&query).bind(&request.table);
             if let Some(schema) = request.schema.as_deref() {
@@ -1226,20 +1330,35 @@ async fn get_table_schema_with_manager(
                 &request.table,
             )
             .await?;
+            let foreign_key_columns = postgres_foreign_key_columns(
+                &mut connection,
+                request.schema.as_deref(),
+                &request.table,
+            )
+            .await?;
 
             Ok(TableSchemaResult {
                 columns: rows
                     .into_iter()
                     .map(|row| {
                         let name: String = row.get("column_name");
+                        let is_pk = primary_key_columns.contains(&name);
+                        let is_fk = foreign_key_columns.contains(&name);
+                        let default: Option<String> = row.get("column_default");
+                        let is_generated = row.get::<String, _>("is_identity") == "YES"
+                            || row.get::<String, _>("is_generated") == "ALWAYS"
+                            || default
+                                .as_deref()
+                                .is_some_and(|value| value.starts_with("nextval("));
                         ColumnInfo {
-                            is_pk: primary_key_columns.contains(&name),
+                            is_pk,
                             name,
                             data_type: row.get("data_type"),
                             enum_values: row.get("enum_values"),
                             nullable: row.get::<String, _>("is_nullable") == "YES",
-                            default: row.get("column_default"),
-                            is_fk: false,
+                            default,
+                            is_generated,
+                            is_fk,
                             is_unique: false,
                         }
                     })
@@ -1259,7 +1378,7 @@ async fn get_table_schema_with_manager(
                 .await
                 .map_err(|error| format!("MySQL connection failed: {error}"))?;
             let rows = sqlx::query(
-                "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ? ORDER BY ordinal_position",
+                "SELECT column_name, data_type, is_nullable, column_default, extra, generation_expression FROM information_schema.columns WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ? ORDER BY ordinal_position",
             )
             .bind(request.schema.as_deref())
             .bind(&request.table)
@@ -1285,6 +1404,11 @@ async fn get_table_schema_with_manager(
                             enum_values: Vec::new(),
                             nullable: row.get::<String, _>("is_nullable") == "YES",
                             default: row.get("column_default"),
+                            is_generated: row
+                                .get::<String, _>("extra")
+                                .to_ascii_lowercase()
+                                .contains("auto_increment")
+                                || !row.get::<String, _>("generation_expression").is_empty(),
                             is_fk: false,
                             is_unique: false,
                         }
@@ -1305,24 +1429,40 @@ async fn get_table_schema_with_manager(
             let mut connection = SqliteConnection::connect_with(&options)
                 .await
                 .map_err(|error| format!("SQLite connection failed: {error}"))?;
-            let query = format!("PRAGMA table_info(\"{}\")", request.table);
+            let query = format!("PRAGMA table_xinfo(\"{}\")", request.table);
             let rows = sqlx::query(&query)
                 .fetch_all(&mut connection)
                 .await
                 .map_err(|error| format!("Could not load table structure: {error}"))?;
+            let primary_key_index_count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM pragma_index_list(?) WHERE origin = 'pk'",
+            )
+            .bind(&request.table)
+            .fetch_one(&mut connection)
+            .await
+            .map_err(|error| format!("Could not inspect primary key generation: {error}"))?;
 
             Ok(TableSchemaResult {
                 columns: rows
                     .into_iter()
-                    .map(|row| ColumnInfo {
-                        name: row.get("name"),
-                        data_type: row.get::<String, _>("type"),
-                        enum_values: Vec::new(),
-                        nullable: row.get::<i64, _>("notnull") == 0,
-                        default: row.get("dflt_value"),
-                        is_pk: row.get::<i64, _>("pk") > 0,
-                        is_fk: false,
-                        is_unique: false,
+                    .map(|row| {
+                        let data_type: String = row.get("type");
+                        let is_pk = row.get::<i64, _>("pk") > 0;
+                        let is_generated = row.get::<i64, _>("hidden") > 1
+                            || (is_pk
+                                && primary_key_index_count == 0
+                                && data_type.trim().eq_ignore_ascii_case("INTEGER"));
+                        ColumnInfo {
+                            name: row.get("name"),
+                            data_type,
+                            enum_values: Vec::new(),
+                            nullable: row.get::<i64, _>("notnull") == 0,
+                            default: row.get("dflt_value"),
+                            is_generated,
+                            is_pk,
+                            is_fk: false,
+                            is_unique: false,
+                        }
                     })
                     .collect(),
                 indexes: Vec::new(),

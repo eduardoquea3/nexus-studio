@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConnectionsNewRouteImport } from './routes/connections/new'
 import { Route as ConnectionsConnectionIdRouteImport } from './routes/connections/$connectionId'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectionsNewRoute = ConnectionsNewRouteImport.update({
+  id: '/connections/new',
+  path: '/connections/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectionsConnectionIdRoute = ConnectionsConnectionIdRouteImport.update({
   id: '/connections/$connectionId',
   path: '/connections/$connectionId',
@@ -33,30 +39,40 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
+  '/connections/new': typeof ConnectionsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
+  '/connections/new': typeof ConnectionsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/connections/$connectionId': typeof ConnectionsConnectionIdRoute
+  '/connections/new': typeof ConnectionsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/connections/$connectionId'
+  fullPaths:
+    '/' | '/settings' | '/connections/$connectionId' | '/connections/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/connections/$connectionId'
-  id: '__root__' | '/' | '/settings' | '/connections/$connectionId'
+  to: '/' | '/settings' | '/connections/$connectionId' | '/connections/new'
+  id:
+    | '__root__'
+    | '/'
+    | '/settings'
+    | '/connections/$connectionId'
+    | '/connections/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
   ConnectionsConnectionIdRoute: typeof ConnectionsConnectionIdRoute
+  ConnectionsNewRoute: typeof ConnectionsNewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,6 +91,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connections/new': {
+      id: '/connections/new'
+      path: '/connections/new'
+      fullPath: '/connections/new'
+      preLoaderRoute: typeof ConnectionsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/connections/$connectionId': {
       id: '/connections/$connectionId'
       path: '/connections/$connectionId'
@@ -89,6 +112,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
   ConnectionsConnectionIdRoute: ConnectionsConnectionIdRoute,
+  ConnectionsNewRoute: ConnectionsNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

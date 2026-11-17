@@ -1,9 +1,9 @@
 import type { Row } from "@tanstack/react-table";
 
-import { RiFileCopyLine, RiDownloadLine, RiRefreshLine } from "@remixicon/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RiCloseLine, RiFileCopyLine, RiDownloadLine, RiRefreshLine } from "@remixicon/react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import type { ConnectionProfile, ViewMode } from "@/shared/types/models";
+import type { ColumnInfo, ConnectionProfile, ViewMode } from "@/shared/types/models";
 
 import { TableDataGrid } from "@/app/connection/components/table-data-grid";
 import {
@@ -22,6 +22,15 @@ import {
 } from "@/app/connection/services/table-data-row-identity";
 import { Tabs, TabsContent } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { JsonCodePanel } from "@/shared/components/json-code-panel";
 import {
@@ -30,6 +39,7 @@ import {
   type JsonActionResult,
 } from "@/shared/lib/json-actions";
 import { exceedsJsonRenderThreshold, serializeJson } from "@/shared/lib/json-serialization";
+import { isRequiredTimestampColumn } from "@/shared/lib/table-column-utils";
 
 type TableDataTabProps = {
   profile: ConnectionProfile;
@@ -59,7 +69,10 @@ export function TableDataTab({
   const tableSchema = useTableSchema(profile, table, isActive, schema);
   const invalidateTableData = useInvalidateTableData(profile, table, schema);
   const [structureDraft, setStructureDraft] = useState<StructureDraft[]>([]);
-  const [draftRow, setDraftRow] = useState<Record<string, unknown> | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string> | null>(null);
+  const [isAddRowOpen, setIsAddRowOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const formId = useId();
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
@@ -93,12 +106,17 @@ export function TableDataTab({
   const handleSelectionChange = useCallback((rows: Row<Record<string, unknown>>[]) => {
     setSelectedRows(rows.map((row) => row.original));
   }, []);
-  const handleDraftChange = useCallback((column: string, value: string) => {
-    setDraftRow((row) => (row ? { ...row, [column]: value } : row));
+  const handleFormValueChange = useCallback((column: string, value: string) => {
+    setFormValues((current) => (current ? { ...current, [column]: value } : current));
+    setFormError(null);
   }, []);
   const handlePageChange = useCallback(
     (nextPage: number) => {
-      if (nextPage !== page) setDraftRow(null);
+      if (nextPage !== page) {
+        setIsAddRowOpen(false);
+        setFormValues(null);
+        setFormError(null);
+      }
       setPage(nextPage);
     },
     [page],
@@ -131,13 +149,46 @@ export function TableDataTab({
     [pendingDeletions, primaryKeyColumns],
   );
 
+  const handleOpenAddRow = () => {
+    if (!schemaColumns?.length) return;
+    setFormValues(Object.fromEntries(schemaColumns.map((column) => [column.name, ""])));
+    setFormError(null);
+    setIsAddRowOpen(true);
+  };
+
+  const handleCloseAddRow = () => {
+    if (isInsertingRow) return;
+    setIsAddRowOpen(false);
+    setFormValues(null);
+    setFormError(null);
+  };
+
   const handleInsertRow = async () => {
-    if (!draftRow || isInsertingRow) return;
+    if (!formValues || !schemaColumns?.length || isInsertingRow) return;
+
+    const requiredColumn = schemaColumns.find(
+      (column) => isRequiredInsertColumn(column) && !formValues[column.name]?.trim(),
+    );
+    if (requiredColumn) {
+      setFormError(`Enter a value for ${requiredColumn.name}.`);
+      document.getElementById(`${formId}-${requiredColumn.name}`)?.focus();
+      return;
+    }
+
+    const values = Object.fromEntries(
+      schemaColumns.flatMap((column) => {
+        const value = formValues[column.name] ?? "";
+        if (value === "" && (column.is_generated || column.default !== null)) return [];
+        return [[column.name, value]];
+      }),
+    );
 
     setIsInsertingRow(true);
     try {
-      await insertTableRow(profile, table, schema, draftRow, schemaColumns ?? []);
-      setDraftRow(null);
+      await insertTableRow(profile, table, schema, values, schemaColumns);
+      setIsAddRowOpen(false);
+      setFormValues(null);
+      setFormError(null);
       toast.add({
         title: "Row inserted",
         type: "success",
@@ -217,6 +268,9 @@ export function TableDataTab({
     setPage(1);
     setPendingDeletions((current) => (current.size === 0 ? current : new Map()));
     setSelectedRows([]);
+    setIsAddRowOpen(false);
+    setFormValues(null);
+    setFormError(null);
   }, [profile.id, table, schema]);
   useEffect(() => {
     setViewMode("table");
@@ -364,10 +418,8 @@ export function TableDataTab({
                   withShell={false}
                   className="h-full [&_tr>:first-child]:w-px [&_tr>:first-child]:text-center [&_[data-row-selector]]:justify-center [&_[data-row-selector]]:text-center"
                   rowNumberOffset={((data?.page ?? page) - 1) * (data?.page_size ?? 100)}
-                  draftRow={draftRow}
                   draftColumns={schemaColumns}
                   onSelectionChange={handleSelectionChange}
-                  onDraftChange={handleDraftChange}
                   isRowPending={isRowPending}
                   selectionResetToken={selectionResetToken}
                 />
@@ -391,6 +443,129 @@ export function TableDataTab({
           />
         </TabsContent>
       </div>
+      <Dialog
+        open={isAddRowOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCloseAddRow();
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[min(85vh,42rem)] overflow-hidden sm:max-w-xl max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:gap-3 max-sm:rounded-none max-sm:p-4 max-sm:flex max-sm:flex-col"
+        >
+          <DialogHeader className="pr-10">
+            <DialogTitle>Add row</DialogTitle>
+            <DialogDescription>
+              Enter values for this row. Fields marked with * are required.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Close add row"
+                className="absolute top-3 right-3"
+              />
+            }
+          >
+            <RiCloseLine className="size-4" />
+            <span className="sr-only">Close add row</span>
+          </DialogClose>
+          <form
+            aria-label="New table row"
+            className="flex min-h-0 flex-col gap-4 max-sm:flex-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleInsertRow();
+            }}
+          >
+            <div className="table-row-form-scroll grid max-h-[58vh] grid-cols-1 gap-x-4 gap-y-3 overflow-y-auto overscroll-contain py-1 pr-2 sm:grid-cols-2 max-sm:max-h-none max-sm:min-h-0 max-sm:flex-1">
+              {schemaColumns?.map((column) => {
+                const fieldId = `${formId}-${column.name}`;
+                const required = isRequiredInsertColumn(column);
+                const dataType = column.data_type.toLowerCase();
+                const isBoolean =
+                  dataType === "boolean" || dataType === "bool" || dataType === "tinyint(1)";
+                const enumValues = column.enum_values;
+                const options = isBoolean ? ["true", "false"] : enumValues;
+                return (
+                  <div key={column.name} className="min-w-0 space-y-1.5">
+                    <label
+                      htmlFor={fieldId}
+                      className="block truncate text-xs font-medium text-foreground"
+                    >
+                      {column.name}
+                      {required ? <span className="text-destructive">{" *"}</span> : null}
+                    </label>
+                    {isRequiredTimestampColumn(column) ? (
+                      <div
+                        id={fieldId}
+                        role="status"
+                        aria-label={`Current time for ${column.name} set automatically on insert`}
+                        className="flex h-9 items-center rounded-md border border-border/70 bg-muted/30 px-3 text-xs text-muted-foreground"
+                      >
+                        Current time on insert
+                      </div>
+                    ) : isBoolean || enumValues.length > 0 ? (
+                      <select
+                        id={fieldId}
+                        required={required}
+                        aria-required={required}
+                        value={formValues?.[column.name] ?? ""}
+                        onChange={(event) =>
+                          handleFormValueChange(column.name, event.target.value)
+                        }
+                        className="h-9 w-full min-w-0 rounded-md border border-border bg-background px-3 text-xs text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                        <option value="">Select value</option>
+                        {options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id={fieldId}
+                        type="text"
+                        required={required}
+                        aria-required={required}
+                        value={formValues?.[column.name] ?? ""}
+                        onChange={(event) =>
+                          handleFormValueChange(column.name, event.target.value)
+                        }
+                        placeholder="Enter value"
+                        className="h-9 w-full min-w-0 rounded-md border border-border bg-background px-3 text-xs text-foreground shadow-sm outline-none placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {formError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {formError}
+              </p>
+            ) : null}
+            <DialogFooter className="border-t border-border/70 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                aria-label="Cancel add row"
+                disabled={isInsertingRow}
+                onClick={handleCloseAddRow}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isInsertingRow}>
+                {isInsertingRow ? "Adding…" : "Insert row"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <TableDataToolbar
         canShowJson={canShowJson}
         viewMode={viewMode}
@@ -398,9 +573,8 @@ export function TableDataTab({
           if (viewMode === "json" && nextViewMode === "table") setSelectedRows([]);
           setViewMode(nextViewMode);
         }}
-        columnNames={columnNames}
-        draftRow={draftRow}
-        setDraftRow={setDraftRow}
+        canAddRow={Boolean(schemaColumns?.length) && !tableSchema.isLoading}
+        onAddRow={handleOpenAddRow}
         selectedRowCount={rowsToExport.length}
         canMarkSelectedForDeletion={canMarkSelectedForDeletion}
         pendingDeletionCount={pendingDeletions.size}
@@ -415,8 +589,6 @@ export function TableDataTab({
         page={page}
         pageCount={Math.max(1, Math.ceil((data?.total ?? 0) / (data?.page_size || 100)))}
         isLoading={isFetching}
-        isInsertingRow={isInsertingRow}
-        onInsertRow={() => void handleInsertRow()}
         onPageChange={handlePageChange}
       />
     </Tabs>
@@ -440,6 +612,15 @@ function exportJson(
       ? "JSON export cancelled."
       : "Could not export JSON.";
 }
+function isRequiredInsertColumn(column: ColumnInfo) {
+  return (
+    !column.nullable &&
+    column.default === null &&
+    !column.is_generated &&
+    !isRequiredTimestampColumn(column)
+  );
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }

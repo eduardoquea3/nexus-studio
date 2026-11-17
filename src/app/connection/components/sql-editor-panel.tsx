@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/animate-ui/components/radix/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { sqlCompletionIcons } from "@/shared/lib/sql-completion-icons";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
 
@@ -23,9 +24,9 @@ import { getQueryRange } from "./connection-workspace-utils";
 import { QueryResultView } from "./query-result-view";
 
 const EMPTY_STATE_SHORTCUTS = [
+  ["New SQL tab", ["Ctrl", "T"]],
   ["Run all", ["Ctrl", "Enter"]],
   ["Run current", ["Ctrl", "Shift", "Enter"]],
-  ["New SQL tab", ["Ctrl", "T"]],
   ["Close active tab", ["Ctrl", "W"]],
   ["Next tab", ["Ctrl", "Tab"]],
   ["Previous tab", ["Ctrl", "Shift", "Tab"]],
@@ -74,40 +75,46 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
       <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-muted/10 px-4 py-8">
         <section
           aria-label="Available keyboard shortcuts"
-          className="w-full max-w-sm rounded-lg border border-border/70 bg-card/50 p-4 shadow-sm sm:p-5"
+          className="w-full max-w-2xl rounded-xl border border-border bg-card p-5 shadow-lg sm:p-6"
         >
-          <div className="mb-3 text-center">
-            <p className="font-label text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Keyboard shortcuts
+          <header className="mb-5">
+            <h2 className="text-sm font-semibold text-foreground">Workspace shortcuts</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Start a SQL tab or move around your workspace without leaving the keyboard.
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">Get around your workspace faster.</p>
-          </div>
-          <ul className="flex flex-col gap-1.5" aria-label="Implemented shortcuts">
-            {EMPTY_STATE_SHORTCUTS.map(([label, keys]) => (
-              <li
-                key={label}
-                className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-              >
-                <span className="truncate">{label}</span>
-                <span
-                  className="flex shrink-0 items-center gap-1"
-                  aria-label={`${keys.join("+")} ${label}`}
+          </header>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Implemented shortcuts">
+            {EMPTY_STATE_SHORTCUTS.map(([label, keys]) => {
+              const isPrimary = label === "New SQL tab";
+              return (
+                <li
+                  key={label}
+                  className={cn(
+                    "flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-md border border-border/70 bg-background/50 px-3 py-2 text-xs text-muted-foreground",
+                    isPrimary && "border-primary/30 bg-primary/5 text-foreground sm:col-span-2",
+                  )}
                 >
-                  {keys.map((key, index) => (
-                    <span key={`${key}-${index}`} className="flex items-center gap-1">
-                      {index > 0 && (
-                        <span aria-hidden="true" className="text-muted-foreground/60">
-                          +
-                        </span>
-                      )}
-                      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[0.65rem] text-foreground shadow-[0_1px_0_hsl(var(--border))]">
-                        {key}
-                      </kbd>
-                    </span>
-                  ))}
-                </span>
-              </li>
-            ))}
+                  <span className="truncate">{label}</span>
+                  <span
+                    className="flex shrink-0 items-center gap-1.5"
+                    aria-label={`${keys.join("+")} ${label}`}
+                  >
+                    {keys.map((key, index) => (
+                      <span key={`${key}-${index}`} className="flex items-center gap-1">
+                        {index > 0 && (
+                          <span aria-hidden="true" className="text-muted-foreground/60">
+                            +
+                          </span>
+                        )}
+                        <kbd className="rounded border border-border bg-muted px-2 py-1 font-mono text-[0.65rem] text-foreground shadow-[0_1px_0_hsl(var(--border))]">
+                          {key}
+                        </kbd>
+                      </span>
+                    ))}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </section>
       </div>

@@ -1,5 +1,5 @@
 import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql";
-import { EditorView } from "@codemirror/view";
+import type { EditorView } from "@codemirror/view";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";

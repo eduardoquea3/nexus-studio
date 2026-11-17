@@ -55,4 +55,26 @@ describe("saveConnection", () => {
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     expect(savedProfiles).toHaveLength(1);
   });
+
+  test("persists optional connection tags and color", async () => {
+    const taggedProfile: ConnectionProfile = {
+      ...profile,
+      id: "connection-tagged",
+      name: "Tagged database",
+      tags: ["Production", "Finance"],
+      tag_color: "chart-2",
+      connect_mode: {
+        type: "fields",
+        host: "localhost",
+        port: 5432,
+        database: "finance",
+        username: "postgres",
+        password_ref: null,
+      },
+    };
+
+    await saveConnection(taggedProfile, "create");
+
+    expect(savedProfiles).toContainEqual(taggedProfile);
+  });
 });

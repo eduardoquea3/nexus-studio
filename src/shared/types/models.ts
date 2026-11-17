@@ -8,6 +8,8 @@ export interface ConnectionProfile {
   connect_mode: ConnectMode;
   ssh_tunnel: SshTunnelConfig | null;
   last_opened_at?: number;
+  tags?: string[];
+  tag_color?: string;
 }
 
 export type ConnectMode =
@@ -50,6 +52,7 @@ export interface ColumnInfo {
   enum_values: string[];
   nullable: boolean;
   default: string | null;
+  is_generated: boolean;
   is_pk: boolean;
   is_fk: boolean;
   is_unique: boolean;

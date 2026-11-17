@@ -11,9 +11,10 @@ export function useConnections() {
   });
 }
 
-export function useConnection(id: string) {
+export function useConnection(id: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: [...connectionsQueryKey, id],
     queryFn: () => getConnection(id),
+    enabled: options.enabled ?? true,
   });
 }

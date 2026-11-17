@@ -1,3 +1,5 @@
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 
 import type { ColumnInfo, ConnectionProfile, ObjectMeta } from "@/shared/types/models";
@@ -15,12 +17,15 @@ import { useConnections } from "@/app/home/hooks/use-connections";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getTableSchema } from "@/shared/lib/tauriApi";
-import { useModalStore } from "@/shared/store/modalStore";
 import { useThemeStore } from "@/shared/store/theme-store";
+
+gsap.registerPlugin(useGSAP);
 
 type ConnectionSidebarProps = {
   profile: ConnectionProfile;
   selectedDatabase: string;
+  selectedTableName?: string;
+  selectedTableSchema?: string;
   onDatabaseChange: (database: string) => void;
   onTableSelect: (table: string, schema?: string) => void;
   onRoutineSelect: (routine: ObjectMeta) => void;
@@ -29,11 +34,12 @@ type ConnectionSidebarProps = {
 export function ConnectionSidebar({
   profile,
   selectedDatabase,
+  selectedTableName,
+  selectedTableSchema,
   onDatabaseChange,
   onTableSelect,
   onRoutineSelect,
 }: ConnectionSidebarProps) {
-  const openModal = useModalStore((state) => state.openModal);
   const initialDatabase = getInitialDatabase(profile);
   const {
     data: databaseValues = [],
@@ -62,6 +68,32 @@ export function ConnectionSidebar({
     new Set(initialDatabase ? [initialDatabase, ...databaseValues] : databaseValues),
   ).map((value) => ({ value, label: value }));
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useGSAP(
+    () => {
+      const sidebar = sidebarRef.current;
+      if (!sidebar) return;
+
+      const targetWidth = sidebarOpen ? 240 : 0;
+      const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+      gsap.to(sidebar, {
+        width: targetWidth,
+        flexBasis: targetWidth,
+        opacity: sidebarOpen ? 1 : 0,
+        duration: prefersReducedMotion ? 0 : 0.28,
+        ease: sidebarOpen ? "power2.out" : "power2.in",
+        overwrite: "auto",
+        onComplete: () => {
+          sidebar.style.pointerEvents = sidebarOpen ? "" : "none";
+        },
+      });
+
+      sidebar.style.pointerEvents = sidebarOpen ? "" : "none";
+    },
+    { dependencies: [sidebarOpen] },
+  );
 
   useEffect(() => {
     const wasFiltering = previousFilterRef.current.length > 0;
@@ -116,9 +148,12 @@ export function ConnectionSidebar({
 
   return (
     <aside
+      ref={sidebarRef}
+      aria-hidden={!sidebarOpen}
+      inert={!sidebarOpen}
       className={cn(
-        "w-60 basis-60 shrink-0 border-r border-border/70 bg-muted/10",
-        sidebarOpen ? "flex flex-col" : "hidden",
+        "w-60 basis-60 shrink-0 overflow-hidden rounded-2xl border border-border bg-card",
+        "flex flex-col",
       )}
     >
       <ConnectionDatabaseSelector
@@ -132,6 +167,8 @@ export function ConnectionSidebar({
         <div className="min-w-0 p-3">
           <ConnectionExplorer
             dbType={profile.db_type}
+            selectedTableName={selectedTableName}
+            selectedTableSchema={selectedTableSchema}
             schemaObjects={schemaObjects}
             isLoading={isLoadingSchema}
             error={schemaError}
@@ -154,7 +191,7 @@ export function ConnectionSidebar({
         </div>
       </ScrollArea>
       <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
-        <ConnectionSwitcherMenu profile={profile} connections={connections} openModal={openModal} />
+        <ConnectionSwitcherMenu profile={profile} connections={connections} />
       </div>
     </aside>
   );

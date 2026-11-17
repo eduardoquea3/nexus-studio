@@ -2,6 +2,8 @@ import type { ColumnInfo, ObjectMeta } from "@/shared/types/models";
 
 export type ConnectionExplorerProps = {
   dbType: ObjectMeta["object_type"] | string;
+  selectedTableName?: string;
+  selectedTableSchema?: string;
   schemaObjects: ObjectMeta[];
   isLoading: boolean;
   error: unknown;
