@@ -155,12 +155,10 @@ mock.module("react-resizable-panels", () => ({
 mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: ({
     selectedDatabase,
-    onDatabaseChange,
     onTableSelect,
     onRoutineSelect,
   }: {
     selectedDatabase: string;
-    onDatabaseChange: (database: string) => void;
     onTableSelect: (table: string) => void;
     onRoutineSelect: (routine: {
       name: string;
@@ -170,9 +168,6 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
   }) => (
     <aside data-testid="connection-sidebar">
       <span data-testid="selected-database">{selectedDatabase}</span>
-      <button type="button" onClick={() => onDatabaseChange("development")}>
-        Select development
-      </button>
       <span
         role="button"
         tabIndex={0}
@@ -211,6 +206,19 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
         Open refresh_company(integer)
       </button>
     </aside>
+  ),
+}));
+
+mock.module("@/app/connection/components/connection-database-selector", () => ({
+  ConnectionDatabaseSelectorPortal: ({
+    onDatabaseChange,
+  }: {
+    selectedDatabase: string;
+    onDatabaseChange: (database: string) => void;
+  }) => (
+    <button type="button" onClick={() => onDatabaseChange("development")}>
+      Select development
+    </button>
   ),
 }));
 

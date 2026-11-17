@@ -35,5 +35,6 @@ test("portals the database badge into the title bar and lists databases", async 
   const databaseBadge = await screen.findByRole("combobox");
   expect(titleBarSlot.contains(databaseBadge)).toBe(true);
   fireEvent.click(databaseBadge);
-  expect(await screen.findByRole("option", { name: "analytics" })).not.toBeNull();
+  const analyticsOption = await screen.findByRole("option", { name: "analytics" });
+  expect(analyticsOption.className).toContain("pr-8");
 });
