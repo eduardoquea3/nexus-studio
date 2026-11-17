@@ -883,15 +883,22 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
   });
 
-  test("keeps the run action out of the compact tab bar", () => {
+  test("keeps workspace tabs content-sized, left-aligned, and horizontally scrollable", () => {
     renderWorkspace();
 
     expect(within(screen.getByRole("tablist")).queryByText("Run all")).toBeNull();
     expect(screen.getByRole("button", { name: "Run all queries" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Query run options" })).not.toBeNull();
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("h-7");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-lg");
-    expect(screen.getByRole("tablist").className).toContain("rounded-lg");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("w-fit");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("flex-none");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
+    expect(screen.getByRole("tablist").className).toContain("flex-1");
+    expect(screen.getByRole("tablist").className).toContain("justify-start");
+    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).toContain("border-r");
+    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).not.toContain("last:border-r-0");
+    expect(screen.getByRole("tablist").className).toContain("rounded-none");
+    expect(screen.getByRole("tablist").parentElement?.className).toContain("h-9");
     expect(screen.getByRole("tablist").parentElement?.className).not.toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
@@ -1440,9 +1447,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Close Query 2" })).toBeNull();
-    expect(screen.getByRole("tablist").className).not.toContain("overflow-x-auto");
-    expect(screen.getByRole("tablist").className).toContain("overflow-hidden");
+    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
+    expect(screen.getByRole("tablist").className).toContain("overflow-y-hidden");
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
+  });
+
+  test("keeps keyboard focus in the workspace without drawing an outer accent ring after closing the last tab", () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Close Query 1" }));
+
+    const workspace = screen.getByRole("region", { name: "SQL editor workspace" });
+    expect(document.activeElement).toBe(workspace);
+    expect(workspace.className).not.toContain("focus-visible:ring-2");
   });
 
   test("keeps the tab controls left aligned and exposes a close control for a single tab", () => {
@@ -1452,10 +1468,13 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
     const queryTab = screen.getByRole("tab", { name: /Query 1/ });
 
-    expect(tabList.className).not.toContain("flex-1");
+    expect(tabList.className).toContain("flex-1");
+    expect(tabList.className).toContain("overflow-x-auto");
     expect(createTab.previousElementSibling).toBe(tabList);
-    expect(queryTab.className).toContain("w-36");
-    expect(screen.getByRole("button", { name: "Close Query 1" })).not.toBeNull();
+    expect(queryTab.className).toContain("flex-none");
+    expect(queryTab.className.split(/\s+/)).toContain("gap-1");
+    expect(queryTab.className.split(/\s+/)).toContain("pr-1.5");
+    expect(screen.getByRole("button", { name: "Close Query 1" }).className).toContain("size-4");
   });
 
   test("marks edited SQL tabs as having unsaved changes", () => {
@@ -1935,7 +1954,12 @@ describe("ConnectionWorkspace SQL tabs", () => {
       ctrlKey: true,
     });
 
+    const shortcutPanel = screen.getByRole("region", { name: "Available keyboard shortcuts" });
     const shortcutList = screen.getByRole("list", { name: "Implemented shortcuts" });
+    expect(shortcutPanel.className).toContain("max-w-2xl");
+    expect(screen.getByRole("heading", { name: "Workspace shortcuts" })).not.toBeNull();
+    expect(shortcutList.className).toContain("sm:grid-cols-2");
+    expect(shortcutList.firstElementChild?.textContent).toContain("New SQL tab");
     expect(shortcutList.textContent).toContain("Run all");
     expect(shortcutList.textContent).toContain("Run current");
     expect(shortcutList.textContent).toContain("Ctrl+Enter");

@@ -121,7 +121,7 @@ export function ConnectionWorkspace({
               tabIndex={0}
               aria-label="SQL editor workspace"
               onKeyDownCapture={handleWorkspaceKeyDown}
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card outline-none"
             >
               <ConnectionWorkspaceContent profile={profile} controller={controller} />
             </section>
