@@ -36,6 +36,7 @@ export function ConnectionDatabaseSelector({
       }
       isLoading={isLoading}
       className="h-6! min-w-0 max-w-36 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-foreground shadow-none hover:bg-success/15 [&>svg:last-child]:hidden"
+      contentClassName="w-max min-w-(--anchor-width) max-w-72"
       disabled={databases.length === 0 || isLoading}
     />
   );
