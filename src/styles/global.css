@@ -39,6 +39,17 @@
   height: 0;
 }
 
+.font-size-stepper-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.font-size-stepper-input::-webkit-inner-spin-button,
+.font-size-stepper-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
 :root {
   --background: oklch(0.97 0.008 95);
   --foreground: oklch(0.22 0.018 245);

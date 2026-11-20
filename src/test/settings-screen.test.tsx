@@ -135,7 +135,7 @@ test("routes font and size changes only to the active UI scope", async () => {
   await screen.findByRole("button", { name: "JetBrains Mono" });
   fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
   expect(setInterfaceFontFamily).toHaveBeenCalledWith("JetBrains Mono");
-  fireEvent.change(screen.getByRole("slider", { name: "Interface font size" }), {
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Interface font size" }), {
     target: { value: "18" },
   });
   expect(setInterfaceFontSize).toHaveBeenCalledWith(18);
@@ -143,7 +143,7 @@ test("routes font and size changes only to the active UI scope", async () => {
   fireEvent.click(screen.getByRole("tab", { name: "SQL Editor" }));
   fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
   expect(setSqlEditorFontFamily).toHaveBeenCalledWith("JetBrains Mono");
-  fireEvent.change(screen.getByRole("slider", { name: "SQL editor font size" }), {
+  fireEvent.change(screen.getByRole("spinbutton", { name: "SQL editor font size" }), {
     target: { value: "20" },
   });
   expect(setSqlEditorFontSize).toHaveBeenCalledWith(20);
@@ -151,7 +151,7 @@ test("routes font and size changes only to the active UI scope", async () => {
   fireEvent.click(screen.getByRole("tab", { name: "Table" }));
   fireEvent.click(screen.getByRole("button", { name: "JetBrains Mono" }));
   expect(setResultFontFamily).toHaveBeenCalledWith("JetBrains Mono");
-  fireEvent.change(screen.getByRole("slider", { name: "Results font size" }), {
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Results font size" }), {
     target: { value: "15" },
   });
   expect(setResultFontSize).toHaveBeenCalledWith(15);
@@ -188,9 +188,17 @@ test("keeps installed-font search and scoped defaults available", async () => {
 test("constrains font sizes and previews the saved font size", async () => {
   render(<SettingsScreen />);
   await screen.findByRole("button", { name: "JetBrains Mono" });
-  const slider = screen.getByRole("slider", { name: "Interface font size" });
-  expect(slider.getAttribute("min")).toBe("8");
-  expect(slider.getAttribute("max")).toBe("32");
+  const input = screen.getByRole("spinbutton", { name: "Interface font size" });
+  expect(input.getAttribute("min")).toBe("8");
+  expect(input.getAttribute("max")).toBe("32");
+
+  fireEvent.click(screen.getByRole("button", { name: "Increase Interface font size" }));
+  expect(setInterfaceFontSize).toHaveBeenCalledWith(17);
+  fireEvent.change(input, { target: { value: "4" } });
+  fireEvent.blur(input);
+  expect(input.getAttribute("value")).toBe("8");
+  expect(setInterfaceFontSize).toHaveBeenCalledWith(8);
+
   act(() => useThemeStore.setState({ interfaceFontSize: 18 }));
   expect(screen.getByText(/Aa Bb Cc 123 — The quick/).getAttribute("style")).toContain(
     "font-size: 18px",

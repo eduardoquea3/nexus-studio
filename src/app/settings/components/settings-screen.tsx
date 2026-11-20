@@ -1,5 +1,6 @@
 import { Combobox } from "@base-ui/react/combobox";
 import {
+  RiAddLine,
   RiArrowLeftLine,
   RiContrast2Line,
   RiKeyboardLine,
@@ -11,6 +12,7 @@ import {
   RiCodeSSlashLine,
   RiTableLine,
   RiMoonLine,
+  RiSubtractLine,
   RiSunLine,
 } from "@remixicon/react";
 import { useRouter } from "@tanstack/react-router";
@@ -574,6 +576,7 @@ function FontSetting({
   const selectedFont =
     fontOptions.find((option) => option.family === (value ?? "")) ?? fontOptions[0];
   const [fontFilter, setFontFilter] = useState(selectedFont.label);
+  const [fontSizeInput, setFontSizeInput] = useState(String(fontSize));
   const fontInputRef = useRef<HTMLInputElement>(null);
   const normalizedFontFilter = fontFilter.trim().toLowerCase();
   const filteredFontOptions = fontOptions.filter((option) =>
@@ -581,8 +584,39 @@ function FontSetting({
   );
 
   useEffect(() => {
+    setFontSizeInput(String(fontSize));
+  }, [fontSize]);
+
+  useEffect(() => {
     setFontFilter(selectedFont.label);
   }, [selectedFont.value]);
+
+  const commitFontSize = (size: number) => {
+    onFontSizeChange(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(size))));
+  };
+  const handleFontSizeInputChange = (value: string) => {
+    setFontSizeInput(value);
+    const parsedSize = Number(value);
+    if (
+      value !== "" &&
+      Number.isInteger(parsedSize) &&
+      parsedSize >= FONT_SIZE_MIN &&
+      parsedSize <= FONT_SIZE_MAX
+    ) {
+      onFontSizeChange(parsedSize);
+    }
+  };
+  const handleFontSizeInputBlur = () => {
+    const parsedSize = Number(fontSizeInput);
+    const nextSize =
+      fontSizeInput.trim() === "" || !Number.isFinite(parsedSize)
+        ? fontSize
+        : Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(parsedSize)));
+    setFontSizeInput(String(nextSize));
+    if (nextSize !== fontSize) {
+      onFontSizeChange(nextSize);
+    }
+  };
 
   const preferredFonts = [
     "JetBrains Mono",
@@ -722,20 +756,44 @@ function FontSetting({
               Adjust the {title.toLowerCase()} font size ({FONT_SIZE_MIN}–{FONT_SIZE_MAX}px).
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="inline-flex h-8 items-center overflow-hidden rounded-md border border-border bg-background">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              aria-label={`Decrease ${title} font size`}
+              disabled={fontSize <= FONT_SIZE_MIN}
+              onClick={() => commitFontSize(fontSize - 1)}
+              className="rounded-none border-r border-border text-muted-foreground"
+            >
+              <RiSubtractLine aria-hidden="true" />
+            </Button>
             <input
-              type="range"
+              type="number"
               min={FONT_SIZE_MIN}
               max={FONT_SIZE_MAX}
               step={1}
-              value={fontSize}
+              value={fontSizeInput}
               aria-label={`${title} font size`}
-              onChange={(event) => onFontSizeChange(Number(event.target.value))}
-              className="h-4 w-36 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              inputMode="numeric"
+              onChange={(event) => handleFontSizeInputChange(event.target.value)}
+              onBlur={handleFontSizeInputBlur}
+              className="font-size-stepper-input h-8 w-11 bg-transparent text-center font-mono text-xs tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             />
-            <output className="min-w-10 text-right text-xs tabular-nums" aria-live="polite">
-              {fontSize}px
-            </output>
+            <span className="pr-2 text-xs text-muted-foreground" aria-hidden="true">
+              px
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              aria-label={`Increase ${title} font size`}
+              disabled={fontSize >= FONT_SIZE_MAX}
+              onClick={() => commitFontSize(fontSize + 1)}
+              className="rounded-none border-l border-border text-muted-foreground"
+            >
+              <RiAddLine aria-hidden="true" />
+            </Button>
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border border-border p-3">
