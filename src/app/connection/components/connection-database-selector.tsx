@@ -60,7 +60,7 @@ function renderDatabaseOption(option: DatabaseOption) {
   return (
     <span className="flex min-w-0 items-center gap-2">
       <RiDatabase2Line className="size-3.5 shrink-0 text-foreground" aria-hidden="true" />
-      <span className="hidden truncate sm:inline">{option.label}</span>
+      <span className="hidden truncate lg:inline">{option.label}</span>
     </span>
   );
 }

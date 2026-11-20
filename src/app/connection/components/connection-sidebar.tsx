@@ -6,8 +6,10 @@ import { ConnectionSwitcherMenu } from "@/app/connection/components/connection-s
 import { useSchemaObjects } from "@/app/connection/hooks/use-schema-objects";
 import { useConnections } from "@/app/home/hooks/use-connections";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { getTableSchema } from "@/shared/lib/tauriApi";
+import { TOGGLE_MOBILE_SIDEBAR_EVENT } from "@/shared/keymaps/global-keymaps";
 import { useThemeStore } from "@/shared/store/theme-store";
 import type { ColumnInfo, ConnectionProfile, ObjectMeta } from "@/shared/types/models";
 
@@ -49,7 +51,14 @@ export function ConnectionSidebar({
   const deferredFilterText = useDeferredValue(filterText);
   const normalizedFilter = deferredFilterText.trim().toLowerCase();
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const toggleMobileSidebar = () => setMobileSidebarOpen((open) => !open);
+    window.addEventListener(TOGGLE_MOBILE_SIDEBAR_EVENT, toggleMobileSidebar);
+    return () => window.removeEventListener(TOGGLE_MOBILE_SIDEBAR_EVENT, toggleMobileSidebar);
+  }, []);
 
   useGSAP(
     () => {
@@ -127,46 +136,61 @@ export function ConnectionSidebar({
     }
   };
 
-  return (
-    <aside
-      ref={sidebarRef}
-      aria-hidden={!sidebarOpen}
-      inert={!sidebarOpen}
-      className={cn(
-        "w-60 basis-60 shrink-0 overflow-hidden rounded-2xl border border-border bg-card",
-        "flex flex-col",
-      )}
-    >
-      <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-scrollbar]]:hidden">
-        <div className="min-w-0 p-3">
-          <ConnectionExplorer
-            dbType={profile.db_type}
-            selectedTableName={selectedTableName}
-            selectedTableSchema={selectedTableSchema}
-            schemaObjects={schemaObjects}
-            isLoading={isLoadingSchema}
-            error={schemaError}
-            isFetching={isFetchingSchema}
-            refetch={refetchSchema}
-            filterText={filterText}
-            setFilterText={setFilterText}
-            normalizedFilter={normalizedFilter}
-            openGroups={openGroups}
-            setOpenGroups={setOpenGroups}
-            expandedTables={expandedTables}
-            tableColumns={tableColumns}
-            loadingTables={loadingTables}
-            tableSchemaErrors={tableSchemaErrors}
-            tableResourceKey={tableResourceKey}
-            toggleTable={toggleTable}
-            onTableSelect={onTableSelect}
-            onRoutineSelect={onRoutineSelect}
-          />
-        </div>
-      </ScrollArea>
-      <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
-        <ConnectionSwitcherMenu profile={profile} connections={connections} />
+  const explorerContent = (
+    <ScrollArea className="min-h-0 flex-1 overflow-hidden [&_[data-slot=scroll-area-scrollbar]]:hidden">
+      <div className="min-w-0 p-3">
+        <ConnectionExplorer
+          dbType={profile.db_type}
+          selectedTableName={selectedTableName}
+          selectedTableSchema={selectedTableSchema}
+          schemaObjects={schemaObjects}
+          isLoading={isLoadingSchema}
+          error={schemaError}
+          isFetching={isFetchingSchema}
+          refetch={refetchSchema}
+          filterText={filterText}
+          setFilterText={setFilterText}
+          normalizedFilter={normalizedFilter}
+          openGroups={openGroups}
+          setOpenGroups={setOpenGroups}
+          expandedTables={expandedTables}
+          tableColumns={tableColumns}
+          loadingTables={loadingTables}
+          tableSchemaErrors={tableSchemaErrors}
+          tableResourceKey={tableResourceKey}
+          toggleTable={toggleTable}
+          onTableSelect={onTableSelect}
+          onRoutineSelect={onRoutineSelect}
+        />
       </div>
-    </aside>
+    </ScrollArea>
+  );
+
+  return (
+    <>
+      <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 p-0 lg:hidden">
+          <SheetTitle className="sr-only">Connection explorer</SheetTitle>
+          {explorerContent}
+          <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
+            <ConnectionSwitcherMenu profile={profile} connections={connections} />
+          </div>
+        </SheetContent>
+      </Sheet>
+      <aside
+        ref={sidebarRef}
+        aria-hidden={!sidebarOpen}
+        inert={!sidebarOpen}
+        className={cn(
+          "w-60 basis-60 shrink-0 overflow-hidden rounded-2xl border border-border bg-card",
+          "flex flex-col max-lg:hidden",
+        )}
+      >
+        {explorerContent}
+        <div className="h-10 min-h-9 max-h-10 shrink-0 border-t border-border/70 p-0">
+          <ConnectionSwitcherMenu profile={profile} connections={connections} />
+        </div>
+      </aside>
+    </>
   );
 }

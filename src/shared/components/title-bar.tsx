@@ -52,7 +52,7 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
       <div className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground">
         <div
           data-tauri-drag-region
-          className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground"
+          className="hidden shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground lg:flex"
         >
           <RiDatabase2Line className="size-4 text-violet-400" aria-hidden="true" />
           <span>NEXUS STUDIO</span>
@@ -62,8 +62,7 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
             <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
             <div className="flex min-w-0 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-success">
               <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-              <span className="truncate">{profile.name}</span>
-              <span className="hidden text-muted-foreground sm:inline">· {profile.db_type}</span>
+              <span className="whitespace-nowrap">{profile.name}</span>
             </div>
           </>
         ) : null}

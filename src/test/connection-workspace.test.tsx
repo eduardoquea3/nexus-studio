@@ -281,12 +281,15 @@ mock.module("@/app/connection/hooks/use-schema-objects", () => ({
 
 mock.module("@/components/ui/toast", () => ({ toast: { add: addToast }, Toaster: () => null }));
 
-const { ConnectionWorkspace, getQuerySegment } =
-  await import("../app/connection/components/connection-workspace");
-const { splitSqlStatements } =
-  await import("../app/connection/components/connection-workspace-utils");
-const { act, cleanup, fireEvent, render, screen, waitFor, within } =
-  await import("@testing-library/react");
+const { ConnectionWorkspace, getQuerySegment } = await import(
+  "../app/connection/components/connection-workspace"
+);
+const { splitSqlStatements } = await import(
+  "../app/connection/components/connection-workspace-utils"
+);
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 const profile = {
   id: "connection-1",
@@ -911,14 +914,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("w-fit");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("flex-none");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").className).toContain("flex-1");
+    expect(screen.getByRole("tablist").closest('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByRole("tablist").className).toContain("justify-start");
-    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).toContain("border-r");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).not.toContain("last:border-r-0");
+    expect(
+      screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className,
+    ).toContain("border-r");
+    expect(
+      screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className,
+    ).not.toContain("last:border-r-0");
     expect(screen.getByRole("tablist").className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").parentElement?.className).toContain("h-9");
-    expect(screen.getByRole("tablist").parentElement?.className).not.toContain("rounded-2xl");
+    const tabScrollArea = screen.getByRole("tablist").closest('[data-slot="scroll-area"]');
+    expect(tabScrollArea?.className).toContain("h-full");
+    expect(tabScrollArea?.className).not.toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;
@@ -1466,8 +1473,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Close Query 2" })).toBeNull();
-    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
-    expect(screen.getByRole("tablist").className).toContain("overflow-y-hidden");
+    const scrollArea = screen.getByRole("tablist").closest('[data-slot="scroll-area"]');
+    expect(scrollArea).not.toBeNull();
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
   });
 
@@ -1487,9 +1494,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
     const queryTab = screen.getByRole("tab", { name: /Query 1/ });
 
-    expect(tabList.className).toContain("flex-1");
-    expect(tabList.className).toContain("overflow-x-auto");
-    expect(createTab.previousElementSibling).toBe(tabList);
+    expect(tabList.closest('[data-slot="scroll-area"]')).not.toBeNull();
+    expect(createTab.previousElementSibling).toBe(tabList.closest('[data-slot="scroll-area"]'));
     expect(queryTab.className).toContain("flex-none");
     expect(queryTab.className.split(/\s+/)).toContain("gap-1");
     expect(queryTab.className.split(/\s+/)).toContain("pr-1.5");
