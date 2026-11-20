@@ -28,6 +28,13 @@ export const SHORTCUT_CATALOG = [
     defaultBinding: "ctrl+n",
   },
   {
+    id: "refresh-table",
+    category: "home-workspace",
+    action: "Refresh active table",
+    description: "Available when a table tab is active",
+    defaultBinding: "ctrl+r",
+  },
+  {
     id: "new-sql-tab",
     category: "home-workspace",
     action: "Create SQL tab",
@@ -141,8 +148,12 @@ export function getShortcutDefinition(id: string) {
 export function getShortcutBinding(id: string, overrides: ShortcutOverrides): ShortcutBinding {
   const definition = getShortcutDefinition(id);
   if (!definition) return null;
-  if (Object.hasOwn(overrides, id)) return overrides[id] ?? null;
+  if (Object.keys(overrides).includes(definition.id)) return overrides[definition.id] ?? null;
   return definition.defaultBinding;
+}
+
+export function formatShortcutBinding(binding: ShortcutBinding) {
+  return binding?.split("+").map(formatShortcutKey) ?? [];
 }
 
 export function findShortcutConflict(
@@ -163,13 +174,67 @@ export function normalizeShortcutOverrides(value: unknown): ShortcutOverrides {
   const rawOverrides = value as Record<string, unknown>;
   const normalized: ShortcutOverrides = {};
   for (const shortcut of SHORTCUT_CATALOG) {
-    if (!Object.hasOwn(rawOverrides, shortcut.id)) continue;
+    if (!Object.keys(rawOverrides).includes(shortcut.id)) continue;
     const result = normalizeShortcutBinding(rawOverrides[shortcut.id]);
     if (!result.valid) continue;
     if (findShortcutConflict(result.binding, normalized, shortcut.id)) continue;
     normalized[shortcut.id] = result.binding;
   }
   return normalized;
+}
+
+type ShortcutKeyboardEvent = Pick<
+  KeyboardEvent,
+  "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey"
+>;
+
+export function matchesShortcutEvent(event: ShortcutKeyboardEvent, binding: ShortcutBinding) {
+  if (!binding || event.metaKey) return false;
+  const key = normalizeEventKey(event.key);
+  if (!key || !isSupportedKey(key)) return false;
+
+  const actualParts = [
+    ...(event.ctrlKey ? ["ctrl"] : []),
+    ...(event.altKey ? ["alt"] : []),
+    ...(event.shiftKey ? ["shift"] : []),
+    key,
+  ];
+  const normalized = normalizeShortcutBinding(actualParts.join("+"));
+  return normalized.valid && normalized.binding === binding;
+}
+
+export function isShortcutModifierKey(eventKey: string, binding: ShortcutBinding) {
+  if (!binding) return false;
+  const key = eventKey.toLowerCase() === "control" ? "ctrl" : eventKey.toLowerCase();
+  return binding.split("+")[0] === key;
+}
+
+export function toCodeMirrorKeybinding(binding: ShortcutBinding) {
+  if (!binding) return null;
+  return binding
+    .split("+")
+    .map((part) => {
+      if (part === "ctrl") return "Ctrl";
+      if (part === "alt") return "Alt";
+      if (part === "shift") return "Shift";
+      if (part.length === 1) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join("-");
+}
+
+function formatShortcutKey(key: string) {
+  if (key === "ctrl") return "Ctrl";
+  if (key === "alt") return "Alt";
+  if (key === "shift") return "Shift";
+  if (key === "page-down") return "Page Down";
+  if (key === "page-up") return "Page Up";
+  return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function normalizeEventKey(key: string) {
+  const normalized = key.toLowerCase();
+  return KEY_ALIASES[normalized] ?? normalized;
 }
 
 function isSupportedKey(key: string) {

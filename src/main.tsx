@@ -8,6 +8,7 @@ import { initWorkspacePersistence } from "./shared/store/workspace-persistence";
 import { listSchemaObjects, preloadSystemFonts } from "./shared/lib/tauriApi";
 import { useWorkspaceStore } from "./shared/store/workspace-store";
 import { initThemeStore } from "./shared/store/theme-store";
+import { initShortcutStore } from "./shared/store/shortcut-store";
 import "./styles/global.css";
 
 const router = createRouter({
@@ -56,7 +57,7 @@ async function initWorkspaceStore() {
 
 async function bootstrap() {
   preloadSystemFonts();
-  await Promise.allSettled([initThemeStore(), initWorkspaceStore()]);
+  await Promise.allSettled([initThemeStore(), initWorkspaceStore(), initShortcutStore()]);
 
   const rootElement = document.getElementById("root");
   if (!rootElement || rootElement.innerHTML) {

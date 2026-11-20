@@ -25,7 +25,13 @@ import {
   runQuery,
   testSavedConnection,
 } from "@/shared/lib/tauriApi";
+import {
+  getShortcutBinding,
+  isShortcutModifierKey,
+  matchesShortcutEvent,
+} from "@/shared/keymaps/shortcut-catalog";
 import { useModalStore } from "@/shared/store/modalStore";
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 import type { DataTableTab, QueryTab, WorkspaceTab } from "@/shared/types/connection-workspace";
 import type { ConnectionProfile, ObjectMeta } from "@/shared/types/models";
@@ -51,6 +57,7 @@ export function useConnectionWorkspaceController({
   const queryClient = useQueryClient();
   const storedWorkspace = useWorkspaceStore((state) => state.connections[profile.id]);
   const workspaceHydrated = useWorkspaceStore((state) => state.isHydrated);
+  const shortcutOverrides = useShortcutStore((state) => state.overrides);
   const setConnectionWorkspace = useWorkspaceStore((state) => state.setConnectionWorkspace);
   const setActiveConnection = useWorkspaceStore((state) => state.setActiveConnection);
   const openWorkspaceTab = useWorkspaceStore((state) => state.openTab);
@@ -99,6 +106,7 @@ export function useConnectionWorkspaceController({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const previewOriginTabIdRef = useRef<string | null>(null);
   const selectedSwitcherTabIdRef = useRef<string | null>(null);
+  const tabSwitcherShortcutIdRef = useRef<"next-tab" | "previous-tab" | null>(null);
   const switchingConnectionIdsRef = useRef(new Set<string>());
   const focusWorkspaceAfterRender = () => {
     requestAnimationFrame(() => editorSectionRef.current?.focus());
@@ -330,41 +338,61 @@ export function useConnectionWorkspaceController({
       );
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (event.key.toLowerCase() === "p") {
+      const opensPalette = matchesShortcutEvent(
+        event,
+        getShortcutBinding("command-palette", shortcutOverrides),
+      );
+      const opensCommands = matchesShortcutEvent(
+        event,
+        getShortcutBinding("application-commands", shortcutOverrides),
+      );
+      if (opensPalette || opensCommands) {
         event.preventDefault();
         event.stopPropagation();
-        shortcutActionsRef.current.openCommandBar(event.shiftKey ? "commands" : "palette");
+        shortcutActionsRef.current.openCommandBar(opensCommands ? "commands" : "palette");
         return;
       }
-      if (event.key === "Tab") {
-        if (
-          !shortcutActionsRef.current.workspaceTabs.length ||
-          (commandBarModeRef.current !== "tab-switcher" && isEditableTarget(event.target))
-        )
-          return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (commandBarModeRef.current !== "tab-switcher")
-          shortcutActionsRef.current.openCommandBar("tab-switcher");
-        const nextIndex = nextTabIndex(
-          switcherTabsRef.current,
-          selectedSwitcherTabIdRef.current,
-          event.shiftKey ? -1 : 1,
-        );
-        const nextTab = switcherTabsRef.current[nextIndex];
-        if (nextTab) shortcutActionsRef.current.highlightSwitcherTab(nextTab.id);
+
+      const opensNextTabSwitcher = matchesShortcutEvent(
+        event,
+        getShortcutBinding("next-tab", shortcutOverrides),
+      );
+      const opensPreviousTabSwitcher = matchesShortcutEvent(
+        event,
+        getShortcutBinding("previous-tab", shortcutOverrides),
+      );
+      if (!opensNextTabSwitcher && !opensPreviousTabSwitcher) return;
+      if (
+        !shortcutActionsRef.current.workspaceTabs.length ||
+        (commandBarModeRef.current !== "tab-switcher" && isEditableTarget(event.target))
+      )
+        return;
+      tabSwitcherShortcutIdRef.current = opensPreviousTabSwitcher ? "previous-tab" : "next-tab";
+      event.preventDefault();
+      event.stopPropagation();
+      if (commandBarModeRef.current !== "tab-switcher") {
+        shortcutActionsRef.current.openCommandBar("tab-switcher");
       }
+      const nextIndex = nextTabIndex(
+        switcherTabsRef.current,
+        selectedSwitcherTabIdRef.current,
+        opensPreviousTabSwitcher ? -1 : 1,
+      );
+      const nextTab = switcherTabsRef.current[nextIndex];
+      if (nextTab) shortcutActionsRef.current.highlightSwitcherTab(nextTab.id);
     };
     const handleKeyUp = (event: globalThis.KeyboardEvent) => {
+      const shortcutId = tabSwitcherShortcutIdRef.current;
+      const binding = shortcutId ? getShortcutBinding(shortcutId, shortcutOverrides) : null;
       if (
         commandBarModeRef.current !== "tab-switcher" ||
-        (event.key !== "Control" && event.key !== "Meta")
+        !isShortcutModifierKey(event.key, binding)
       )
         return;
       event.preventDefault();
       const selectedId = selectedSwitcherTabIdRef.current;
       if (selectedId) shortcutActionsRef.current.highlightSwitcherTab(selectedId);
+      tabSwitcherShortcutIdRef.current = null;
       shortcutActionsRef.current.closeCommandBar(true);
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -373,7 +401,7 @@ export function useConnectionWorkspaceController({
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [isActive]);
+  }, [isActive, shortcutOverrides]);
   const focusEditor = (view: EditorView, tabId: string) => {
     view.focus();
     if (!initializedEditorIdsRef.current.has(tabId)) {
@@ -472,9 +500,7 @@ export function useConnectionWorkspaceController({
     if (!isActive) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (
-        event.key.toLowerCase() !== "r" ||
-        !(event.ctrlKey || event.metaKey) ||
-        event.altKey ||
+        !matchesShortcutEvent(event, getShortcutBinding("refresh-table", shortcutOverrides)) ||
         !activeTabId.startsWith("table-")
       )
         return;
@@ -484,7 +510,7 @@ export function useConnectionWorkspaceController({
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activeTabId, isActive]);
+  }, [activeTabId, isActive, shortcutOverrides]);
 
   const createEditorTab = () => {
     const number =
@@ -713,24 +739,36 @@ export function useConnectionWorkspaceController({
     }
   };
   const handleWorkspaceKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-    if (event.key === "Enter" && activeSqlTab) {
+    const runsAll = matchesShortcutEvent(
+      event,
+      getShortcutBinding("run-all-sql", shortcutOverrides),
+    );
+    const runsCurrent = matchesShortcutEvent(
+      event,
+      getShortcutBinding("run-current-sql", shortcutOverrides),
+    );
+    if (activeSqlTab && (runsAll || runsCurrent)) {
       if (event.target instanceof HTMLElement && event.target.closest(".cm-editor, .cm-content"))
         return;
       event.preventDefault();
-      void (event.shiftKey ? executeActiveQuery() : executeAllQuery());
-    } else if (event.key.toLowerCase() === "w" && activeTabId === "er-diagram") {
-      event.preventDefault();
-      closeErDiagram();
-    } else if (event.shiftKey) {
+      void (runsCurrent ? executeActiveQuery() : executeAllQuery());
       return;
-    } else if (event.key.toLowerCase() === "t") {
+    }
+
+    if (matchesShortcutEvent(event, getShortcutBinding("new-sql-tab", shortcutOverrides))) {
       event.preventDefault();
       createEditorTab();
-    } else if (event.key.toLowerCase() === "w" && activeTabId.startsWith("table-")) {
+      return;
+    }
+    if (!matchesShortcutEvent(event, getShortcutBinding("close-active-tab", shortcutOverrides)))
+      return;
+    if (activeTabId === "er-diagram") {
+      event.preventDefault();
+      closeErDiagram();
+    } else if (activeTabId.startsWith("table-")) {
       event.preventDefault();
       closeTableTab(activeTabId, getPreviousWorkspaceTabId(activeTabId));
-    } else if (event.key.toLowerCase() === "w" && activeSqlTab) {
+    } else if (activeSqlTab) {
       event.preventDefault();
       closeEditorTab(activeSqlTab.id, getPreviousWorkspaceTabId(activeSqlTab.id));
     }

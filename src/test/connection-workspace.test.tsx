@@ -12,6 +12,7 @@ import { type ReactNode, StrictMode, useEffect } from "react";
 import type { TableDataExportResult } from "@/app/connection/services/table-data-export-service";
 import type { ConnectionProfile, QueryResult } from "@/shared/types/models";
 
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const invalidateQueries = mock(() => Promise.resolve());
@@ -347,6 +348,7 @@ describe("Connection workspace route sessions", () => {
       password: "test-password",
     });
     useWorkspaceStore.setState({ ...useWorkspaceStore.getInitialState(), isHydrated: true });
+    useShortcutStore.setState({ overrides: {} });
     closeSshTunnel.mockClear();
     saveConnection.mockClear();
     testConnectionFields.mockClear();
@@ -731,6 +733,7 @@ describe("ConnectionWorkspace SQL tabs", () => {
     testSavedConnection.mockResolvedValue("ok");
     availableConnections.splice(0);
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+    useShortcutStore.setState({ overrides: {} });
   });
 
   afterEach(() => {
@@ -950,6 +953,33 @@ describe("ConnectionWorkspace SQL tabs", () => {
     );
     expect(screen.getByRole("menuitem", { name: /^Run current/ }).textContent).toContain(
       "Ctrl + Shift + Enter",
+    );
+  });
+
+  test("uses a customized SQL binding in the workspace and shortcut labels", async () => {
+    useShortcutStore.setState({ overrides: { "run-all-sql": "alt+r", "run-current-sql": null } });
+    renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+    setEditorQuery("select 1; select 2;");
+
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+      await Promise.resolve();
+    });
+    expect(runQuery).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "r", altKey: true });
+      await Promise.resolve();
+    });
+    expect(runQuery).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Query run options" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("menuitem", { name: /^Run all/ }).textContent).toContain("Alt + R");
+    expect(screen.getByRole("menuitem", { name: /^Run current/ }).textContent).not.toContain(
+      "Ctrl",
     );
   });
 
@@ -1642,6 +1672,42 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(getQuerySegment(query, query.length)).toBe("select * from auth;");
   });
 
+  test("uses a customized shortcut to refresh the active table only", async () => {
+    useShortcutStore.setState({ overrides: { "refresh-table": "alt+u" } });
+    renderWorkspace();
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Open company" }));
+    await act(waitForAnimationFrame);
+    const callsBefore = getTableData.mock.calls.length;
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    expect(getTableData).toHaveBeenCalledTimes(callsBefore);
+    fireEvent.keyDown(window, { key: "u", altKey: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getTableData).toHaveBeenCalledTimes(callsBefore + 1);
+  });
+
+  test("uses customized shortcuts to create and close SQL tabs", () => {
+    useShortcutStore.setState({
+      overrides: { "new-sql-tab": "alt+t", "close-active-tab": "alt+w" },
+    });
+    renderWorkspace();
+    const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
+
+    fireEvent.keyDown(editor, { key: "t", code: "KeyT", ctrlKey: true });
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    fireEvent.keyDown(editor, { key: "t", code: "KeyT", altKey: true });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Query 2 SQL query editor" }), {
+      key: "w",
+      code: "KeyW",
+      altKey: true,
+    });
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+  });
+
   test("creates and closes editors with Ctrl+T and Ctrl+W", () => {
     renderWorkspace();
     const editor = screen.getByRole("textbox", { name: "Query 1 SQL query editor" });
@@ -1876,6 +1942,20 @@ describe("ConnectionWorkspace SQL tabs", () => {
     });
     expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Query 2" }).getAttribute("data-state")).toBe("active");
+  });
+
+  test("closes the tab switcher on release of a customized previous-tab modifier", () => {
+    useShortcutStore.setState({ overrides: { "previous-tab": "alt+shift+tab" } });
+    renderWorkspace();
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create SQL editor tab" }));
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(screen.getByRole("dialog", { name: "Open tabs" })).not.toBeNull();
+    fireEvent.keyDown(window, { key: "Tab", altKey: true, shiftKey: true });
+    fireEvent.keyUp(window, { key: "Alt", altKey: false });
+
+    expect(screen.queryByRole("dialog", { name: "Open tabs" })).toBeNull();
   });
 
   test("does not carry tabs into a connection with no stored workspace", () => {

@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { HomeKeymaps } from "@/app/home/keymaps/home-keymaps";
 import { useModalStore } from "@/shared/store/modalStore";
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 
 const { act, cleanup, fireEvent, render } = await import("@testing-library/react");
 
 describe("HomeKeymaps", () => {
   beforeEach(() => {
     useModalStore.setState({ modals: [], modalProps: {} });
+    useShortcutStore.setState({ overrides: {} });
   });
 
   afterEach(() => cleanup());
@@ -20,7 +22,21 @@ describe("HomeKeymaps", () => {
 
     fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
     expect(onNewConnection).toHaveBeenCalledTimes(1);
+  });
 
+  test("uses a customized shortcut and respects an unassigned binding", () => {
+    const onNewConnection = mock(() => undefined);
+    useShortcutStore.setState({ overrides: { "new-connection": "alt+j" } });
+    render(<HomeKeymaps onNewConnection={onNewConnection} isCommandBarVisible={false} />);
+
+    fireEvent.keyDown(document, { key: "n", code: "KeyN", ctrlKey: true });
+    expect(onNewConnection).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "j", code: "KeyJ", altKey: true });
+    expect(onNewConnection).toHaveBeenCalledTimes(1);
+
+    act(() => useShortcutStore.setState({ overrides: { "new-connection": null } }));
+    fireEvent.keyDown(document, { key: "j", code: "KeyJ", altKey: true });
+    expect(onNewConnection).toHaveBeenCalledTimes(1);
   });
 
   test("ignores Ctrl+N when the command bar or another modal is visible", () => {

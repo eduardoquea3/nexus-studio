@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { ConnectionProfile } from "@/shared/types/models";
 
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 import { useWorkspaceStore } from "@/shared/store/workspace-store";
 
 const navigate = mock(async () => undefined);
@@ -72,6 +73,7 @@ describe("HomeCommandBar", () => {
     updateToast.mockClear();
     listSchemaObjects.mockClear();
     useWorkspaceStore.setState({ activeConnectionId: null });
+    useShortcutStore.setState({ overrides: {} });
   });
 
   afterEach(() => cleanup());
@@ -83,6 +85,20 @@ describe("HomeCommandBar", () => {
 
     expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Production/ })).not.toBeNull();
+  });
+
+  test("opens palette and commands with their customized bindings", () => {
+    useShortcutStore.setState({
+      overrides: { "command-palette": "alt+p", "application-commands": "alt+shift+p" },
+    });
+    render(<HomeCommandBar activeConnectionId={null} />);
+
+    fireEvent.keyDown(window, { key: "p", code: "KeyP", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+    fireEvent.keyDown(window, { key: "p", code: "KeyP", altKey: true });
+    expect(screen.getByRole("dialog", { name: "Command palette" })).not.toBeNull();
+    fireEvent.keyDown(window, { key: "p", code: "KeyP", altKey: true, shiftKey: true });
+    expect(screen.getByRole("button", { name: /New connection/ })).not.toBeNull();
   });
 
   test("opens the application commands with Ctrl+Shift+P", () => {

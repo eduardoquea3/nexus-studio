@@ -7,6 +7,8 @@ import { useConnections } from "@/app/home/hooks/use-connections";
 import { markConnectionOpened } from "@/app/home/services/connection-service";
 import { toast } from "@/components/ui/toast";
 import { testSavedConnection } from "@/shared/lib/tauriApi";
+import { getShortcutBinding, matchesShortcutEvent } from "@/shared/keymaps/shortcut-catalog";
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 
 type HomeCommandBarProps = {
   activeConnectionId: string | null;
@@ -23,6 +25,9 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
   const switchingConnectionIdsRef = useRef(new Set<string>());
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [mode, setMode] = useState<"palette" | "commands">("palette");
+  const overrides = useShortcutStore((state) => state.overrides);
+  const commandPaletteBinding = getShortcutBinding("command-palette", overrides);
+  const applicationCommandsBinding = getShortcutBinding("application-commands", overrides);
   const commandBarItems: CommandBarItem[] =
     mode === "commands"
       ? [
@@ -101,11 +106,12 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
 
   useEffect(() => {
     const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "p")
-        return;
+      const opensPalette = matchesShortcutEvent(event, commandPaletteBinding);
+      const opensCommands = matchesShortcutEvent(event, applicationCommandsBinding);
+      if (!opensPalette && !opensCommands) return;
       event.preventDefault();
       event.stopPropagation();
-      setMode(event.shiftKey ? "commands" : "palette");
+      setMode(opensCommands ? "commands" : "palette");
       if (!isOpen) {
         restoreFocusRef.current =
           document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -114,7 +120,7 @@ export function HomeCommandBar({ activeConnectionId, onOpenChange }: HomeCommand
     };
     window.addEventListener("keydown", handleGlobalKeyDown, true);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen]);
+  }, [applicationCommandsBinding, commandPaletteBinding, isOpen]);
 
   return isOpen ? (
     <CommandBar

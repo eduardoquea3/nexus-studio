@@ -20,8 +20,8 @@ Acceptance: an attempted assignment already used by another action is not saved,
 
 ## Tasks
 
-- T1 | S2-S3 | Add shortcut preference model, local persistence, and conflict validation with tests | route: inline | status: in_progress | commit: —
-- T2 | S1-S2 | Apply effective bindings to existing key handlers without changing their contexts | route: inline | status: pending | commit: —
+- T1 | S2-S3 | Add shortcut preference model, local persistence, and conflict validation with tests | route: inline | status: done | commit: `13abd40` (model slice; compatibility fix verified in current worktree)
+- T2 | S1-S2 | Apply effective bindings to existing key handlers without changing their contexts | route: inline | status: in_progress | commit: —
 - T3 | S1-S3 | Add editable shortcuts UI, capture overlay, and settings tests | route: inline | status: pending | commit: —
 
 ## Log
@@ -30,3 +30,7 @@ Acceptance: an attempted assignment already used by another action is not saved,
 - L2 (2026-11-20): User chose “Sí, guardarlos localmente” and “Rechazar y explicar (Recomendado)” for persistence and conflicts.
 - L3 (2026-11-20): Existing key handlers are split across global, Home, workspace, and SQL editor code. Existing preference-store examples use the Tauri store plugin; preserve action contexts while moving effective bindings to a shared catalog.
 - L4 (2026-11-20): Started T1; first define a validated persisted override model and conflict checks before routing runtime handlers or building the capture UI.
+- L5 (2026-11-20): T1 RED observed (catalog module missing), then GREEN: `bun run test src/test/shortcut-store.test.ts` passed 4 tests/14 assertions and targeted Biome lint passed. Commit `13abd40`; committed-range assessment: medium, `reviewDue: false` (`under_budget`). Started T2 to route runtime handlers through effective persisted bindings.
+- L6 (2026-11-20): T2 verification first exposed a TypeScript compatibility error in T1's `Object.hasOwn` checks (`lib` target lacks ES2022), plus unsafe string indexing. Replaced those checks with supported own-key lookup; T1's catalog/store tests then passed (7 tests/28 assertions), and `bun run build` passed (with the existing large-chunk advisory). T2 targeted runtime tests passed (93 tests/388 assertions across five files, plus the updated connection-workspace suite at 82 tests/356 assertions).
+- L7 (2026-11-20): During commit-scope review, a new regression test showed that switching from the default next-tab chord to a differently-modified customized previous-tab chord did not close the tab switcher on modifier release. RED reproduced it; updating the tracked shortcut identity on every accepted tab-switcher keydown made the focused test pass.
+- L8 (2026-11-20): `bun run test` passed the full project suite (277 tests, 1,027 assertions across 34 files); `bun run build` passed with the existing large-chunk advisory; `git -c core.whitespace=cr-at-eol diff --check` passed. T2 is ready for its requested work-unit commit.

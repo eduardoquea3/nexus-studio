@@ -17,20 +17,27 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { sqlCompletionIcons } from "@/shared/lib/sql-completion-icons";
 import { sqlEditorTheme } from "@/shared/lib/sql-editor-theme";
+import {
+  formatShortcutBinding,
+  getShortcutBinding,
+  getShortcutDefinition,
+  toCodeMirrorKeybinding,
+} from "@/shared/keymaps/shortcut-catalog";
+import { useShortcutStore } from "@/shared/store/shortcut-store";
 
 import type { WorkspaceController } from "./connection-workspace-controller";
 
 import { getQueryRange } from "./connection-workspace-utils";
 import { QueryResultView } from "./query-result-view";
 
-const EMPTY_STATE_SHORTCUTS = [
-  ["New SQL tab", ["Ctrl", "T"]],
-  ["Run all", ["Ctrl", "Enter"]],
-  ["Run current", ["Ctrl", "Shift", "Enter"]],
-  ["Close active tab", ["Ctrl", "W"]],
-  ["Next tab", ["Ctrl", "Tab"]],
-  ["Previous tab", ["Ctrl", "Shift", "Tab"]],
-  ["Toggle sidebar", ["Ctrl", "B"]],
+const EMPTY_STATE_SHORTCUT_IDS = [
+  "new-sql-tab",
+  "run-all-sql",
+  "run-current-sql",
+  "close-active-tab",
+  "next-tab",
+  "previous-tab",
+  "toggle-sidebar",
 ] as const;
 
 const activeQueryDecoration = Decoration.mark({ class: "cm-active-query" });
@@ -69,6 +76,26 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
     executeActiveQuery,
     executeAllQuery,
   } = controller;
+  const shortcutOverrides = useShortcutStore((state) => state.overrides);
+  const emptyStateShortcuts = EMPTY_STATE_SHORTCUT_IDS.flatMap((id) => {
+    const definition = getShortcutDefinition(id);
+    const keys = formatShortcutBinding(getShortcutBinding(id, shortcutOverrides));
+    return definition && keys.length > 0
+      ? [{ label: id === "new-sql-tab" ? "New SQL tab" : definition.action, keys }]
+      : [];
+  });
+  const runAllShortcutKeys = formatShortcutBinding(
+    getShortcutBinding("run-all-sql", shortcutOverrides),
+  );
+  const runCurrentShortcutKeys = formatShortcutBinding(
+    getShortcutBinding("run-current-sql", shortcutOverrides),
+  );
+  const runAllEditorBinding = toCodeMirrorKeybinding(
+    getShortcutBinding("run-all-sql", shortcutOverrides),
+  );
+  const runCurrentEditorBinding = toCodeMirrorKeybinding(
+    getShortcutBinding("run-current-sql", shortcutOverrides),
+  );
   const hasQuery = Boolean(activeSqlTab?.query.trim());
   if (!activeSqlTab)
     return (
@@ -84,7 +111,7 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
             </p>
           </header>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Implemented shortcuts">
-            {EMPTY_STATE_SHORTCUTS.map(([label, keys]) => {
+            {emptyStateShortcuts.map(({ label, keys }) => {
               const isPrimary = label === "New SQL tab";
               return (
                 <li
@@ -148,15 +175,19 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => void executeAllQuery()}>
             Run all
-            <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-              Ctrl + Enter
-            </DropdownMenuShortcut>
+            {runAllShortcutKeys.length > 0 && (
+              <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+                {runAllShortcutKeys.join(" + ")}
+              </DropdownMenuShortcut>
+            )}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void executeActiveQuery()}>
             Run current
-            <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
-              Ctrl + Shift + Enter
-            </DropdownMenuShortcut>
+            {runCurrentShortcutKeys.length > 0 && (
+              <DropdownMenuShortcut className="text-[0.6rem] tracking-normal">
+                {runCurrentShortcutKeys.join(" + ")}
+              </DropdownMenuShortcut>
+            )}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -178,22 +209,30 @@ export function SqlEditorPanel({ controller }: { controller: WorkspaceController
               activeQueryHighlight,
               Prec.high(
                 keymap.of([
-                  {
-                    key: "Mod-Shift-Enter",
-                    preventDefault: true,
-                    run: (view) => {
-                      void executeActiveQuery(view.state.selection.main.head);
-                      return true;
-                    },
-                  },
-                  {
-                    key: "Mod-Enter",
-                    preventDefault: true,
-                    run: () => {
-                      void executeAllQuery();
-                      return true;
-                    },
-                  },
+                  ...(runCurrentEditorBinding
+                    ? [
+                        {
+                          key: runCurrentEditorBinding,
+                          preventDefault: true,
+                          run: (view: EditorView) => {
+                            void executeActiveQuery(view.state.selection.main.head);
+                            return true;
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(runAllEditorBinding
+                    ? [
+                        {
+                          key: runAllEditorBinding,
+                          preventDefault: true,
+                          run: () => {
+                            void executeAllQuery();
+                            return true;
+                          },
+                        },
+                      ]
+                    : []),
                 ]),
               ),
               EditorView.theme({
