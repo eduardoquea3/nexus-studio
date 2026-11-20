@@ -1,11 +1,11 @@
 {
   "name": "nexus-studio",
   "private": true,
-  "version": "0.2.6",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node init && vite",
+    "build": "node init && tsc && vite build",
     "lint": "biome lint .",
     "format": "biome format --write '**/*.ts' '**/*.tsx'",
     "preview": "vite preview",
