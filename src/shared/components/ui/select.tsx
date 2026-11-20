@@ -16,6 +16,7 @@ interface SelectProps<T extends Record<string, unknown>>
   labelKey?: keyof T;
   placeholder?: string;
   className?: string;
+  contentClassName?: string;
   isLoading?: boolean;
   render?: (option: T) => ReactNode;
   value?: T | null;
@@ -29,6 +30,7 @@ function Select<T extends Record<string, unknown>>({
   labelKey,
   placeholder = "Select an option",
   className,
+  contentClassName,
   isLoading = false,
   render,
   value,
@@ -95,7 +97,7 @@ function Select<T extends Record<string, unknown>>({
           }}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className={contentClassName}>
         {options.map((option, index) => {
           return (
             <SelectItem key={getOptionValue(option, index)} value={getOptionValue(option, index)}>

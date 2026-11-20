@@ -2,6 +2,7 @@ import { RiAddLine, RiCloseLine, RiCodeBoxLine, RiFlowChart, RiTableLine } from 
 
 import { TabsList, TabsTrigger } from "@/components/animate-ui/components/radix/tabs";
 import { Button } from "@/components/ui/button";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import type { WorkspaceController } from "./connection-workspace-controller";
@@ -23,112 +24,121 @@ export function ConnectionWorkspaceTabs({ controller }: { controller: WorkspaceC
   const tableTabs = workspaceTabs.flatMap((tab) => (tab.type === "table" ? [tab] : []));
   return (
     <div className="flex h-9 min-w-0 shrink-0 items-center gap-0 border-b border-border bg-card px-0 py-0">
-      <TabsList className="flex h-full min-w-0 flex-1 justify-start overflow-x-auto overflow-y-hidden rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
-        {workspaceTabs.map((tab) => (
-          <div key={tab.id} className="group flex h-full min-w-0 flex-none border-r border-border">
-            <TabsTrigger
-              value={tab.id}
-              className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
-              onClick={() => {
-                controller.setActiveTabId(tab.id);
-                if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
-              }}
+      <ScrollArea className="h-full min-w-0 flex-1">
+        <TabsList className="flex h-full min-w-max justify-start overflow-visible rounded-none bg-transparent p-0 [&_[data-slot=motion-highlight]]:rounded-none">
+          {workspaceTabs.map((tab) => (
+            <div
+              key={tab.id}
+              className="group flex h-full min-w-0 flex-none border-r border-border"
             >
-              {tab.type === "sql" ? (
-                <RiCodeBoxLine
+              <TabsTrigger
+                value={tab.id}
+                className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
+                onClick={() => {
+                  controller.setActiveTabId(tab.id);
+                  if (tab.type === "sql") controller.setActiveSqlTabId(tab.id);
+                }}
+              >
+                {tab.type === "sql" ? (
+                  <RiCodeBoxLine
+                    className={cn(
+                      "size-3.5",
+                      tab.id === activeSqlTabId ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                ) : (
+                  <RiTableLine className="size-3.5 text-primary" />
+                )}
+                <span className="truncate">
+                  {tab.type === "sql" ? tab.title : getTableTabTitle(tab, tableTabs)}
+                </span>
+                {tab.type === "sql" ? (
+                  <span
+                    className="inline-flex size-1.5 shrink-0 items-center justify-center"
+                    data-testid={`unsaved-change-slot-${tab.id}`}
+                  >
+                    {tab.isDirty ? (
+                      <span
+                        aria-label={`Unsaved changes in ${tab.title}`}
+                        className="size-1.5 rounded-full bg-primary"
+                      />
+                    ) : null}
+                  </span>
+                ) : null}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id);
+                  }}
+                  aria-label={`Close ${tab.type === "sql" ? tab.title : tab.tableName}`}
+                >
+                  <RiCloseLine className="size-3" />
+                </span>
+              </TabsTrigger>
+            </div>
+          ))}
+          {isErDiagramOpen ? (
+            <div className="group flex h-full min-w-0 flex-none border-r border-border">
+              <TabsTrigger
+                value="er-diagram"
+                className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
+                onClick={openErDiagram}
+                aria-label="ER diagram tab"
+              >
+                <RiFlowChart
                   className={cn(
                     "size-3.5",
-                    tab.id === activeSqlTabId ? "text-primary" : "text-muted-foreground",
+                    activeTabId === "er-diagram" ? "text-primary" : "text-muted-foreground",
                   )}
+                  aria-hidden="true"
                 />
-              ) : (
-                <RiTableLine className="size-3.5 text-primary" />
-              )}
-              <span className="truncate">
-                {tab.type === "sql" ? tab.title : getTableTabTitle(tab, tableTabs)}
-              </span>
-              {tab.type === "sql" ? (
+                <span className="truncate">ER Diagram</span>
                 <span
-                  className="inline-flex size-1.5 shrink-0 items-center justify-center"
-                  data-testid={`unsaved-change-slot-${tab.id}`}
+                  role="button"
+                  tabIndex={0}
+                  className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeErDiagram();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeErDiagram();
+                  }}
+                  aria-label="Close ER diagram"
                 >
-                  {tab.isDirty ? (
-                    <span
-                      aria-label={`Unsaved changes in ${tab.title}`}
-                      className="size-1.5 rounded-full bg-primary"
-                    />
-                  ) : null}
+                  <RiCloseLine className="size-3" aria-hidden="true" />
                 </span>
-              ) : null}
-              <span
-                role="button"
-                tabIndex={0}
-                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  tab.type === "sql" ? closeEditorTab(tab.id) : closeTableTab(tab.id);
-                }}
-                aria-label={`Close ${tab.type === "sql" ? tab.title : tab.tableName}`}
-              >
-                <RiCloseLine className="size-3" />
-              </span>
-            </TabsTrigger>
-          </div>
-        ))}
-        {isErDiagramOpen ? (
-          <div className="group flex h-full min-w-0 flex-none border-r border-border">
-            <TabsTrigger
-              value="er-diagram"
-              className="group/tab flex h-full w-fit min-w-28 max-w-56 flex-none items-center gap-1 overflow-hidden rounded-none border-0 pl-3 pr-1.5 text-xs text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground"
-              onClick={openErDiagram}
-              aria-label="ER diagram tab"
-            >
-              <RiFlowChart
-                className={cn(
-                  "size-3.5",
-                  activeTabId === "er-diagram" ? "text-primary" : "text-muted-foreground",
-                )}
-                aria-hidden="true"
-              />
-              <span className="truncate">ER Diagram</span>
-              <span
-                role="button"
-                tabIndex={0}
-                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  closeErDiagram();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  closeErDiagram();
-                }}
-                aria-label="Close ER diagram"
-              >
-                <RiCloseLine className="size-3" aria-hidden="true" />
-              </span>
-            </TabsTrigger>
-          </div>
-        ) : null}
-      </TabsList>
+              </TabsTrigger>
+            </div>
+          ) : null}
+        </TabsList>
+        <ScrollBar
+          orientation="horizontal"
+          className="absolute inset-x-0 bottom-0 z-20 data-horizontal:h-1.5 border-t-transparent bg-transparent opacity-70 transition-opacity hover:opacity-100 [&_[data-slot=scroll-area-thumb]]:bg-border/60"
+        />
+      </ScrollArea>
       <Button
         variant="ghost"
         size="icon-xs"

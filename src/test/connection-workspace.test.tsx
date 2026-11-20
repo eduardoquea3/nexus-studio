@@ -74,6 +74,7 @@ mock.module("@/routes/index", () => ({
 mock.module("@/shared/keymaps/global-keymaps", () => ({ GlobalKeymaps: () => null }));
 const themeState = {
   theme: { mode: "dark", variantId: "default" },
+  sidebarOpen: true,
   interfaceFontFamily: "Inter",
   sqlEditorFontFamily: "monospace",
   resultFontFamily: "monospace",
@@ -154,12 +155,10 @@ mock.module("react-resizable-panels", () => ({
 mock.module("@/app/connection/components/connection-sidebar", () => ({
   ConnectionSidebar: ({
     selectedDatabase,
-    onDatabaseChange,
     onTableSelect,
     onRoutineSelect,
   }: {
     selectedDatabase: string;
-    onDatabaseChange: (database: string) => void;
     onTableSelect: (table: string) => void;
     onRoutineSelect: (routine: {
       name: string;
@@ -169,9 +168,6 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
   }) => (
     <aside data-testid="connection-sidebar">
       <span data-testid="selected-database">{selectedDatabase}</span>
-      <button type="button" onClick={() => onDatabaseChange("development")}>
-        Select development
-      </button>
       <span
         role="button"
         tabIndex={0}
@@ -210,6 +206,19 @@ mock.module("@/app/connection/components/connection-sidebar", () => ({
         Open refresh_company(integer)
       </button>
     </aside>
+  ),
+}));
+
+mock.module("@/app/connection/components/connection-database-selector", () => ({
+  ConnectionDatabaseSelectorPortal: ({
+    onDatabaseChange,
+  }: {
+    selectedDatabase: string;
+    onDatabaseChange: (database: string) => void;
+  }) => (
+    <button type="button" onClick={() => onDatabaseChange("development")}>
+      Select development
+    </button>
   ),
 }));
 
@@ -272,12 +281,15 @@ mock.module("@/app/connection/hooks/use-schema-objects", () => ({
 
 mock.module("@/components/ui/toast", () => ({ toast: { add: addToast }, Toaster: () => null }));
 
-const { ConnectionWorkspace, getQuerySegment } =
-  await import("../app/connection/components/connection-workspace");
-const { splitSqlStatements } =
-  await import("../app/connection/components/connection-workspace-utils");
-const { act, cleanup, fireEvent, render, screen, waitFor, within } =
-  await import("@testing-library/react");
+const { ConnectionWorkspace, getQuerySegment } = await import(
+  "../app/connection/components/connection-workspace"
+);
+const { splitSqlStatements } = await import(
+  "../app/connection/components/connection-workspace-utils"
+);
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 const profile = {
   id: "connection-1",
@@ -703,6 +715,7 @@ describe("Connection workspace route sessions", () => {
 
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
+    themeState.sidebarOpen = true;
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockReset();
@@ -723,6 +736,15 @@ describe("ConnectionWorkspace SQL tabs", () => {
   afterEach(() => {
     cleanup();
     useWorkspaceStore.setState(useWorkspaceStore.getInitialState());
+  });
+
+  test("removes the collapsed sidebar gap to keep the workspace margins even", () => {
+    themeState.sidebarOpen = false;
+    renderWorkspace();
+
+    const workspaceRow = document.querySelector(".connection-workbench > div.flex");
+    expect(workspaceRow?.className).toContain("gap-0");
+    themeState.sidebarOpen = true;
   });
 
   test("does not render a second appbar and rounds the main workspace panel", () => {
@@ -892,14 +914,18 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("w-fit");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("flex-none");
     expect(screen.getByRole("tab", { name: /Query 1/ }).className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").className).toContain("flex-1");
+    expect(screen.getByRole("tablist").closest('[data-slot="scroll-area"]')).not.toBeNull();
     expect(screen.getByRole("tablist").className).toContain("justify-start");
-    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).toContain("border-r");
-    expect(screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className).not.toContain("last:border-r-0");
+    expect(
+      screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className,
+    ).toContain("border-r");
+    expect(
+      screen.getByRole("tab", { name: /Query 1/ }).parentElement?.parentElement?.className,
+    ).not.toContain("last:border-r-0");
     expect(screen.getByRole("tablist").className).toContain("rounded-none");
-    expect(screen.getByRole("tablist").parentElement?.className).toContain("h-9");
-    expect(screen.getByRole("tablist").parentElement?.className).not.toContain("rounded-2xl");
+    const tabScrollArea = screen.getByRole("tablist").closest('[data-slot="scroll-area"]');
+    expect(tabScrollArea?.className).toContain("h-full");
+    expect(tabScrollArea?.className).not.toContain("rounded-2xl");
     const resultsToolbar = screen.getByRole("region", {
       name: "SQL query results",
     }).firstElementChild;
@@ -1447,8 +1473,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Close Query 2" })).toBeNull();
-    expect(screen.getByRole("tablist").className).toContain("overflow-x-auto");
-    expect(screen.getByRole("tablist").className).toContain("overflow-y-hidden");
+    const scrollArea = screen.getByRole("tablist").closest('[data-slot="scroll-area"]');
+    expect(scrollArea).not.toBeNull();
     expect(screen.getByRole("tabpanel").className).toContain("overflow-hidden");
   });
 
@@ -1468,9 +1494,8 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const createTab = screen.getByRole("button", { name: "Create SQL editor tab" });
     const queryTab = screen.getByRole("tab", { name: /Query 1/ });
 
-    expect(tabList.className).toContain("flex-1");
-    expect(tabList.className).toContain("overflow-x-auto");
-    expect(createTab.previousElementSibling).toBe(tabList);
+    expect(tabList.closest('[data-slot="scroll-area"]')).not.toBeNull();
+    expect(createTab.previousElementSibling).toBe(tabList.closest('[data-slot="scroll-area"]'));
     expect(queryTab.className).toContain("flex-none");
     expect(queryTab.className.split(/\s+/)).toContain("gap-1");
     expect(queryTab.className.split(/\s+/)).toContain("pr-1.5");

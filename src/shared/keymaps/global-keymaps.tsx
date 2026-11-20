@@ -3,6 +3,8 @@ import { useHotkeys } from "react-hotkeys-hook";
 
 import { useThemeStore } from "@/shared/store/theme-store";
 
+export const TOGGLE_MOBILE_SIDEBAR_EVENT = "nexus:toggle-mobile-sidebar";
+
 export function GlobalKeymaps() {
   const toggleSidebar = useThemeStore((state) => state.toggleSidebar);
 
@@ -28,6 +30,10 @@ export function GlobalKeymaps() {
     "ctrl+b",
     (event) => {
       event.preventDefault();
+      if (window.matchMedia?.("(max-width: 1023px)").matches) {
+        window.dispatchEvent(new Event(TOGGLE_MOBILE_SIDEBAR_EVENT));
+        return;
+      }
       void toggleSidebar();
     },
     {

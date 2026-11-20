@@ -8,11 +8,9 @@ import {
 } from "@remixicon/react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
-import type { ConnectionProfile } from "@/shared/types/models";
-
 import { useConnection } from "@/app/home/hooks/use-connections";
 import { Button } from "@/components/ui/button";
+import type { ConnectionProfile } from "@/shared/types/models";
 
 import { useThemeStore } from "../store/theme-store";
 
@@ -25,12 +23,8 @@ export function TitleBar() {
       return match && "connectionId" in match.params ? match.params.connectionId : null;
     },
   });
+  const { data: profile } = useConnection(connectionId ?? "", { enabled: false });
 
-  return connectionId ? <ConnectionTitleBar connectionId={connectionId} /> : <TitleBarContent />;
-}
-
-function ConnectionTitleBar({ connectionId }: { connectionId: string }) {
-  const { data: profile } = useConnection(connectionId, { enabled: false });
   return <TitleBarContent profile={profile} />;
 }
 
@@ -55,11 +49,11 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
 
   return (
     <header className="flex h-10 select-none items-center justify-between border-b border-border bg-background pl-3">
-      <div
-        data-tauri-drag-region
-        className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground"
-      >
-        <div className="flex shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground">
+      <div className="flex h-full min-w-0 flex-1 items-center gap-3 text-sm font-medium text-muted-foreground">
+        <div
+          data-tauri-drag-region
+          className="hidden shrink-0 items-center gap-2 font-mono text-[0.66rem] font-semibold tracking-[0.12em] text-foreground lg:flex"
+        >
           <RiDatabase2Line className="size-4 text-violet-400" aria-hidden="true" />
           <span>NEXUS STUDIO</span>
         </div>
@@ -68,11 +62,15 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
             <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
             <div className="flex min-w-0 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-success">
               <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-              <span className="truncate">{profile.name}</span>
-              <span className="hidden text-muted-foreground sm:inline">· {profile.db_type}</span>
+              <span className="whitespace-nowrap">{profile.name}</span>
             </div>
           </>
         ) : null}
+        <div
+          data-slot="title-bar-database-switcher"
+          className={profile ? "flex shrink-0 items-center" : "hidden"}
+        />
+        <div data-tauri-drag-region className="h-full min-w-0 flex-1" />
       </div>
 
       <div className="flex items-center gap-2">
