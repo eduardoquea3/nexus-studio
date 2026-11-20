@@ -78,6 +78,49 @@ test("organizes appearance settings into General, SQL Editor, and Table tabs", a
   expect(screen.queryByRole("combobox", { name: "SQL editor font" })).toBeNull();
 });
 
+test("opens Shortcuts and shows verified shortcuts by context", async () => {
+  render(<SettingsScreen />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+
+  expect(screen.getByRole("heading", { name: "Keyboard shortcuts" })).not.toBeNull();
+  expect(screen.getByText("10 Active")).not.toBeNull();
+  expect(screen.getByText("Toggle sidebar")).not.toBeNull();
+  expect(screen.getByText("Create connection")).not.toBeNull();
+  expect(screen.getByText("Run all SQL statements")).not.toBeNull();
+  const sidebarShortcut = screen.getByText("Toggle sidebar").closest("li");
+  const connectionShortcut = screen.getByText("Create connection").closest("li");
+  expect(sidebarShortcut?.textContent).toContain("Ctrl");
+  expect(sidebarShortcut?.textContent).toContain("B");
+  expect(connectionShortcut?.textContent).toContain("Ctrl");
+  expect(connectionShortcut?.textContent).toContain("N");
+});
+
+test("filters shortcuts by search and context without advertising macOS support", async () => {
+  render(<SettingsScreen />);
+  fireEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Search shortcuts" }), {
+    target: { value: "run current" },
+  });
+  expect(screen.getByText("Run current SQL statement")).not.toBeNull();
+  expect(screen.queryByText("Toggle sidebar")).toBeNull();
+  expect(screen.getByText("1 Active")).not.toBeNull();
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Search shortcuts" }), {
+    target: { value: "" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Global" }));
+  expect(screen.getByText("3 Actions")).not.toBeNull();
+  expect(screen.queryByText("Create connection")).toBeNull();
+
+  expect(screen.queryByText(/macOS/)).toBeNull();
+  const commandPaletteShortcut = screen.getByText("Open command palette").closest("li");
+  expect(commandPaletteShortcut?.textContent).toContain("Ctrl");
+  expect(commandPaletteShortcut?.textContent).toContain("P");
+  expect(commandPaletteShortcut?.textContent).not.toContain("⌘");
+});
+
 test("shows theme cards and preserves family selection in the current mode", async () => {
   render(<SettingsScreen />);
   fireEvent.click(screen.getByRole("button", { name: "Nord theme" }));

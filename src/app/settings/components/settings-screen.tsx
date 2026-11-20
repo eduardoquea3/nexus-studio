@@ -2,9 +2,11 @@ import { Combobox } from "@base-ui/react/combobox";
 import {
   RiArrowLeftLine,
   RiContrast2Line,
+  RiKeyboardLine,
   RiArrowDownSLine,
   RiCheckLine,
   RiFontFamily,
+  RiSearchLine,
   RiComputerLine,
   RiCodeSSlashLine,
   RiTableLine,
@@ -83,6 +85,7 @@ export function SettingsScreen() {
     setSqlEditorFontSize,
     setResultFontSize,
   } = useThemeStore();
+  const [activeSection, setActiveSection] = useState<"appearance" | "shortcuts">("appearance");
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = useState(true);
   const [fontLoadError, setFontLoadError] = useState(false);
@@ -142,18 +145,47 @@ export function SettingsScreen() {
           <p className="mb-3 hidden px-2 font-label text-[0.65rem] uppercase tracking-widest text-muted-foreground sm:block">
             Settings
           </p>
-          <div
-            aria-current="page"
-            aria-label="Appearance"
-            className="flex items-center gap-2 rounded-lg bg-sidebar-accent px-3 py-2 text-sidebar-accent-foreground"
-          >
-            <RiContrast2Line className="size-4 shrink-0" aria-hidden="true" />
-            <div className="hidden min-w-0 sm:block">
-              <h1 className="text-xs font-medium">Appearance</h1>
-              <p className="mt-0.5 truncate text-[0.65rem] text-muted-foreground">
-                Theme and interface
-              </p>
-            </div>
+          <div className="space-y-1">
+            <button
+              type="button"
+              aria-label="Appearance"
+              aria-current={activeSection === "appearance" ? "page" : undefined}
+              onClick={() => setActiveSection("appearance")}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeSection === "appearance"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/60",
+              )}
+            >
+              <RiContrast2Line className="size-4 shrink-0" aria-hidden="true" />
+              <div className="hidden min-w-0 sm:block">
+                <span className="block text-xs font-medium">Appearance</span>
+                <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground">
+                  Theme and interface
+                </span>
+              </div>
+            </button>
+            <button
+              type="button"
+              aria-label="Shortcuts"
+              aria-current={activeSection === "shortcuts" ? "page" : undefined}
+              onClick={() => setActiveSection("shortcuts")}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeSection === "shortcuts"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/60",
+              )}
+            >
+              <RiKeyboardLine className="size-4 shrink-0" aria-hidden="true" />
+              <div className="hidden min-w-0 sm:block">
+                <span className="block text-xs font-medium">Shortcuts</span>
+                <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground">
+                  Keyboard reference
+                </span>
+              </div>
+            </button>
           </div>
         </nav>
         <p className="hidden border-t border-border px-5 py-4 text-[0.65rem] text-muted-foreground sm:block">
@@ -162,7 +194,7 @@ export function SettingsScreen() {
       </aside>
       <ScrollArea className="min-w-0 flex-1">
         <main className="mx-auto w-full max-w-4xl px-5 py-7 sm:px-8">
-          <Tabs defaultValue="general">
+          <Tabs defaultValue="general" hidden={activeSection === "shortcuts"}>
             <TabsList
               aria-label="Appearance settings"
               className="mb-6 h-10 w-fit rounded-xl border border-border p-1"
@@ -251,16 +283,246 @@ export function SettingsScreen() {
               />
             </TabsContent>
           </Tabs>
-          <p className="mt-4 text-[0.65rem] text-muted-foreground" role="status">
-            {fontLoadError
-              ? "System fonts could not be loaded. Theme defaults remain active."
-              : isLoadingFonts
-                ? "Loading installed fonts..."
-                : `${systemFonts.length} installed ${systemFonts.length === 1 ? "font" : "fonts"} available`}
-          </p>
+          {activeSection === "shortcuts" && <ShortcutsSettings />}
+          {activeSection === "appearance" && (
+            <p className="mt-4 text-[0.65rem] text-muted-foreground" role="status">
+              {fontLoadError
+                ? "System fonts could not be loaded. Theme defaults remain active."
+                : isLoadingFonts
+                  ? "Loading installed fonts..."
+                  : `${systemFonts.length} installed ${systemFonts.length === 1 ? "font" : "fonts"} available`}
+            </p>
+          )}
         </main>
       </ScrollArea>
     </div>
+  );
+}
+
+type ShortcutCategory = "global" | "home-workspace" | "editor-canvas";
+
+type ShortcutEntry = {
+  id: string;
+  category: ShortcutCategory;
+  action: string;
+  description?: string;
+  keys: string[];
+};
+
+const SHORTCUT_CATEGORIES: { value: ShortcutCategory; label: string }[] = [
+  { value: "global", label: "Global" },
+  { value: "home-workspace", label: "Home & Workspace" },
+  { value: "editor-canvas", label: "Editor & Canvas" },
+];
+
+const SHORTCUTS: ShortcutEntry[] = [
+  { id: "sidebar", category: "global", action: "Toggle sidebar", keys: ["Ctrl", "B"] },
+  {
+    id: "command-palette",
+    category: "global",
+    action: "Open command palette",
+    description: "Quickly run a studio command",
+    keys: ["Ctrl", "P"],
+  },
+  {
+    id: "application-commands",
+    category: "global",
+    action: "Open application commands",
+    keys: ["Ctrl", "Shift", "P"],
+  },
+  {
+    id: "new-connection",
+    category: "home-workspace",
+    action: "Create connection",
+    description: "Available from Home when dialogs are closed",
+    keys: ["Ctrl", "N"],
+  },
+  {
+    id: "new-sql-tab",
+    category: "home-workspace",
+    action: "Create SQL tab",
+    keys: ["Ctrl", "T"],
+  },
+  {
+    id: "close-active-tab",
+    category: "home-workspace",
+    action: "Close active tab",
+    keys: ["Ctrl", "W"],
+  },
+  {
+    id: "next-tab",
+    category: "home-workspace",
+    action: "Next tab / open tab switcher",
+    keys: ["Ctrl", "Tab"],
+  },
+  {
+    id: "previous-tab",
+    category: "home-workspace",
+    action: "Previous tab",
+    keys: ["Ctrl", "Shift", "Tab"],
+  },
+  {
+    id: "run-all-sql",
+    category: "editor-canvas",
+    action: "Run all SQL statements",
+    description: "Runs the current query in the active workspace",
+    keys: ["Ctrl", "Enter"],
+  },
+  {
+    id: "run-current-sql",
+    category: "editor-canvas",
+    action: "Run current SQL statement",
+    description: "Runs the statement at the editor cursor",
+    keys: ["Ctrl", "Shift", "Enter"],
+  },
+];
+
+const SHORTCUT_CATEGORY_TITLES: Record<ShortcutCategory, string> = {
+  global: "Global",
+  "home-workspace": "Home & Workspace",
+  "editor-canvas": "Editor & Canvas",
+};
+
+function ShortcutsSettings() {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<ShortcutCategory | "all">("all");
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredShortcuts = SHORTCUTS.filter((shortcut) => {
+    const matchesCategory = category === "all" || shortcut.category === category;
+    const searchableText = `${shortcut.action} ${shortcut.description ?? ""} ${SHORTCUT_CATEGORY_TITLES[shortcut.category]}`;
+    return matchesCategory && searchableText.toLowerCase().includes(normalizedSearch);
+  });
+
+  return (
+    <section aria-labelledby="keyboard-shortcuts-heading" className="space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1
+              id="keyboard-shortcuts-heading"
+              className="font-mono text-lg font-semibold tracking-tight"
+            >
+              Keyboard shortcuts
+            </h1>
+            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[0.65rem] text-primary">
+              {filteredShortcuts.length} Active
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Available shortcuts and hotkeys, grouped by where they work in your workflow.
+          </p>
+        </div>
+      </header>
+
+      <div className="flex flex-col gap-2 border-b border-border pb-5 lg:flex-row">
+        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-background px-3 focus-within:ring-2 focus-within:ring-ring/40">
+          <RiSearchLine className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <input
+            aria-label="Search shortcuts"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search shortcuts (e.g. sidebar, zoom, connection)..."
+            className="h-9 min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground"
+          />
+        </label>
+        <fieldset className="flex flex-wrap gap-1.5">
+          <legend className="sr-only">Filter shortcuts</legend>
+          <button
+            type="button"
+            aria-pressed={category === "all"}
+            onClick={() => setCategory("all")}
+            className={shortcutFilterClass(category === "all")}
+          >
+            All
+          </button>
+          {SHORTCUT_CATEGORIES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={category === value}
+              onClick={() => setCategory(value)}
+              className={shortcutFilterClass(category === value)}
+            >
+              {label}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+
+      {filteredShortcuts.length === 0 ? (
+        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-xs text-muted-foreground">
+          No shortcuts match “{search}”. Try another search or category.
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {SHORTCUT_CATEGORIES.filter(({ value }) =>
+            filteredShortcuts.some((shortcut) => shortcut.category === value),
+          ).map(({ value }) => {
+            const shortcuts = filteredShortcuts.filter((shortcut) => shortcut.category === value);
+            return (
+              <section key={value} aria-labelledby={`shortcut-group-${value}`}>
+                <div className="mb-2 flex items-center justify-between">
+                  <h2
+                    id={`shortcut-group-${value}`}
+                    className="font-label text-[0.65rem] font-medium uppercase tracking-widest text-muted-foreground"
+                  >
+                    {SHORTCUT_CATEGORY_TITLES[value]}
+                  </h2>
+                  <span className="font-mono text-[0.6rem] uppercase tracking-widest text-muted-foreground">
+                    {shortcuts.length} {shortcuts.length === 1 ? "Action" : "Actions"}
+                  </span>
+                </div>
+                <ul className="overflow-hidden rounded-lg border border-border bg-card">
+                  {shortcuts.map((shortcut) => {
+                    const keys = shortcut.keys;
+                    return (
+                      <li
+                        key={shortcut.id}
+                        className="flex min-h-12 items-center justify-between gap-4 border-b border-border px-3 py-2.5 last:border-b-0 sm:px-4"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span
+                            className="size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-mono text-xs">{shortcut.action}</p>
+                            {shortcut.description && (
+                              <p className="mt-1 text-[0.65rem] text-muted-foreground">
+                                {shortcut.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1 font-mono text-[0.65rem] text-muted-foreground">
+                          {keys.map((key, index) => (
+                            <span key={`${shortcut.id}-${key}`} className="flex items-center gap-1">
+                              {index > 0 && <span aria-hidden="true">+</span>}
+                              <kbd className="min-w-6 rounded border border-border bg-muted px-1.5 py-0.5 text-center text-foreground">
+                                {key}
+                              </kbd>
+                            </span>
+                          ))}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function shortcutFilterClass(isActive: boolean) {
+  return cn(
+    "rounded-md border px-2 py-1.5 font-mono text-[0.65rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    isActive
+      ? "border-primary/40 bg-primary/10 text-primary"
+      : "border-border bg-background text-muted-foreground hover:text-foreground",
   );
 }
 
