@@ -282,6 +282,11 @@ pub(crate) async fn open_ssh_tunnel(
     let remote_host = &ssh.remote_bind_host;
     let remote_port = ssh.remote_bind_port;
     let mut command = Command::new("ssh");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     command
         .arg("-N")
         .arg("-T")
