@@ -35,6 +35,8 @@ test("portals the database badge into the title bar and lists databases", async 
 
   const databaseBadge = await screen.findByRole("combobox");
   expect(titleBarSlot.contains(databaseBadge)).toBe(true);
+  expect(databaseBadge.querySelector("span.truncate")?.textContent).toBe("master");
+  expect(databaseBadge.className).toContain("max-w-56");
   fireEvent.click(databaseBadge);
   const analyticsOption = await screen.findByRole("option", { name: "analytics" });
   const optionList = analyticsOption.closest('[data-slot="select-content"]');
@@ -50,6 +52,7 @@ test("portals the database badge into the title bar and lists databases", async 
   expect(longNameOption.querySelector("span.truncate")?.textContent).toBe(
     "analytics-production-warehouse-2025-readonly",
   );
+  expect(longNameOption.querySelector("span.truncate")?.className).not.toContain("hidden");
 
   const selectedOption = await screen.findByRole("option", { name: "master" });
   expect(selectedOption.querySelector("span.absolute.right-2 svg")).not.toBeNull();

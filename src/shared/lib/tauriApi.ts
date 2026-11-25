@@ -169,12 +169,29 @@ export async function getRoutineDefinition(
   });
 }
 
+export interface SidebarTableMetadata {
+  columns: TableSchema["columns"];
+  foreignKeys: { name: string; column: string; referencedTable: string; referencedColumn: string }[];
+  indexes: { name: string; column: string; isPrimary: boolean; isUnique: boolean }[];
+}
+
+export async function getSidebarTableMetadata(
+  profile: ConnectionProfile,
+  table: string,
+  schema?: string,
+  database?: string,
+): Promise<SidebarTableMetadata> {
+  const request = connectionRequestForProfile(profile, database);
+  return invoke("get_sidebar_table_metadata", { request: { request, table, schema } });
+}
+
 export async function getTableSchema(
   profile: ConnectionProfile,
   table: string,
   schema?: string,
+  database?: string,
 ): Promise<TableSchema> {
-  const request = connectionRequestForProfile(profile);
+  const request = connectionRequestForProfile(profile, database);
 
   return invoke("get_table_schema", { request: { request, table, schema } });
 }

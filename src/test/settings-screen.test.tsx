@@ -18,6 +18,7 @@ const setResultFontFamily = mock(async (_value: string | null) => {});
 const setInterfaceFontSize = mock(async (_value: number) => {});
 const setSqlEditorFontSize = mock(async (_value: number) => {});
 const setResultFontSize = mock(async (_value: number) => {});
+const setSidebarPosition = mock(async (_value: "left" | "right") => {});
 const initialState = {
   theme: themes[0],
   interfaceFontFamily: null as string | null,
@@ -26,6 +27,8 @@ const initialState = {
   interfaceFontSize: 16,
   sqlEditorFontSize: 14,
   resultFontSize: 12,
+  sidebarPosition: "left" as "left" | "right",
+  setSidebarPosition,
   setTheme,
   setInterfaceFontFamily,
   setSqlEditorFontFamily,
@@ -76,6 +79,16 @@ test("organizes appearance settings into General, SQL Editor, and Table tabs", a
   fireEvent.click(screen.getByRole("tab", { name: "Table" }));
   expect(screen.getByRole("combobox", { name: "Results font" })).not.toBeNull();
   expect(screen.queryByRole("combobox", { name: "SQL editor font" })).toBeNull();
+});
+
+test("lets users choose a local sidebar position in General appearance settings", () => {
+  render(<SettingsScreen />);
+  const positionGroup = screen.getByRole("group", { name: "Sidebar position" });
+
+  expect(positionGroup).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Left" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Right" }));
+  expect(setSidebarPosition).toHaveBeenCalledWith("right");
 });
 
 test("opens Shortcuts and shows verified shortcuts by context", async () => {

@@ -167,6 +167,7 @@ impl SshTunnelManager {
         {
             let mut tunnels = self.tunnels.lock().await;
             if let Some(tunnel) = tunnels.get_mut(connection_id) {
+                // SshTunnelRequest equality includes the remote database bind host and port.
                 if tunnel.config == *ssh && tunnel.tunnel.is_alive()? {
                     return Ok(Some(tunnel.tunnel.local_port));
                 }

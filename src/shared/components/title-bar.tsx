@@ -59,7 +59,7 @@ function TitleBarContent({ profile }: { profile?: ConnectionProfile | null }) {
         </div>
         {profile ? (
           <>
-            <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+            <span className="hidden h-4 w-px shrink-0 bg-border lg:block" aria-hidden="true" />
             <div className="flex min-w-0 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-success">
               <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
               <span className="whitespace-nowrap">{profile.name}</span>

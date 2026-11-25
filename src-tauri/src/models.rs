@@ -166,6 +166,32 @@ pub struct TableSchemaResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SidebarForeignKey {
+    pub name: String,
+    pub column: String,
+    pub referenced_table: String,
+    pub referenced_column: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidebarIndex {
+    pub name: String,
+    pub column: String,
+    pub is_primary: bool,
+    pub is_unique: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidebarTableMetadata {
+    pub columns: Vec<ColumnInfo>,
+    pub foreign_keys: Vec<SidebarForeignKey>,
+    pub indexes: Vec<SidebarIndex>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErDiagramSchema {
     pub tables: Vec<ErDiagramTable>,
     pub relationships: Vec<ErDiagramRelationship>,

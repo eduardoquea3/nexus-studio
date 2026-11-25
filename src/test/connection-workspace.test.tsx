@@ -76,6 +76,7 @@ mock.module("@/shared/keymaps/global-keymaps", () => ({ GlobalKeymaps: () => nul
 const themeState = {
   theme: { mode: "dark", variantId: "default" },
   sidebarOpen: true,
+  sidebarPosition: "left",
   interfaceFontFamily: "Inter",
   sqlEditorFontFamily: "monospace",
   resultFontFamily: "monospace",
@@ -718,6 +719,7 @@ describe("Connection workspace route sessions", () => {
 describe("ConnectionWorkspace SQL tabs", () => {
   beforeEach(() => {
     themeState.sidebarOpen = true;
+    themeState.sidebarPosition = "left";
     document.body.innerHTML = "";
     invalidateQueries.mockClear();
     runQuery.mockReset();
@@ -748,6 +750,14 @@ describe("ConnectionWorkspace SQL tabs", () => {
     const workspaceRow = document.querySelector(".connection-workbench > div.flex");
     expect(workspaceRow?.className).toContain("gap-0");
     themeState.sidebarOpen = true;
+  });
+
+  test("places the desktop sidebar on the configured side of the workspace", () => {
+    themeState.sidebarPosition = "right";
+    renderWorkspace();
+
+    const workspaceRow = document.querySelector(".connection-workbench > div.flex");
+    expect(workspaceRow?.className).toContain("flex-row-reverse");
   });
 
   test("does not render a second appbar and rounds the main workspace panel", () => {

@@ -54,6 +54,8 @@ describe("TitleBar", () => {
     expect(container.querySelectorAll("header")).toHaveLength(1);
     expect(screen.getByText("NEXUS STUDIO")).not.toBeNull();
     expect(screen.getByText("Production")).not.toBeNull();
+    expect(container.querySelector('span[aria-hidden="true"]')?.className).toContain("lg:block");
+    expect(container.querySelector('span[aria-hidden="true"]')?.className).toContain("hidden");
     expect(screen.getByRole("button", { name: "Minimize" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Maximize" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).not.toBeNull();

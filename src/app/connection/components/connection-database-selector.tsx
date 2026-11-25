@@ -35,7 +35,7 @@ export function ConnectionDatabaseSelector({
         isLoading ? "Loading databases..." : hasError ? "Database unavailable" : "Select database"
       }
       isLoading={isLoading}
-      className="h-6! min-w-0 max-w-36 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-foreground shadow-none hover:bg-success/15 [&>svg:last-child]:hidden"
+      className="h-6! min-w-0 max-w-56 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.65rem] text-foreground shadow-none hover:bg-success/15 [&>svg:last-child]:hidden"
       contentClassName="w-max min-w-(--anchor-width) max-w-72"
       disabled={databases.length === 0 || isLoading}
     />
@@ -60,7 +60,7 @@ function renderDatabaseOption(option: DatabaseOption) {
   return (
     <span className="flex min-w-0 items-center gap-2">
       <RiDatabase2Line className="size-3.5 shrink-0 text-foreground" aria-hidden="true" />
-      <span className="hidden truncate lg:inline">{option.label}</span>
+      <span className="truncate">{option.label}</span>
     </span>
   );
 }

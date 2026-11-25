@@ -25,6 +25,7 @@ export function ConnectionWorkspace({
 }: ConnectionWorkspaceProps) {
   const controller = useConnectionWorkspaceController({ profile, isActive, onConnectionSwitch });
   const sidebarOpen = useThemeStore((state) => state.sidebarOpen);
+  const sidebarPosition = useThemeStore((state) => state.sidebarPosition);
   const databaseOptions: DatabaseOption[] = controller.databases.map((value) => ({
     value,
     label: value,
@@ -121,7 +122,11 @@ export function ConnectionWorkspace({
             }
           />
         ) : null}
-        <div className={`flex min-h-0 flex-1 ${sidebarOpen ? "gap-2" : "gap-0"} overflow-hidden`}>
+        <div
+          className={`flex min-h-0 flex-1 ${sidebarOpen ? "gap-2" : "gap-0"} ${
+            sidebarPosition === "right" ? "flex-row-reverse" : ""
+          } overflow-hidden`}
+        >
           <ConnectionSidebar
             profile={profile}
             selectedDatabase={selectedDatabase}
