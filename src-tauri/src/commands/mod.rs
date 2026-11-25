@@ -1,6 +1,8 @@
 pub mod connection;
 pub mod query;
 pub mod schema;
+#[path = "sidebar-metadata.rs"]
+pub mod sidebar_metadata;
 #[path = "ssh-russh.rs"]
 pub mod ssh_russh;
 pub mod system;

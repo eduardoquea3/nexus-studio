@@ -24,6 +24,7 @@ pub fn run() {
             commands::schema::get_routine_definition,
             commands::schema::get_table_data,
             commands::schema::get_table_schema,
+            commands::sidebar_metadata::get_sidebar_table_metadata,
             commands::table_data::delete_records,
             commands::query::run_query
         ])

@@ -125,6 +125,7 @@ impl Drop for SshTunnelGuard {
 
 struct ManagedTunnel {
     config: crate::models::SshTunnelRequest,
+    destination: (String, u16),
     tunnel: SshTunnelGuard,
 }
 
@@ -167,7 +168,14 @@ impl SshTunnelManager {
         {
             let mut tunnels = self.tunnels.lock().await;
             if let Some(tunnel) = tunnels.get_mut(connection_id) {
-                if tunnel.config == *ssh && tunnel.tunnel.is_alive()? {
+                let destination = (
+                    request.host.clone().ok_or("Host is required")?,
+                    request.port.unwrap_or(if request.db_type == "mysql" { 3306 } else { 5432 }),
+                );
+                if tunnel.config == *ssh
+                    && tunnel.destination == destination
+                    && tunnel.tunnel.is_alive()?
+                {
                     return Ok(Some(tunnel.tunnel.local_port));
                 }
                 tunnels.remove(connection_id);
@@ -182,6 +190,10 @@ impl SshTunnelManager {
             connection_id.to_string(),
             ManagedTunnel {
                 config: ssh.clone(),
+                destination: (
+                    request.host.clone().ok_or("Host is required")?,
+                    request.port.unwrap_or(if request.db_type == "mysql" { 3306 } else { 5432 }),
+                ),
                 tunnel,
             },
         );
