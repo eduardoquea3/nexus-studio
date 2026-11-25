@@ -29,12 +29,20 @@ export const THEME_VARIANTS: ThemeVariant[] = Object.entries(themeSources)
   })
   .sort((a, b) => a.name.localeCompare(b.name));
 
-const DEFAULT_THEME_ID = THEME_VARIANTS.find((variant) => variant.id === "twitter-dark")?.id ?? THEME_VARIANTS[0]?.id ?? "";
+const DEFAULT_THEME_ID =
+  THEME_VARIANTS.find((variant) => variant.id === "twitter-dark")?.id ??
+  THEME_VARIANTS[0]?.id ??
+  "";
 export const FONT_SIZE_MIN = 8;
 export const FONT_SIZE_MAX = 32;
 const DEFAULT_INTERFACE_FONT_SIZE = 16;
 const DEFAULT_SQL_EDITOR_FONT_SIZE = 16;
 const DEFAULT_RESULT_FONT_SIZE = 12;
+export const SIDEBAR_WIDTH_MIN = 200;
+export const SIDEBAR_WIDTH_MAX = 420;
+export const DEFAULT_SIDEBAR_WIDTH = 240;
+export type SidebarPosition = "left" | "right";
+export const DEFAULT_SIDEBAR_POSITION: SidebarPosition = "left";
 
 interface ThemeState {
   theme: ThemeVariant;
@@ -45,6 +53,8 @@ interface ThemeState {
   sqlEditorFontSize: number;
   resultFontSize: number;
   sidebarOpen: boolean;
+  sidebarWidth: number;
+  sidebarPosition: SidebarPosition;
   toggle: () => Promise<void>;
   setTheme: (themeId: string) => Promise<void>;
   setInterfaceFontFamily: (fontFamily: string | null) => Promise<void>;
@@ -54,6 +64,8 @@ interface ThemeState {
   setSqlEditorFontSize: (fontSize: number) => Promise<void>;
   setResultFontSize: (fontSize: number) => Promise<void>;
   toggleSidebar: () => Promise<void>;
+  setSidebarWidth: (width: number) => Promise<void>;
+  setSidebarPosition: (position: SidebarPosition) => Promise<void>;
 }
 
 const STORE_PATH = "theme.json";
@@ -65,6 +77,8 @@ const INTERFACE_FONT_SIZE_KEY = "interfaceFontSize";
 const SQL_EDITOR_FONT_SIZE_KEY = "sqlEditorFontSize";
 const RESULT_FONT_SIZE_KEY = "resultFontSize";
 const SIDEBAR_KEY = "sidebarOpen";
+const SIDEBAR_WIDTH_KEY = "sidebarWidth";
+const SIDEBAR_POSITION_KEY = "sidebarPosition";
 
 let themeStorePromise: Promise<Awaited<ReturnType<typeof load>>> | null = null;
 let appliedVariables = new Set<string>();
@@ -162,6 +176,8 @@ async function getThemeStore() {
       [SQL_EDITOR_FONT_SIZE_KEY]: DEFAULT_SQL_EDITOR_FONT_SIZE,
       [RESULT_FONT_SIZE_KEY]: DEFAULT_RESULT_FONT_SIZE,
       [SIDEBAR_KEY]: true,
+      [SIDEBAR_WIDTH_KEY]: DEFAULT_SIDEBAR_WIDTH,
+      [SIDEBAR_POSITION_KEY]: DEFAULT_SIDEBAR_POSITION,
     },
   });
   return themeStorePromise;
@@ -194,11 +210,12 @@ function normalizeFontFamily(value: unknown): string | null {
 }
 
 function normalizeFontSize(value: unknown, fallback: number) {
-  const numericValue = typeof value === "number"
-    ? value
-    : typeof value === "string" && value.trim()
-      ? Number(value)
-      : Number.NaN;
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
   if (!Number.isFinite(numericValue)) {
     return fallback;
   }
@@ -206,12 +223,36 @@ function normalizeFontSize(value: unknown, fallback: number) {
   return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(numericValue)));
 }
 
+function normalizeSidebarWidth(value: unknown) {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_SIDEBAR_WIDTH;
+  }
+
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(numericValue)));
+}
+
+function normalizeSidebarPosition(value: unknown): SidebarPosition {
+  return value === "right" ? "right" : DEFAULT_SIDEBAR_POSITION;
+}
+
 export async function initThemeStore() {
   const store = await getThemeStore();
   const savedTheme = await store.get<string>(THEME_KEY);
-  const savedInterfaceFontFamily = normalizeFontFamily(await store.get<unknown>(INTERFACE_FONT_FAMILY_KEY));
-  const savedSqlEditorFontFamily = normalizeFontFamily(await store.get<unknown>(SQL_EDITOR_FONT_FAMILY_KEY));
-  const savedResultFontFamily = normalizeFontFamily(await store.get<unknown>(RESULT_FONT_FAMILY_KEY));
+  const savedInterfaceFontFamily = normalizeFontFamily(
+    await store.get<unknown>(INTERFACE_FONT_FAMILY_KEY),
+  );
+  const savedSqlEditorFontFamily = normalizeFontFamily(
+    await store.get<unknown>(SQL_EDITOR_FONT_FAMILY_KEY),
+  );
+  const savedResultFontFamily = normalizeFontFamily(
+    await store.get<unknown>(RESULT_FONT_FAMILY_KEY),
+  );
   const savedInterfaceFontSize = normalizeFontSize(
     await store.get<unknown>(INTERFACE_FONT_SIZE_KEY),
     DEFAULT_INTERFACE_FONT_SIZE,
@@ -225,8 +266,17 @@ export async function initThemeStore() {
     DEFAULT_RESULT_FONT_SIZE,
   );
   const savedSidebarOpen = await store.get<boolean>(SIDEBAR_KEY);
-  const legacyMode: ThemeMode | undefined = savedTheme === "light" || savedTheme === "dark" ? savedTheme : undefined;
-  const theme = getVariant(legacyMode ? `${DEFAULT_THEME_ID.replace(/-(light|dark)$/, "")}-${legacyMode}` : savedTheme ?? DEFAULT_THEME_ID);
+  const savedSidebarWidth = normalizeSidebarWidth(await store.get<unknown>(SIDEBAR_WIDTH_KEY));
+  const savedSidebarPosition = normalizeSidebarPosition(
+    await store.get<unknown>(SIDEBAR_POSITION_KEY),
+  );
+  const legacyMode: ThemeMode | undefined =
+    savedTheme === "light" || savedTheme === "dark" ? savedTheme : undefined;
+  const theme = getVariant(
+    legacyMode
+      ? `${DEFAULT_THEME_ID.replace(/-(light|dark)$/, "")}-${legacyMode}`
+      : (savedTheme ?? DEFAULT_THEME_ID),
+  );
   const sidebarOpen = savedSidebarOpen ?? true;
 
   if (!theme) {
@@ -253,6 +303,8 @@ export async function initThemeStore() {
     sqlEditorFontSize: savedSqlEditorFontSize,
     resultFontSize: savedResultFontSize,
     sidebarOpen,
+    sidebarWidth: savedSidebarWidth,
+    sidebarPosition: savedSidebarPosition,
   });
 }
 
@@ -265,6 +317,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   sqlEditorFontSize: DEFAULT_SQL_EDITOR_FONT_SIZE,
   resultFontSize: DEFAULT_RESULT_FONT_SIZE,
   sidebarOpen: true,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  sidebarPosition: DEFAULT_SIDEBAR_POSITION,
   toggle: async () => {
     const current = get().theme;
     const nextMode = current.mode === "light" ? "dark" : "light";
@@ -325,5 +379,15 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const store = await getThemeStore();
     await store.set(SIDEBAR_KEY, sidebarOpen);
     await store.save();
+  },
+  setSidebarWidth: async (width) => {
+    const sidebarWidth = normalizeSidebarWidth(width);
+    set({ sidebarWidth });
+    await persistPreference(SIDEBAR_WIDTH_KEY, sidebarWidth);
+  },
+  setSidebarPosition: async (sidebarPosition) => {
+    const normalizedPosition = normalizeSidebarPosition(sidebarPosition);
+    set({ sidebarPosition: normalizedPosition });
+    await persistPreference(SIDEBAR_POSITION_KEY, normalizedPosition);
   },
 }));

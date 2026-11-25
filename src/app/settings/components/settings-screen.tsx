@@ -80,6 +80,8 @@ export function SettingsScreen() {
     setInterfaceFontFamily,
     setSqlEditorFontFamily,
     setResultFontFamily,
+    sidebarPosition,
+    setSidebarPosition,
     interfaceFontSize,
     sqlEditorFontSize,
     resultFontSize,
@@ -248,6 +250,30 @@ export function SettingsScreen() {
                   families={THEME_FAMILIES}
                   onSelect={(id) => void setTheme(id)}
                 />
+              </section>
+              <section aria-labelledby="sidebar-position-heading">
+                <SectionHeading id="sidebar-position-heading">Sidebar position</SectionHeading>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border py-3">
+                  <div>
+                    <h2 className="text-xs font-medium">Connection sidebar</h2>
+                    <p className="mt-1 text-[0.65rem] text-muted-foreground">
+                      Choose which side of the workspace holds the connection explorer.
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5" role="group" aria-label="Sidebar position">
+                    {(["left", "right"] as const).map((position) => (
+                      <Button
+                        key={position}
+                        size="sm"
+                        variant={sidebarPosition === position ? "default" : "outline"}
+                        aria-pressed={sidebarPosition === position}
+                        onClick={() => void setSidebarPosition(position)}
+                      >
+                        {position === "left" ? "Left" : "Right"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </section>
               <FontSetting
                 title="Interface"
