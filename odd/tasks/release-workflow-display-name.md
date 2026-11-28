@@ -8,7 +8,7 @@ Engram mirror: pending; the Engram search endpoint returned HTTP 404.
 
 ## Tasks
 - T1 — S1 — Rename `.github/workflows/windows-build.yml` to `.github/workflows/release.yml` without changing workflow content; route: parent inline; status: done; final commit: `2105609` (`7056627` is superseded locally).
-- T2 — S2 — Align release version metadata if required, create and push tag `v0.4.1` from `development`, then inspect the complete workflow run; route: parent; status: in_progress; Risk: item 5 (publishes a versioned desktop release); commit: pending.
+- T2 — S2 — Align release version metadata if required, create and push tag `v0.4.1` from `development`, then inspect the complete workflow run; route: parent; status: in_progress; Risk: item 5 (publishes a versioned desktop release); version commit: `99fc331`; release workflow commit: pending.
 
 ## Log
 - L1 — “Ok, ahora esto primero cambia el nombre a ese workflow de Windows Build a release e intenta hacer la release de nuevo a ver si ahora sí pasa todo.”
@@ -33,3 +33,4 @@ Engram mirror: pending; the Engram search endpoint returned HTTP 404.
 - L20 — User clarification, verbatim: “eso ya lo se el workflow se activa cuando mandas un nuevo tag”. The tag-push trigger is now the intended route. The existing remote tag `v0.4.0` points to commit `795f47d`, not current development `a439c7d`; pushing it again is not a new-tag event. No tag was created or moved.
 - L21 — User directive, verbatim: “pero genera un tag con un patch”. With current release version `0.4.0`, the next patch tag is `v0.4.1`. Inspect all version sources before tagging so the release tag and generated artifact versions agree; no tag has been created yet.
 - L22 — Updated `package.json`, both root version fields in `package-lock.json`, and `src-tauri/tauri.conf.json` to `0.4.1`; left the Rust crate's independent version (`src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`) at `0.2.2`, since Tauri config controls the desktop bundle version. Structural metadata check passed. `bun run test` passed 289 tests (0 failed); `bun run build` succeeded with the existing large-chunk warning. Independent verifier confirmed the tag trigger/build/release wiring and noted S2 remains unfulfilled until the changes are committed and tagged. Working files retain CRLF as in HEAD: default `git diff --check` flags CR at EOL on changed lines; `git -c core.whitespace=cr-at-eol diff --check` passed.
+- L23 — Version metadata changes are committed on `chore/release-v0.4.1` as `99fc331` (`chore(release): bump version to 0.4.1`). T1's separate workflow rename slice is `2105609`; T2's tag push and workflow run remain pending.
